@@ -129,10 +129,6 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 - **Pendrive**: Red Hat's on-premise Insights validation tool (internal)
 - **OpenShift**: Container orchestration platform
 
-## Authors
-
-- Shai Prizend - Initial work
-
 ## Acknowledgments
 
 This framework was extracted from Red Hat's Pendrive project. The core validation infrastructure is generic and contains no confidential logic, making it suitable for open-source release to benefit the wider OpenShift community.

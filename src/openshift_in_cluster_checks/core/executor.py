@@ -42,15 +42,12 @@ def _configure_oc_logging():
     The openshift_client library can produce verbose output when commands fail.
     This function sets the appropriate logging level based on whether we're in debug mode.
 
-    In non-debug mode: Set to WARNING to suppress verbose error dumps
+    In non-debug mode: Set to ERROR to suppress verbose error dumps
     In debug mode: Set to DEBUG to show all details for troubleshooting
     """
-    logger = logging.getLogger(__name__)
-
-    # Check if we're in debug mode
-    is_debug = False
-    if logger._console_handler:
-        is_debug = logger._console_handler.level <= logging.DEBUG
+    # Check if we're in debug mode by examining the root logger's effective level
+    root_logger = logging.getLogger()
+    is_debug = root_logger.getEffectiveLevel() <= logging.DEBUG
 
     # Configure openshift_client logger
     oc_logger = logging.getLogger("openshift_client")

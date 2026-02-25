@@ -25,6 +25,7 @@ classifiers = [
 ]
 dependencies = [
     "openshift-client>=1.0.0",
+    "python-dateutil>=2.8.0",
 ]
 
 [project.optional-dependencies]
@@ -33,7 +34,13 @@ dev = [
     "pytest-cov>=4.0.0",
     "pre-commit>=3.0.0",
     "ruff>=0.1.0",
+    "black>=24.1.1",
+    "flake8>=7.0.0",
+    "isort>=5.13.2",
 ]
+
+[project.scripts]
+openshift-checks = "openshift_in_cluster_checks.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/sprizend-rh/openshift-in-cluster-checks"

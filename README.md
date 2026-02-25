@@ -30,17 +30,49 @@ pip install openshift-in-cluster-checks
 
 ## Quick Start
 
+First, ensure you're logged into your OpenShift cluster:
+
+```bash
+oc login https://api.your-cluster.com:6443
+```
+
+Then run the checks:
+
+```bash
+# Run all checks (output saved to ./cluster-checks.json)
+openshift-checks --output ./cluster-checks.json
+
+# Run with debug logging
+openshift-checks --log-level DEBUG
+
+# Debug a specific rule (disables secret filtering)
+openshift-checks --debug-rule "check_disk_usage"
+
+# List available domains
+openshift-checks --list-domains
+
+# List all available rules
+openshift-checks --list-rules
+```
+
+## Programmatic Usage
+
+You can also use the framework programmatically in your Python code:
+
 ```python
 from openshift_in_cluster_checks.runner import InClusterCheckRunner
-from openshift_in_cluster_checks.interfaces.logger import StandardLogger
 from openshift_in_cluster_checks.interfaces.config import InClusterCheckConfig
 from pathlib import Path
 
 # Configure runner
-runner = InClusterCheckRunner(
-    logger=StandardLogger(),
-    config=InClusterCheckConfig()
+config = InClusterCheckConfig(
+    debug_rule_flag=False,
+    parallel_execution=True,
+    max_workers=10,
+    command_timeout=120,
 )
+
+runner = InClusterCheckRunner(config=config)
 
 # Run checks and save results
 output_path = Path("./results/cluster-checks.json")

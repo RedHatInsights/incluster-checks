@@ -7,7 +7,7 @@ name = "openshift-in-cluster-checks"
 version = "0.1.0"
 description = "Generic framework for running health validation rules on OpenShift cluster nodes"
 readme = "README.md"
-license = {text = "GPL-3.0-or-later"}
+license = "GPL-3.0-or-later"
 authors = [
     {name = "Shai Prizend", email = "sprizend@redhat.com"}
 ]
@@ -15,7 +15,6 @@ requires-python = ">=3.12"
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",

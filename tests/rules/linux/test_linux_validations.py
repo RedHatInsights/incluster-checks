@@ -6,8 +6,8 @@ Adapted from healthcheck-backup/HealthChecks/tests/pytest/flows/Linux/test_linux
 
 import pytest
 
-from openshift_in_cluster_checks.core.exceptions import UnExpectedSystemOutput
-from openshift_in_cluster_checks.rules.linux.linux_validations import (
+from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
+from in_cluster_checks.rules.linux.linux_validations import (
     AuditdBacklogLimit,
     SelinuxMode,
     SystemdServicesStatus,

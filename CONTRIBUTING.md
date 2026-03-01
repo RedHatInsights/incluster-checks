@@ -23,13 +23,13 @@ This project follows a code of conduct. By participating, you are expected to up
 1. **Fork the repository** on GitHub
 2. **Clone your fork** locally:
    ```bash
-   git clone https://github.com/YOUR-USERNAME/openshift-in-cluster-checks.git
-   cd openshift-in-cluster-checks
+   git clone https://github.com/YOUR-USERNAME/in-cluster-checks.git
+   cd in-cluster-checks
    ```
 
 3. **Add upstream remote**:
    ```bash
-   git remote add upstream https://github.com/sprizend-rh/openshift-in-cluster-checks.git
+   git remote add upstream https://github.com/sprizend-rh/in-cluster-checks.git
    ```
 
 ## Development Setup
@@ -83,12 +83,12 @@ To add a new validation rule:
 
 ### 1. Create the Rule Class
 
-Create a new rule in the appropriate domain directory (e.g., `src/openshift_in_cluster_checks/rules/hw/`):
+Create a new rule in the appropriate domain directory (e.g., `src/in_cluster_checks/rules/hw/`):
 
 ```python
-from openshift_in_cluster_checks.core.rule import Rule
-from openshift_in_cluster_checks.core.rule_result import RuleResult
-from openshift_in_cluster_checks.utils.enums import Objectives, Status
+from in_cluster_checks.core.rule import Rule
+from in_cluster_checks.core.rule_result import RuleResult
+from in_cluster_checks.utils.enums import Objectives, Status
 
 
 class YourNewRule(Rule):
@@ -116,10 +116,10 @@ class YourNewRule(Rule):
 
 ### 2. Add Rule to Domain
 
-Add your rule to the appropriate domain in `src/openshift_in_cluster_checks/domains/`:
+Add your rule to the appropriate domain in `src/in_cluster_checks/domains/`:
 
 ```python
-from openshift_in_cluster_checks.rules.hw.your_file import YourNewRule
+from in_cluster_checks.rules.hw.your_file import YourNewRule
 
 class HWValidationDomain(RuleDomain):
     def get_rule_classes(self) -> List[type]:
@@ -153,11 +153,11 @@ To add a new domain:
 
 ### 1. Create Domain Class
 
-Create a new file in `src/openshift_in_cluster_checks/domains/`:
+Create a new file in `src/in_cluster_checks/domains/`:
 
 ```python
 from typing import List
-from openshift_in_cluster_checks.core.domain import RuleDomain
+from in_cluster_checks.core.domain import RuleDomain
 
 
 class YourNewDomain(RuleDomain):
@@ -178,7 +178,7 @@ class YourNewDomain(RuleDomain):
 
 Create directory structure:
 ```
-src/openshift_in_cluster_checks/rules/your_domain/
+src/in_cluster_checks/rules/your_domain/
 ├── __init__.py
 └── your_validations.py
 ```
@@ -204,7 +204,7 @@ pytest tests/rules/hw/test_hw_validations.py -v
 ### Run with Coverage
 
 ```bash
-pytest --cov=src/openshift_in_cluster_checks --cov-report=term-missing
+pytest --cov=src/in_cluster_checks --cov-report=term-missing
 ```
 
 ### Coverage Requirements
@@ -299,7 +299,7 @@ When you find similar code in multiple places:
 ```python
 from typing import List
 
-from openshift_in_cluster_checks.core.rule import Rule
+from in_cluster_checks.core.rule import Rule
 
 
 class MyNewRule(Rule):
@@ -343,7 +343,7 @@ git push origin feature/your-feature-name
 
 ### 3. Create Pull Request
 
-1. Go to the [repository on GitHub](https://github.com/sprizend-rh/openshift-in-cluster-checks)
+1. Go to the [repository on GitHub](https://github.com/sprizend-rh/in-cluster-checks)
 2. Click "New Pull Request"
 3. Select your fork and branch
 4. Fill out the PR template:

@@ -10,9 +10,9 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from openshift_in_cluster_checks.rules.hw_fw_details.hardware_rule import HardwareDetailsRule
-from openshift_in_cluster_checks.rules.hw_fw_details.collectors.cpu_collectors import ProcessorType
-from openshift_in_cluster_checks.utils.enums import Status
+from in_cluster_checks.rules.hw_fw_details.hardware_rule import HardwareDetailsRule
+from in_cluster_checks.rules.hw_fw_details.collectors.cpu_collectors import ProcessorType
+from in_cluster_checks.utils.enums import Status
 
 
 class TestHardwareDetailsRule:

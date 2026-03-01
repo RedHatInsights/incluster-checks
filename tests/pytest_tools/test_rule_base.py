@@ -8,8 +8,8 @@ import re
 import pytest
 from contextlib import ExitStack
 
-from openshift_in_cluster_checks.core.exceptions import UnExpectedSystemOutput
-from openshift_in_cluster_checks.utils.enums import Status
+from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
+from in_cluster_checks.utils.enums import Status
 from tests.pytest_tools.test_operator_base import OperatorTestBase, ScenarioParams
 
 
@@ -150,7 +150,7 @@ class RuleTestBase(OperatorTestBase):
         self._init_validation_object(tested_object, scenario_params)
 
         with self._apply_patches(scenario_params, tested_object):
-            result = tested_object.check_prerequisite()
+            result = tested_object.is_prerequisite_fulfilled()
             assert result.fulfilled is False, (
                 f"Prerequisite should not be fulfilled for scenario: {scenario_params.scenario_title}"
             )
@@ -167,7 +167,7 @@ class RuleTestBase(OperatorTestBase):
         self._init_validation_object(tested_object, scenario_params)
 
         with self._apply_patches(scenario_params, tested_object):
-            result = tested_object.check_prerequisite()
+            result = tested_object.is_prerequisite_fulfilled()
             assert result.fulfilled is True, (
                 f"Prerequisite should be fulfilled for scenario: {scenario_params.scenario_title}"
             )

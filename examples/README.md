@@ -9,7 +9,7 @@ This directory contains examples demonstrating how to use the OpenShift In-Clust
 The simplest way to run in-cluster checks:
 
 ```python
-from openshift_in_cluster_checks.runner import InClusterCheckRunner
+from in_cluster_checks.runner import InClusterCheckRunner
 from pathlib import Path
 
 runner = InClusterCheckRunner()
@@ -26,8 +26,8 @@ python examples/basic_usage.py
 Shows how to customize the runner configuration:
 
 ```python
-from openshift_in_cluster_checks.interfaces.config import InClusterCheckConfig
-from openshift_in_cluster_checks.runner import InClusterCheckRunner
+from in_cluster_checks.interfaces.config import InClusterCheckConfig
+from in_cluster_checks.runner import InClusterCheckRunner
 
 config = InClusterCheckConfig(
     parallel_execution=True,
@@ -86,7 +86,7 @@ Before running these examples:
 
 2. **Install the package:**
    ```bash
-   pip install openshift-in-cluster-checks
+   pip install in-cluster-checks
    ```
 
    Or install in development mode:

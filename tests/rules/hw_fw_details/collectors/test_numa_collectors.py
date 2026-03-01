@@ -7,7 +7,7 @@ Tests NumaSizeMemory, NumaCpus, and NumaNICs collectors.
 import pytest
 from unittest.mock import Mock
 
-from openshift_in_cluster_checks.rules.hw_fw_details.collectors.numa_collectors import (
+from in_cluster_checks.rules.hw_fw_details.collectors.numa_collectors import (
     NumaCpus,
     NumaNICs,
     NumaSizeMemory,

@@ -5,9 +5,9 @@ Custom rule example for OpenShift In-Cluster Checks.
 This example demonstrates how to create a custom validation rule.
 """
 
-from openshift_in_cluster_checks.core.rule import Rule
-from openshift_in_cluster_checks.core.rule_result import RuleResult
-from openshift_in_cluster_checks.utils.enums import Objectives, Status
+from in_cluster_checks.core.rule import Rule
+from in_cluster_checks.core.rule_result import RuleResult
+from in_cluster_checks.utils.enums import Objectives, Status
 
 
 class CustomDiskCheckRule(Rule):

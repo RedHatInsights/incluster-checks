@@ -10,15 +10,8 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from openshift_in_cluster_checks.core.rule import OrchestratorRule
-
-
-def _add_bash_timeout(cmd: str, timeout: int, timeout_kill_after_seconds: int = 60) -> str:
-    """Wrap command with bash timeout command for guaranteed termination."""
-    timeout_prefix = f"timeout --kill-after={timeout_kill_after_seconds}s {timeout}s"
-    if cmd.startswith("sudo "):
-        return f"sudo {timeout_prefix} {cmd[5:]}"
-    return f"{timeout_prefix} {cmd}"
+from in_cluster_checks.core.rule import OrchestratorRule
+from in_cluster_checks.core.executor import _add_bash_timeout
 
 
 class CmdOutput:
@@ -199,6 +192,7 @@ class OperatorTestBase:
         """
         # Apply bash timeout wrapper if requested
         if add_bash_timeout:
+            # No need for Runner class
             cmd = _add_bash_timeout(cmd, timeout)
 
         assert cmd in self.cmd_to_output_dict, (
@@ -265,7 +259,7 @@ class OperatorTestBase:
         Returns:
             Mocked collected data
         """
-        from openshift_in_cluster_checks.core.operations import DataCollector
+        from in_cluster_checks.core.operations import DataCollector
 
         assert issubclass(collector_class, DataCollector), (
             f"{collector_class} is not a DataCollector subclass"

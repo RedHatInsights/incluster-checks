@@ -1,7 +1,7 @@
 # OpenShift In-Cluster Checks
 
-[![CI](https://github.com/sprizend-rh/openshift-in-cluster-checks/workflows/CI/badge.svg)](https://github.com/sprizend-rh/openshift-in-cluster-checks/actions)
-[![codecov](https://codecov.io/gh/sprizend-rh/openshift-in-cluster-checks/branch/main/graph/badge.svg)](https://codecov.io/gh/sprizend-rh/openshift-in-cluster-checks)
+[![CI](https://github.com/sprizend-rh/in-cluster-checks/workflows/CI/badge.svg)](https://github.com/sprizend-rh/in-cluster-checks/actions)
+[![codecov](https://codecov.io/gh/sprizend-rh/in-cluster-checks/branch/main/graph/badge.svg)](https://codecov.io/gh/sprizend-rh/in-cluster-checks)
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 
@@ -30,7 +30,7 @@ Originally developed as part of Red Hat's Pendrive project, this framework has b
 ## Installation
 
 ```bash
-pip install openshift-in-cluster-checks
+pip install in-cluster-checks
 ```
 
 ## Quick Start
@@ -65,8 +65,8 @@ openshift-checks --list-rules
 You can also use the framework programmatically in your Python code:
 
 ```python
-from openshift_in_cluster_checks.runner import InClusterCheckRunner
-from openshift_in_cluster_checks.interfaces.config import InClusterCheckConfig
+from in_cluster_checks.runner import InClusterCheckRunner
+from in_cluster_checks.interfaces.config import InClusterCheckConfig
 from pathlib import Path
 
 # Configure runner
@@ -105,9 +105,9 @@ runner.run(output_path=output_path)
 ## Creating Custom Rules
 
 ```python
-from openshift_in_cluster_checks.core.rule import Rule
-from openshift_in_cluster_checks.core.rule_result import RuleResult
-from openshift_in_cluster_checks.utils.enums import Status, Objectives
+from in_cluster_checks.core.rule import Rule
+from in_cluster_checks.core.rule_result import RuleResult
+from in_cluster_checks.utils.enums import Status, Objectives
 
 class MyCustomRule(Rule):
     """Example custom validation rule."""
@@ -138,8 +138,8 @@ class MyCustomRule(Rule):
 
 ```bash
 # Clone repository
-git clone https://github.com/sprizend-rh/openshift-in-cluster-checks.git
-cd openshift-in-cluster-checks
+git clone https://github.com/sprizend-rh/in-cluster-checks.git
+cd in-cluster-checks
 
 # Install development dependencies
 pip install -e ".[dev]"

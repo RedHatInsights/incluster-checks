@@ -4,7 +4,7 @@ Tests for exception classes.
 
 import pytest
 
-from openshift_in_cluster_checks.core.exceptions import UnExpectedSystemOutput, UnExpectedSystemTimeOut
+from in_cluster_checks.core.exceptions import UnExpectedSystemOutput, UnExpectedSystemTimeOut
 
 
 class TestUnExpectedSystemOutput:

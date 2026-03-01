@@ -4,9 +4,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from openshift_in_cluster_checks.core.operations import FlowsOperator, Operator
-from openshift_in_cluster_checks import global_config
-from openshift_in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks import global_config
+from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
+from in_cluster_checks.core.operations import FlowsOperator, Operator
+from in_cluster_checks.utils.enums import Objectives
 
 
 class TestOperator:
@@ -119,7 +120,7 @@ class TestFlowsOperator:
         mock_executor.ip = "192.168.1.10"
         mock_executor.host_name = "test-node"
         mock_executor.roles = []
-        mock_executor.get_output_from_run_cmd.return_value = "command output"
+        mock_executor.execute_cmd.return_value = (0, "command output", "")
 
         # Ensure debug mode is OFF
         original_debug = global_config.config.debug_rule_flag
@@ -140,7 +141,7 @@ class TestFlowsOperator:
         mock_executor.ip = "192.168.1.10"
         mock_executor.host_name = "test-node"
         mock_executor.roles = []
-        mock_executor.get_output_from_run_cmd.return_value = "command output"
+        mock_executor.execute_cmd.return_value = (0, "command output", "")
 
         # Enable debug mode
         original_debug = global_config.config.debug_rule_flag
@@ -167,7 +168,7 @@ class TestFlowsOperator:
         mock_executor.ip = "192.168.1.10"
         mock_executor.host_name = "test-node"
         mock_executor.roles = []
-        mock_executor.get_output_from_run_cmd.side_effect = Exception("Command failed")
+        mock_executor.execute_cmd.return_value = (1, "output", "error")
 
         # Enable debug mode
         original_debug = global_config.config.debug_rule_flag
@@ -176,7 +177,7 @@ class TestFlowsOperator:
         try:
             validator = DummyValidator(mock_executor)
 
-            with pytest.raises(Exception, match="Command failed"):
+            with pytest.raises(UnExpectedSystemOutput, match="Unexpected output"):
                 validator.get_output_from_run_cmd("test command")
 
             # Check debug output
@@ -244,7 +245,7 @@ class TestFlowsOperator:
         mock_executor.ip = "192.168.1.10"
         mock_executor.host_name = "test-node"
         mock_executor.roles = []
-        mock_executor.get_output_from_run_cmd.return_value = "field1 field2 field3"
+        mock_executor.execute_cmd.return_value = (0, "field1 field2 field3", "")
 
         # Ensure debug mode is OFF
         original_debug = global_config.config.debug_rule_flag
@@ -260,7 +261,7 @@ class TestFlowsOperator:
 
     def test_get_the_nth_field_static(self):
         """Test _get_the_nth_field static method."""
-        from openshift_in_cluster_checks.core.operations import Operator
+        from in_cluster_checks.core.operations import Operator
 
         # Test with default whitespace separator
         result = Operator._get_the_nth_field("one two three", 2)
@@ -272,7 +273,7 @@ class TestFlowsOperator:
 
     def test_get_the_nth_field_out_of_bounds(self):
         """Test _get_the_nth_field raises IndexError for invalid field."""
-        from openshift_in_cluster_checks.core.operations import Operator
+        from in_cluster_checks.core.operations import Operator
 
         with pytest.raises(IndexError, match="Field 5 not found"):
             Operator._get_the_nth_field("one two three", 5)

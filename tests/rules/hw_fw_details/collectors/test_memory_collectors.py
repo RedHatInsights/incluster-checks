@@ -7,7 +7,7 @@ Tests MemorySize, MemoryType, MemorySpeed, and MemoryTotalSize collectors.
 import pytest
 from unittest.mock import Mock
 
-from openshift_in_cluster_checks.rules.hw_fw_details.collectors.memory_collectors import (
+from in_cluster_checks.rules.hw_fw_details.collectors.memory_collectors import (
     MemorySize,
     MemorySpeed,
     MemoryTotalSize,
@@ -230,7 +230,7 @@ class TestMemoryTotalSize(DataCollectorTestBase):
         from unittest.mock import patch
 
         with patch(
-            "openshift_in_cluster_checks.rules.hw_fw_details.collectors.memory_collectors.MemorySize",
+            "in_cluster_checks.rules.hw_fw_details.collectors.memory_collectors.MemorySize",
             return_value=mock_memory_size_collector,
         ):
             DataCollectorTestBase.test_collect_data(self, scenario_params, tested_object)

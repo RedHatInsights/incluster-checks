@@ -1,8 +1,12 @@
 """Tests for Storage validation domain."""
 
-from openshift_in_cluster_checks.domains.storage_domain import StorageValidationDomain
-from openshift_in_cluster_checks.rules.storage.storage_validations import (
+from in_cluster_checks.domains.storage_domain import StorageValidationDomain
+from in_cluster_checks.rules.storage.storage_validations import (
     CephOsdTreeWorks,
+    IsCephHealthOk,
+    IsCephOSDsNearFull,
+    IsOSDsUp,
+    IsOSDsWeightOK,
 )
 
 
@@ -17,5 +21,9 @@ def test_storage_domain_rules():
     domain = StorageValidationDomain()
     rules = domain.get_rule_classes()
 
-    assert len(rules) == 1
+    assert len(rules) == 5
     assert CephOsdTreeWorks in rules
+    assert IsCephHealthOk in rules
+    assert IsCephOSDsNearFull in rules
+    assert IsOSDsUp in rules
+    assert IsOSDsWeightOK in rules

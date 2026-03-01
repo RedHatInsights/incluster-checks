@@ -7,13 +7,13 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from openshift_in_cluster_checks.core.domain import RuleDomain
-from openshift_in_cluster_checks.core.rule import (
+from in_cluster_checks.core.domain import RuleDomain
+from in_cluster_checks.core.rule import (
     OrchestratorRule,
     RuleResult,
     Rule,
 )
-from openshift_in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks.utils.enums import Objectives
 
 
 class MockRule(Rule):

@@ -10,10 +10,10 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from openshift_in_cluster_checks.rules.hw_fw_details.firmware_rule import FirmwareDetailsRule
-from openshift_in_cluster_checks.rules.hw_fw_details.collectors.os_collectors import OperatingSystemVersion, KernelVersion
-from openshift_in_cluster_checks.rules.hw_fw_details.collectors.bios_collectors import BIOSVersion
-from openshift_in_cluster_checks.utils.enums import Status
+from in_cluster_checks.rules.hw_fw_details.firmware_rule import FirmwareDetailsRule
+from in_cluster_checks.rules.hw_fw_details.collectors.os_collectors import OperatingSystemVersion, KernelVersion
+from in_cluster_checks.rules.hw_fw_details.collectors.bios_collectors import BIOSVersion
+from in_cluster_checks.utils.enums import Status
 
 
 class TestFirmwareDetailsRule:
@@ -47,8 +47,8 @@ class TestFirmwareDetailsRule:
         rule = FirmwareDetailsRule()
         assert rule.title == "Firmware Details"
 
-    @patch("openshift_in_cluster_checks.rules.hw_fw_details.hw_fw_base.HwFwRule._collect_all_data")
-    @patch("openshift_in_cluster_checks.rules.hw_fw_details.hw_fw_base.HwFwRule.compare_within_groups")
+    @patch("in_cluster_checks.rules.hw_fw_details.hw_fw_base.HwFwRule._collect_all_data")
+    @patch("in_cluster_checks.rules.hw_fw_details.hw_fw_base.HwFwRule.compare_within_groups")
     def test_run_rule_calls_base_methods(self, mock_compare, mock_collect):
         """Test that run_rule calls base class methods correctly."""
         rule = FirmwareDetailsRule()
@@ -73,8 +73,8 @@ class TestFirmwareDetailsRule:
         assert mock_compare.called
         assert result.status == Status.INFO
 
-    @patch("openshift_in_cluster_checks.rules.hw_fw_details.hw_fw_base.HwFwRule._group_nodes_by_labels")
-    @patch("openshift_in_cluster_checks.rules.hw_fw_details.hw_fw_base.HwFwRule._collect_all_data")
+    @patch("in_cluster_checks.rules.hw_fw_details.hw_fw_base.HwFwRule._group_nodes_by_labels")
+    @patch("in_cluster_checks.rules.hw_fw_details.hw_fw_base.HwFwRule._collect_all_data")
     def test_run_rule_groups_nodes(self, mock_collect, mock_group):
         """Test that run_rule groups nodes by labels."""
         rule = FirmwareDetailsRule()

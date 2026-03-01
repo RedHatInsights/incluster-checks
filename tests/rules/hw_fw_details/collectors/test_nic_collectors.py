@@ -7,7 +7,7 @@ Tests NICVendor, NICModel, and NICSpeed collectors.
 import pytest
 from unittest.mock import Mock
 
-from openshift_in_cluster_checks.rules.hw_fw_details.collectors.nic_collectors import (
+from in_cluster_checks.rules.hw_fw_details.collectors.nic_collectors import (
     NICDriver,
     NICFirmware,
     NICModel,

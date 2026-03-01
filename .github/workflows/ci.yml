@@ -47,7 +47,7 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          pytest tests/ --cov=src/openshift_in_cluster_checks --cov-report=term-missing --cov-report=xml --cov-fail-under=80
+          pytest tests/ --cov=src/in_cluster_checks --cov-report=term-missing --cov-report=xml --cov-fail-under=80
 
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.12'
@@ -74,13 +74,13 @@ jobs:
           pip install -e ".[dev]"
 
       - name: Run black
-        run: black --check --line-length=120 src/openshift_in_cluster_checks/
+        run: black --check --line-length=120 src/in_cluster_checks/
 
       - name: Run flake8
-        run: flake8 --max-line-length=120 --extend-ignore=E203,W503 src/openshift_in_cluster_checks/
+        run: flake8 --max-line-length=120 --extend-ignore=E203,W503 src/in_cluster_checks/
 
       - name: Run isort
-        run: isort --check --profile black --line-length 120 src/openshift_in_cluster_checks/
+        run: isort --check --profile black --line-length 120 src/in_cluster_checks/
 
       - name: Check no function imports
-        run: python tests/linters/check_no_function_imports.py src/openshift_in_cluster_checks/**/*.py
+        run: python tests/linters/check_no_function_imports.py src/in_cluster_checks/**/*.py

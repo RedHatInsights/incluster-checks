@@ -7,8 +7,8 @@ This example demonstrates how to create a custom domain with custom rules.
 
 from typing import List
 
-from openshift_in_cluster_checks.core.domain import RuleDomain
-from openshift_in_cluster_checks.core.rule import Rule
+from in_cluster_checks.core.domain import RuleDomain
+from in_cluster_checks.core.rule import Rule
 
 
 # First, define custom rules (or import from custom_rule.py)

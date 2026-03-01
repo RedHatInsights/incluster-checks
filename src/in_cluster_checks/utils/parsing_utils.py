@@ -1,0 +1,66 @@
+"""
+Utilities for parsing command output.
+
+Adapted from support/HealthChecks/tools/python_utils.py
+"""
+
+from typing import Dict, Union
+
+from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
+
+
+def parse_int(value: str, cmd: str, ip: str) -> int:
+    """
+    Parse integer from command output with detailed error reporting.
+    """
+    try:
+        return int(value)
+    except (ValueError, TypeError) as e:
+        raise UnExpectedSystemOutput(
+            ip=ip,
+            cmd=cmd,
+            output=value,
+            message=f"Failed to parse as integer. "
+            f"Expected numeric value, got: {value[:100]!r}. "
+            f"Error: {str(e)}",
+        )
+
+
+def get_dict_from_string(text: str, delimiter: str = None) -> Dict[str, Union[str, int]]:
+    """
+    Parse command output into a dictionary of key-value pairs.
+
+    Adapted from healthcheck-backup's PythonUtils.get_dict_from_space_separated_file().
+    Parses text with "key: value" or "key value" format.
+
+    Args:
+        text: Command output to parse (e.g., from timedatectl, free -m)
+        delimiter: Character to split on (default: whitespace)
+                  For colon-separated output like "key: value", use delimiter=':'
+
+    Returns:
+        Dictionary mapping keys to values (auto-converts values to int when possible)
+    """
+    result = {}
+    delimiter = delimiter or " "
+
+    for line in text.splitlines():
+        if not line or delimiter not in line:
+            continue
+
+        # Split on first occurrence of delimiter only
+        parts = line.split(delimiter, 1)
+        if len(parts) == 2:
+            key = parts[0].strip()
+            value = parts[1].strip()
+
+            # Try to convert to int if possible (like the original implementation)
+            try:
+                value = int(value)
+            except (ValueError, AttributeError):
+                # Keep as string if not convertible to int
+                value = value.strip()
+
+            result[key] = value
+
+    return result

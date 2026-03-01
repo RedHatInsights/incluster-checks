@@ -6,7 +6,7 @@ Adapted from healthcheck-backup/HealthChecks/tests/pytest/flows/network/test_ovs
 
 import pytest
 
-from openshift_in_cluster_checks.rules.network.ovs_validations import (
+from in_cluster_checks.rules.network.ovs_validations import (
     OvsInterfaceAndPortFound,
     Bond0Dns,
     Bond0DnsServersComparison,

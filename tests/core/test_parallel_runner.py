@@ -5,7 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from openshift_in_cluster_checks.core.parallel_runner import ParallelRunner
+from in_cluster_checks.core.parallel_runner import ParallelRunner
 
 
 class TestParallelRunner:

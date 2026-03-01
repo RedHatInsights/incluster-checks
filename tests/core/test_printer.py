@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from openshift_in_cluster_checks.core.printer import StructedPrinter
-from openshift_in_cluster_checks.utils.enums import Status
+from in_cluster_checks.core.printer import StructedPrinter
+from in_cluster_checks.utils.enums import Status
 
 
 class TestStructedPrinter:
@@ -57,7 +57,7 @@ class TestStructedPrinter:
         ]
 
         validator_component_map = {
-            'test_validator': 'openshift_in_cluster_checks.rules.test.TestValidator'
+            'test_validator': 'in_cluster_checks.rules.test.TestValidator'
         }
 
         result = StructedPrinter.format_results(
@@ -73,7 +73,7 @@ class TestStructedPrinter:
         report = result[0]
 
         assert report['rule_id'] == 'network_validations|test_validator'
-        assert report['component'] == 'openshift_in_cluster_checks.rules.test.TestValidator'
+        assert report['component'] == 'in_cluster_checks.rules.test.TestValidator'
         assert report['key'] == 'test_validator'
         assert report['status'] == Status.PASSED.value  # Aggregated status
         assert report['description'] == 'Test Rule'
@@ -214,7 +214,7 @@ class TestStructedPrinter:
         )
 
         # Should use fallback format
-        assert result[0]['component'] == 'openshift_in_cluster_checks.network_validations.unknown_validator'
+        assert result[0]['component'] == 'in_cluster_checks.network_validations.unknown_validator'
 
     def test_format_results_multi_node_with_aggregation(self):
         """Test format_results with multiple nodes - validates grouping and status aggregation."""

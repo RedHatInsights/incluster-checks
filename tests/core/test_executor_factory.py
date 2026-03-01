@@ -3,8 +3,8 @@
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 
-from openshift_in_cluster_checks.core.executor_factory import NodeExecutorFactory
-from openshift_in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks.core.executor_factory import NodeExecutorFactory
+from in_cluster_checks.utils.enums import Objectives
 
 
 class TestNodeExecutorFactory:
@@ -13,11 +13,11 @@ class TestNodeExecutorFactory:
     def test_init_without_openshift_client(self):
         """Test initialization when openshift_client is not available."""
         # Mock oc as None in the module
-        with patch("openshift_in_cluster_checks.core.executor_factory.oc", None):
+        with patch("in_cluster_checks.core.executor_factory.oc", None):
             with pytest.raises(ImportError, match="openshift_client library is required"):
                 NodeExecutorFactory()
 
-    @patch("openshift_in_cluster_checks.core.executor_factory.oc")
+    @patch("in_cluster_checks.core.executor_factory.oc")
     def test_get_roles_from_labels_master(self, mock_oc):
         """Test role extraction for master node."""
         factory = NodeExecutorFactory()
@@ -34,7 +34,7 @@ class TestNodeExecutorFactory:
         roles = factory._get_roles_from_labels(node_dict)
         assert Objectives.MASTERS in roles
 
-    @patch("openshift_in_cluster_checks.core.executor_factory.oc")
+    @patch("in_cluster_checks.core.executor_factory.oc")
     def test_get_roles_from_labels_worker(self, mock_oc):
         """Test role extraction for worker node."""
         factory = NodeExecutorFactory()
@@ -50,7 +50,7 @@ class TestNodeExecutorFactory:
         roles = factory._get_roles_from_labels(node_dict)
         assert Objectives.WORKERS in roles
 
-    @patch("openshift_in_cluster_checks.core.executor_factory.oc")
+    @patch("in_cluster_checks.core.executor_factory.oc")
     def test_get_roles_from_labels_multiple(self, mock_oc):
         """Test role extraction for node with multiple roles."""
         factory = NodeExecutorFactory()
@@ -68,7 +68,7 @@ class TestNodeExecutorFactory:
         assert Objectives.WORKERS in roles
         assert Objectives.INFRA in roles
 
-    @patch("openshift_in_cluster_checks.core.executor_factory.oc")
+    @patch("in_cluster_checks.core.executor_factory.oc")
     def test_get_roles_from_labels_fallback_to_all_nodes(self, mock_oc):
         """Test role extraction falls back to ALL_NODES when no known roles."""
         factory = NodeExecutorFactory()
@@ -78,8 +78,8 @@ class TestNodeExecutorFactory:
         roles = factory._get_roles_from_labels(node_dict)
         assert Objectives.ALL_NODES in roles
 
-    @patch("openshift_in_cluster_checks.core.executor_factory.NodeExecutor")
-    @patch("openshift_in_cluster_checks.core.executor_factory.oc")
+    @patch("in_cluster_checks.core.executor_factory.NodeExecutor")
+    @patch("in_cluster_checks.core.executor_factory.oc")
     def test_build_host_executors(self, mock_oc, mock_executor_class):
         """Test building host executors from cluster nodes."""
         factory = NodeExecutorFactory()
@@ -135,7 +135,7 @@ class TestNodeExecutorFactory:
         assert first_call_args[0][1] == "192.168.1.10"
         assert Objectives.MASTERS in first_call_args[1]["roles"]
 
-    @patch("openshift_in_cluster_checks.core.executor_factory.oc")
+    @patch("in_cluster_checks.core.executor_factory.oc")
     def test_connect_all(self, mock_oc):
         """Test connecting to all executors."""
         factory = NodeExecutorFactory()
@@ -149,7 +149,7 @@ class TestNodeExecutorFactory:
         mock_executor1.connect.assert_called_once()
         mock_executor2.connect.assert_called_once()
 
-    @patch("openshift_in_cluster_checks.core.executor_factory.oc")
+    @patch("in_cluster_checks.core.executor_factory.oc")
     def test_disconnect_all(self, mock_oc):
         """Test disconnecting from all executors."""
         factory = NodeExecutorFactory()
@@ -163,7 +163,7 @@ class TestNodeExecutorFactory:
         mock_executor1.close_connection.assert_called_once()
         mock_executor2.close_connection.assert_called_once()
 
-    @patch("openshift_in_cluster_checks.core.executor_factory.oc")
+    @patch("in_cluster_checks.core.executor_factory.oc")
     def test_disconnect_all_continues_on_error(self, mock_oc):
         """Test that disconnect_all continues even if one executor fails."""
         factory = NodeExecutorFactory()

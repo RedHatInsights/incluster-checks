@@ -7,8 +7,8 @@ This example shows how to customize the runner configuration.
 
 from pathlib import Path
 
-from openshift_in_cluster_checks.interfaces.config import InClusterCheckConfig
-from openshift_in_cluster_checks.runner import InClusterCheckRunner
+from in_cluster_checks.interfaces.config import InClusterCheckConfig
+from in_cluster_checks.runner import InClusterCheckRunner
 
 
 def main():

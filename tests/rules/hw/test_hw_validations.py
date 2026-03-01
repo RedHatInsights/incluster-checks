@@ -6,7 +6,7 @@ Adapted from healthcheck-backup/HealthChecks/tests/pytest/flows/HW/test_hw_valid
 
 import pytest
 
-from openshift_in_cluster_checks.rules.hw.hw_validations import (
+from in_cluster_checks.rules.hw.hw_validations import (
     BasicFreeMemoryValidation,
     CheckDiskUsage,
     CPUfreqScalingGovernorValidation,

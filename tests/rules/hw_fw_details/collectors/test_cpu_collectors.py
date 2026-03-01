@@ -7,7 +7,7 @@ Tests ProcessorType, ProcessorCurrentFrequency, and NumberOfThreadsPerCore colle
 import pytest
 from unittest.mock import Mock
 
-from openshift_in_cluster_checks.rules.hw_fw_details.collectors.cpu_collectors import (
+from in_cluster_checks.rules.hw_fw_details.collectors.cpu_collectors import (
     NumberOfPhysicalCoresPerProcessor,
     NumberOfThreadsPerCore,
     ProcessorCurrentFrequency,

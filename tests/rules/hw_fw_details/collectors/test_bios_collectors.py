@@ -7,7 +7,7 @@ Tests BIOSVersion, BIOSFirmware, BIOSRevision, and BIOSReleaseDate collectors.
 import pytest
 from unittest.mock import Mock
 
-from openshift_in_cluster_checks.rules.hw_fw_details.collectors.bios_collectors import (
+from in_cluster_checks.rules.hw_fw_details.collectors.bios_collectors import (
     BIOSFirmware,
     BIOSReleaseDate,
     BIOSRevision,

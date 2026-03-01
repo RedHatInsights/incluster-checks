@@ -6,7 +6,7 @@ Tests DiskType, DiskModel, DiskVendor, and DiskSize collectors.
 
 import pytest
 
-from openshift_in_cluster_checks.rules.hw_fw_details.collectors.disk_collectors import (
+from in_cluster_checks.rules.hw_fw_details.collectors.disk_collectors import (
     DiskModel,
     DiskSize,
     DiskType,

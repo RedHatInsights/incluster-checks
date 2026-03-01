@@ -1,7 +1,7 @@
 """Tests for HW validation domain."""
 
-from openshift_in_cluster_checks.domains.hw_domain import HWValidationDomain
-from openshift_in_cluster_checks.rules.hw.hw_validations import (
+from in_cluster_checks.domains.hw_domain import HWValidationDomain
+from in_cluster_checks.rules.hw.hw_validations import (
     BasicFreeMemoryValidation,
     CheckDiskUsage,
     CPUfreqScalingGovernorValidation,

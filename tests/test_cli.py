@@ -97,7 +97,8 @@ class TestCLI:
                 main()
             assert exc_info.value.code == 0
 
-    def test_main_list_domains(self, capsys):
+    @patch('in_cluster_checks.cli.check_oc_available')
+    def test_main_list_domains(self, mock_check_oc, capsys):
         """Test main with --list-domains."""
         test_args = ['openshift-checks', '--list-domains']
         with patch.object(sys, 'argv', test_args):
@@ -108,7 +109,8 @@ class TestCLI:
                 assert exc_info.value.code == 0
                 mock_list.assert_called_once()
 
-    def test_main_list_rules(self, capsys):
+    @patch('in_cluster_checks.cli.check_oc_available')
+    def test_main_list_rules(self, mock_check_oc, capsys):
         """Test main with --list-rules."""
         test_args = ['openshift-checks', '--list-rules']
         with patch.object(sys, 'argv', test_args):

@@ -14,10 +14,7 @@ from in_cluster_checks.rules.hw_fw_details.collectors.bios_collectors import (
     BIOSRevision,
     BIOSVersion,
 )
-from in_cluster_checks.rules.hw_fw_details.collectors.os_collectors import (
-    KernelVersion,
-    OperatingSystemVersion,
-)
+from in_cluster_checks.rules.hw_fw_details.collectors.os_collectors import KernelVersion, OperatingSystemVersion
 from in_cluster_checks.rules.hw_fw_details.hw_fw_base import HwFwRule
 
 

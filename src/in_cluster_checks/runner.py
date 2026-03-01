@@ -31,9 +31,7 @@ class InClusterCheckRunner:
     - Summary statistics
     """
 
-    def __init__(
-        self, config: InClusterCheckConfig | None = None, domain_package: str = "in_cluster_checks.domains"
-    ):
+    def __init__(self, config: InClusterCheckConfig | None = None, domain_package: str = "in_cluster_checks.domains"):
         """
         Initialize runner.
 

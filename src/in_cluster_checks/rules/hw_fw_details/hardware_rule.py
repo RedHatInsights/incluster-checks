@@ -40,11 +40,7 @@ from in_cluster_checks.rules.hw_fw_details.collectors.nic_collectors import (
     NICVendor,
     NICVersion,
 )
-from in_cluster_checks.rules.hw_fw_details.collectors.numa_collectors import (
-    NumaCpus,
-    NumaNICs,
-    NumaSizeMemory,
-)
+from in_cluster_checks.rules.hw_fw_details.collectors.numa_collectors import NumaCpus, NumaNICs, NumaSizeMemory
 from in_cluster_checks.rules.hw_fw_details.hw_fw_base import HwFwRule
 
 

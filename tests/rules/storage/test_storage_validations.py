@@ -12,6 +12,7 @@ import pytest
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.rules.storage.storage_validations import (
     CephOsdTreeWorks,
+    CheckPoolSize,
     IsCephHealthOk,
     IsCephOSDsNearFull,
     IsOSDsUp,
@@ -821,6 +822,86 @@ class TestOsdJournalError(RuleTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_passed)
     def test_scenario_passed(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+
+class TestCheckPoolSize(RuleTestBase):
+
+    tested_type = CheckPoolSize
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "all pools have replication factor >= 2",
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd pool ls detail -f json"): CmdOutput(
+                    out='[{"size": 2, "pool_name": "name1"}]',
+                    return_code=0,
+                )
+            },
+            tested_object_mock_dict={
+                "_get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "_select_resources": Mock(return_value=Mock()),
+            },
+        )
+    ]
+
+    scenario_warning = [
+        RuleScenarioParams(
+            "pool has replication factor less than 2",
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd pool ls detail -f json"): CmdOutput(
+                    out='[{"size": 2, "pool_name": "name1"}, {"size": 1, "pool_name": "name2"}]',
+                    return_code=0,
+                )
+            },
+            tested_object_mock_dict={
+                "_get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "_select_resources": Mock(return_value=Mock()),
+            },
+            failed_msg="ceph replication factor is less than 2 in following pools:\nname2",
+        ),
+        RuleScenarioParams(
+            "multiple pools have replication factor less than 2",
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd pool ls detail -f json"): CmdOutput(
+                    out='[{"size": 1, "pool_name": "pool1"}, {"size": 1, "pool_name": "pool2"}, {"size": 3, "pool_name": "pool3"}]',
+                    return_code=0,
+                )
+            },
+            tested_object_mock_dict={
+                "_get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "_select_resources": Mock(return_value=Mock()),
+            },
+            failed_msg="ceph replication factor is less than 2 in following pools:\npool1\npool2",
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "ceph command failed",
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd pool ls detail -f json"): CmdOutput(
+                    out="", err="connection refused", return_code=1
+                )
+            },
+            tested_object_mock_dict={
+                "_get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "_select_resources": Mock(return_value=Mock()),
+            },
+            failed_msg="Failed to get ceph pool details.\nError: connection refused",
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_warning)
+    def test_scenario_warning(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_warning(self, scenario_params, tested_object)
 
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):

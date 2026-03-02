@@ -677,3 +677,42 @@ class OsdJournalError(CephRule):
             error_parts.append(part)
 
         return "\n\n".join(error_parts)
+
+
+class CheckPoolSize(CephRule):
+    """
+    Check if ceph replication factor is at least 2 for all pools.
+
+    This validation checks each Ceph pool's replication factor (size) and reports
+    any pools with a replication factor less than 2, indicating a risk of no high
+    availability.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "check_ceph_replication_factor_is_at_least_2"
+    title = "Check ceph replication factor is at least 2"
+
+    def run_rule(self) -> RuleResult:
+        cmd = "ceph osd pool ls detail -f json"
+        return_code, stdout, stderr = self._run_ceph_cmd(cmd)
+
+        if return_code != 0:
+            error_msg = self.build_cmd_error_message("Failed to get ceph pool details.", stdout, stderr)
+            return RuleResult.failed(error_msg)
+
+        if not stdout:
+            return RuleResult.failed("Empty results from ceph osd pool ls detail command")
+
+        pools = parse_json(stdout, cmd, self.get_host_ip())
+
+        problematic_pools = []
+        for pool in pools:
+            if pool["size"] < 2:
+                problematic_pools.append(pool["pool_name"])
+
+        if problematic_pools:
+            return RuleResult.warning(
+                "ceph replication factor is less than 2 in following pools:\n" + "\n".join(problematic_pools)
+            )
+
+        return RuleResult.passed()

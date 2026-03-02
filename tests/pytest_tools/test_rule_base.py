@@ -21,6 +21,7 @@ class RuleScenarioParams(ScenarioParams):
         scenario_title: str,
         cmd_input_output_dict: dict = None,
         rsh_cmd_output_dict: dict = None,
+        oc_cmd_output_dict: dict = None,
         data_collector_dict: dict = None,
         library_mocks_dict: dict = None,
         tested_object_mock_dict: dict = None,
@@ -33,6 +34,7 @@ class RuleScenarioParams(ScenarioParams):
             scenario_title: Description of scenario
             cmd_input_output_dict: Map of {command: CmdOutput}
             rsh_cmd_output_dict: Map of {(namespace, pod, command): CmdOutput}
+            oc_cmd_output_dict: Map of {(command, tuple(args)): CmdOutput}
             data_collector_dict: Map of {DataCollectorClass: result}
             library_mocks_dict: Map of {module_path: Mock}
             tested_object_mock_dict: Map of {method_name: Mock}
@@ -42,6 +44,7 @@ class RuleScenarioParams(ScenarioParams):
             scenario_title,
             cmd_input_output_dict,
             rsh_cmd_output_dict,
+            oc_cmd_output_dict,
             data_collector_dict,
             library_mocks_dict,
             tested_object_mock_dict,

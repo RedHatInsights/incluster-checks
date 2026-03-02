@@ -88,6 +88,28 @@ class Operator:
 
         return out.strip()
 
+    def build_cmd_error_message(self, base_msg: str, stdout: str = "", stderr: str = "") -> str:
+        """
+        Build a formatted error message for failed commands.
+
+        Appends stderr and stdout to the base error message in a consistent format.
+        Use this when a command fails and you want to include the command output in the error.
+
+        Args:
+            base_msg: Base error message describing what failed
+            stdout: Command stdout (if any)
+            stderr: Command stderr (if any)
+
+        Returns:
+            Formatted error message with stderr/stdout appended
+        """
+        error_msg = base_msg
+        if stderr:
+            error_msg += f"\nError: {stderr}"
+        if stdout:
+            error_msg += f"\nOutput: {stdout}"
+        return error_msg
+
     def run_cmd_return_is_successful(self, cmd: str, timeout: int = 30) -> bool:
         """
         Run command and return True if successful (exit code 0).

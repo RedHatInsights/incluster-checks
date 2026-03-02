@@ -7,6 +7,8 @@ from in_cluster_checks.rules.storage.storage_validations import (
     IsCephOSDsNearFull,
     IsOSDsUp,
     IsOSDsWeightOK,
+    OrphanCsiVolumes,
+    OsdJournalError,
 )
 
 
@@ -21,9 +23,11 @@ def test_storage_domain_rules():
     domain = StorageValidationDomain()
     rules = domain.get_rule_classes()
 
-    assert len(rules) == 5
+    assert len(rules) == 7
     assert CephOsdTreeWorks in rules
     assert IsCephHealthOk in rules
     assert IsCephOSDsNearFull in rules
     assert IsOSDsUp in rules
     assert IsOSDsWeightOK in rules
+    assert OrphanCsiVolumes in rules
+    assert OsdJournalError in rules

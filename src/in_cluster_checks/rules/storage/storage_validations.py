@@ -6,10 +6,13 @@ Adapted for OpenShift/OpenShift use case.
 """
 
 import json
+import re
+from datetime import datetime, timezone
 
 from in_cluster_checks.core.rule import OrchestratorRule
 from in_cluster_checks.core.rule_result import PrerequisiteResult, RuleResult
 from in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks.utils.parsing_utils import parse_int, parse_json
 
 
 class CephRule(OrchestratorRule):
@@ -22,6 +25,8 @@ class CephRule(OrchestratorRule):
 
     Ported from CephValidation base class in healthcheck-backup.
     """
+
+    NAMESPACE = "openshift-storage"
 
     def _get_ceph_pod(self) -> tuple:
         """
@@ -36,17 +41,15 @@ class CephRule(OrchestratorRule):
             - pod_name: Name of the pod
             - ceph_config_args: Additional ceph arguments (e.g., "-c /path/to/config" or "")
         """
-        namespace = "openshift-storage"
-
         # First, try to find the rook-ceph-tools pod (preferred)
-        pod_name = self._get_pod_name(namespace, {"app": "rook-ceph-tools"}, log_errors=False)
+        pod_name = self._get_pod_name(self.NAMESPACE, {"app": "rook-ceph-tools"}, log_errors=False)
         if pod_name:
-            return namespace, pod_name, ""
+            return self.NAMESPACE, pod_name, ""
 
         # Fallback: use ceph operator pod (guaranteed to exist by prerequisite check)
-        pod_name = self._get_pod_name(namespace, {"app": "rook-ceph-operator"})
-        ceph_conf = "/var/lib/rook/openshift-storage/openshift-storage.config"
-        return namespace, pod_name, f"-c {ceph_conf}"
+        pod_name = self._get_pod_name(self.NAMESPACE, {"app": "rook-ceph-operator"})
+        ceph_conf = f"/var/lib/rook/{self.NAMESPACE}/{self.NAMESPACE}.config"
+        return self.NAMESPACE, pod_name, f"-c {ceph_conf}"
 
     def _run_ceph_cmd(self, cmd: str, timeout: int = 30) -> tuple[int, str, str]:
         """
@@ -96,8 +99,7 @@ class CephRule(OrchestratorRule):
             )
 
         # Check for operator pod (required - tools pod is optional)
-        namespace = "openshift-storage"
-        operator_pod = self._get_pod_name(namespace, {"app": "rook-ceph-operator"})
+        operator_pod = self._get_pod_name(self.NAMESPACE, {"app": "rook-ceph-operator"})
 
         if not operator_pod:
             return PrerequisiteResult.not_met(
@@ -125,11 +127,7 @@ class CephOsdTreeWorks(CephRule):
         if return_code == 0:
             return RuleResult.passed()
 
-        error_msg = "ceph osd tree is not working."
-        if stderr:
-            error_msg += f"\nError: {stderr}"
-        if stdout:
-            error_msg += f"\nOutput: {stdout}"
+        error_msg = self.build_cmd_error_message("ceph osd tree is not working.", stdout, stderr)
         return RuleResult.failed(error_msg)
 
 
@@ -147,20 +145,14 @@ class IsCephHealthOk(CephRule):
     title = "Check if ceph health is ok"
 
     def run_rule(self) -> RuleResult:
-        return_code, stdout, stderr = self._run_ceph_cmd("ceph health -f json")
+        cmd = "ceph health -f json"
+        return_code, stdout, stderr = self._run_ceph_cmd(cmd)
 
         if return_code != 0:
-            error_msg = "Failed to get ceph health status."
-            if stderr:
-                error_msg += f"\nError: {stderr}"
-            if stdout:
-                error_msg += f"\nOutput: {stdout}"
+            error_msg = self.build_cmd_error_message("Failed to get ceph health status.", stdout, stderr)
             return RuleResult.failed(error_msg)
 
-        try:
-            health_dict = json.loads(stdout)
-        except json.JSONDecodeError as e:
-            return RuleResult.failed(f"Failed to parse ceph health JSON output: {e}\nOutput: {stdout}")
+        health_dict = parse_json(stdout, cmd, self.get_host_ip())
 
         # Get status (handles both old and new ceph versions)
         status = health_dict.get("status") or health_dict.get("overall_status")
@@ -205,23 +197,17 @@ class IsCephOSDsNearFull(CephRule):
     THRESHOLD_CRITICAL = 90
 
     def run_rule(self) -> RuleResult:
-        return_code, stdout, stderr = self._run_ceph_cmd("ceph osd df -f json")
+        cmd = "ceph osd df -f json"
+        return_code, stdout, stderr = self._run_ceph_cmd(cmd)
 
         if return_code != 0:
-            error_msg = "Failed to get ceph osd df status."
-            if stderr:
-                error_msg += f"\nError: {stderr}"
-            if stdout:
-                error_msg += f"\nOutput: {stdout}"
+            error_msg = self.build_cmd_error_message("Failed to get ceph osd df status.", stdout, stderr)
             return RuleResult.failed(error_msg)
 
         if not stdout:
             return RuleResult.failed("Empty results from ceph osd df command")
 
-        try:
-            osd_df = json.loads(stdout)
-        except json.JSONDecodeError as e:
-            return RuleResult.failed(f"Failed to parse ceph osd df JSON output: {e}\nOutput: {stdout}")
+        osd_df = parse_json(stdout, cmd, self.get_host_ip())
 
         nodes = osd_df.get("nodes")
         if not nodes:
@@ -290,23 +276,17 @@ class IsOSDsUp(CephRule):
     title = "Check if all osds are up"
 
     def run_rule(self) -> RuleResult:
-        return_code, stdout, stderr = self._run_ceph_cmd("ceph osd tree -f json")
+        cmd = "ceph osd tree -f json"
+        return_code, stdout, stderr = self._run_ceph_cmd(cmd)
 
         if return_code != 0:
-            error_msg = "Failed to get ceph osd tree status."
-            if stderr:
-                error_msg += f"\nError: {stderr}"
-            if stdout:
-                error_msg += f"\nOutput: {stdout}"
+            error_msg = self.build_cmd_error_message("Failed to get ceph osd tree status.", stdout, stderr)
             return RuleResult.failed(error_msg)
 
         if not stdout:
             return RuleResult.failed("Empty results from ceph osd tree command")
 
-        try:
-            osd_tree = json.loads(stdout)
-        except json.JSONDecodeError as e:
-            return RuleResult.failed(f"Failed to parse ceph osd tree JSON output: {e}\nOutput: {stdout}")
+        osd_tree = parse_json(stdout, cmd, self.get_host_ip())
 
         nodes = osd_tree.get("nodes")
         if not nodes:
@@ -347,23 +327,17 @@ class IsOSDsWeightOK(CephRule):
     ACCEPTABLE_RANGE = 0.05  # 5% tolerance
 
     def run_rule(self) -> RuleResult:
-        return_code, stdout, stderr = self._run_ceph_cmd("ceph osd df -f json")
+        cmd = "ceph osd df -f json"
+        return_code, stdout, stderr = self._run_ceph_cmd(cmd)
 
         if return_code != 0:
-            error_msg = "Failed to get ceph osd df status."
-            if stderr:
-                error_msg += f"\nError: {stderr}"
-            if stdout:
-                error_msg += f"\nOutput: {stdout}"
+            error_msg = self.build_cmd_error_message("Failed to get ceph osd df status.", stdout, stderr)
             return RuleResult.failed(error_msg)
 
         if not stdout:
             return RuleResult.failed("Empty results from ceph osd df command")
 
-        try:
-            osd_df = json.loads(stdout)
-        except json.JSONDecodeError as e:
-            return RuleResult.failed(f"Failed to parse ceph osd df JSON output: {e}\nOutput: {stdout}")
+        osd_df = parse_json(stdout, cmd, self.get_host_ip())
 
         nodes = osd_df.get("nodes")
         if not nodes:
@@ -373,7 +347,7 @@ class IsOSDsWeightOK(CephRule):
         problematic_osds = []
         for node in nodes:
             osd_id = str(node.get("id", "unknown"))
-            osd_size_kb = int(node.get("kb", 0))
+            osd_size_kb = parse_int(node.get("kb", 0), cmd, self.get_host_ip())
             current_weight = float(node.get("crush_weight", 0))
 
             # Calculate expected weight (KB to TB conversion)
@@ -425,3 +399,281 @@ class IsOSDsWeightOK(CephRule):
     def _convert_kb_to_tb(self, kb_value: int) -> float:
         """Convert KB to TB."""
         return float(kb_value / 1024 / 1024 / 1024)
+
+
+class OrphanCsiVolumes(CephRule):
+    """
+    Check for orphaned Ceph CSI volumes.
+
+    This validation identifies CSI subvolumes that exist in the Ceph storage backend
+    but have no corresponding PersistentVolume in OpenShift. These orphaned volumes
+    consume storage space but are not accessible to the cluster and may indicate
+    incomplete cleanup after PV deletion.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "orphan_csi_volumes"
+    title = "Check for orphaned Ceph CSI volumes"
+
+    def run_rule(self) -> RuleResult:
+        pv_subvolumes = self._get_pv_subvolume_names()
+
+        csi_subvolumes_result = self._get_ceph_subvolume_list()
+        if isinstance(csi_subvolumes_result, RuleResult):
+            return csi_subvolumes_result
+        # Find orphans - volumes in Ceph but not in PVs
+        orphans = [vol for vol in csi_subvolumes_result if vol not in pv_subvolumes]
+
+        if not orphans:
+            return RuleResult.passed()
+
+        error_msg = (
+            f"Found {len(orphans)} orphaned CSI volume(s) in Ceph storage.\n"
+            "These volumes exist in the storage backend but have no corresponding PersistentVolume.\n"
+            "They may be consuming storage space and could be candidates for cleanup.\n\n"
+            f"Total PVs with CSI volumes: {len(pv_subvolumes)}\n"
+            f"Total CSI subvolumes in Ceph: {len(csi_subvolumes_result)}\n"
+            f"Orphaned volumes: {len(orphans)}\n\n"
+            "Orphaned CSI volume names:\n"
+        )
+
+        for orphan in sorted(orphans):
+            error_msg += f"  - {orphan}\n"
+
+        return RuleResult.failed(error_msg.rstrip())
+
+    def _get_pv_subvolume_names(self):
+        """
+        Get all CSI subvolume names from PersistentVolumes.
+
+        Returns:
+            Set of subvolume names, or RuleResult if operation failed
+        """
+        jsonpath = "{.items[*].spec.csi.volumeAttributes.subvolumeName}"
+        rc, stdout, stderr = self.run_oc_command("get", ["pv", "-o", f"jsonpath={jsonpath}"])
+
+        # Parse space-separated subvolume names, filter out empty values
+        return set(name for name in stdout.split() if name)
+
+    def _get_ceph_subvolume_list(self):
+        """
+        Get all CSI subvolumes from Ceph filesystem.
+
+        Returns:
+            List of CSI subvolume names or RuleResult if operation failed
+        """
+        cmd = "ceph fs subvolume ls ocs-storagecluster-cephfilesystem csi -f json"
+        return_code, stdout, stderr = self._run_ceph_cmd(cmd)
+
+        if return_code != 0:
+            error_msg = self.build_cmd_error_message("Failed to list CSI subvolumes from Ceph.", stdout, stderr)
+            return RuleResult.failed(error_msg)
+
+        if not stdout:
+            return RuleResult.failed("Empty results from ceph fs subvolume ls command")
+
+        subvolumes_data = parse_json(stdout, cmd, self.get_host_ip())
+
+        # Extract subvolume names from the array
+        # Each entry is like: {"name": "csi-vol-abc123"}
+        subvolume_names = []
+        for entry in subvolumes_data:
+            if isinstance(entry, dict):
+                name = entry.get("name")
+                if name:
+                    subvolume_names.append(name)
+
+        return subvolume_names
+
+
+class OsdJournalError(CephRule):
+    """
+    Check if OSDs had journal errors in the last hour.
+
+    This validation checks for OSD pods that have failed or restarted in the last hour,
+    indicating potential journal errors or other issues. It examines pod status, restart
+    counts, and logs to identify problematic OSDs.
+
+    Ported from HealthChecks OsdJournalError rule, adapted for OpenShift/Rook-Ceph.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "osd_journal_errors_last_hour"
+    title = "Check if OSDs had journal errors in the last hour"
+
+    def run_rule(self) -> RuleResult:
+        osd_pods = self._get_osd_pods()
+        if not osd_pods:
+            return RuleResult.failed(f"No OSD pods found in {self.NAMESPACE} namespace")
+
+        problematic_osds = []
+        for pod in osd_pods:
+            osd_info = self._check_pod_health(pod)
+            if osd_info:
+                problematic_osds.append(osd_info)
+
+        if not problematic_osds:
+            return RuleResult.passed()
+
+        error_msg = self._build_error_message(problematic_osds)
+        return RuleResult.failed(error_msg)
+
+    def _get_osd_pods(self) -> list:
+        """Get all OSD pods from the cluster."""
+        return self._get_pods(namespace=self.NAMESPACE, labels={"app": "rook-ceph-osd"})
+
+    def _check_pod_health(self, pod) -> dict | None:
+        """
+        Check if a pod has health issues and collect diagnostics.
+
+        Args:
+            pod: Pod object from openshift_client
+
+        Returns:
+            Dictionary with pod info if problematic, None otherwise
+        """
+        pod_name = pod.name()
+        pod_status = pod.model.status.phase
+        container_statuses = pod.model.status.containerStatuses or []
+
+        has_recent_restarts, container_errors = self._get_recent_restarts_and_errors(container_statuses)
+
+        if not self._is_osd_problematic(pod_status, has_recent_restarts, container_errors):
+            return None
+
+        osd_id = self._extract_osd_id(pod)
+
+        # Get pod logs using oc logs command
+        return_code, log_output, stderr = self.run_oc_command(
+            "logs",
+            ["-n", self.NAMESPACE, pod_name, "--since=1h", "--tail=15"],
+            timeout=30,
+            raise_on_error=False,
+        )
+
+        if return_code != 0:
+            self.logger.warning(f"Failed to get logs for pod {self.NAMESPACE}/{pod_name}: {stderr}")
+            log_output = ""
+
+        return {
+            "pod_name": pod_name,
+            "osd_id": osd_id,
+            "status": pod_status,
+            "container_errors": container_errors,
+            "logs": log_output,
+        }
+
+    def _get_recent_restarts_and_errors(self, container_statuses: list) -> tuple[bool, list]:
+        """
+        Check for recent restarts and error states in container statuses.
+
+        Checks if any containers have restarted in the last hour by examining the
+        lastState.finishedAt timestamp.
+
+        Args:
+            container_statuses: List of container status objects
+
+        Returns:
+            Tuple of (has_recent_restarts, list_of_container_errors)
+        """
+        has_recent_restarts = False
+        container_errors = []
+        now = datetime.now(timezone.utc)
+
+        for container in container_statuses:
+            # Check if container restarted in the last hour
+            if container.lastState and container.lastState.terminated:
+                finished_at = container.lastState.terminated.finishedAt
+                if finished_at:
+                    # Parse the timestamp (format: "2025-02-26T10:15:30Z")
+                    try:
+                        finished_time = datetime.fromisoformat(finished_at.replace("Z", "+00:00"))
+                        time_diff = (now - finished_time).total_seconds()
+                        if time_diff <= 3600:  # 1 hour = 3600 seconds
+                            has_recent_restarts = True
+                    except (ValueError, AttributeError):
+                        # If we can't parse the timestamp, skip this check
+                        pass
+
+            # Check if container is in error state
+            if container.state.waiting and container.state.waiting.reason in [
+                "CrashLoopBackOff",
+                "Error",
+                "ImagePullBackOff",
+            ]:
+                container_errors.append(
+                    f"{container.name}: {container.state.waiting.reason} - {container.state.waiting.message or ''}"
+                )
+            elif container.state.terminated and container.state.terminated.reason in ["Error", "OOMKilled"]:
+                container_errors.append(
+                    f"{container.name}: {container.state.terminated.reason} - "
+                    f"{container.state.terminated.message or ''}"
+                )
+
+        return has_recent_restarts, container_errors
+
+    def _is_osd_problematic(self, pod_status: str, has_recent_restarts: bool, container_errors: list) -> bool:
+        """
+        Determine if OSD pod is problematic.
+
+        An OSD is considered problematic if:
+        1. Pod is not in Running state, OR
+        2. Pod has restarted in the last hour, OR
+        3. Container has errors
+
+        Args:
+            pod_status: Pod phase (Running, Pending, Failed, etc.)
+            has_recent_restarts: True if any container restarted in the last hour
+            container_errors: List of container error strings
+
+        Returns:
+            True if OSD is problematic, False otherwise
+        """
+        return pod_status != "Running" or has_recent_restarts or bool(container_errors)
+
+    def _extract_osd_id(self, pod) -> str:
+        """
+        Extract OSD ID from pod labels or name.
+
+        Args:
+            pod: Pod object from openshift_client
+
+        Returns:
+            OSD ID as string, or "unknown" if not found
+        """
+        osd_id = pod.model.metadata.labels.get("ceph-osd-id", "unknown")
+        if osd_id == "unknown":
+            # Try to extract from pod name (format: rook-ceph-osd-<ID>-<hash>-<suffix>)
+            # Example: rook-ceph-osd-0-5fc8f487b4-2w5qb
+            match = re.search(r"rook-ceph-osd-(\d+)-[a-z0-9]+-[a-z0-9]+", pod.name())
+            if match:
+                osd_id = match.group(1)
+        return osd_id
+
+    def _build_error_message(self, problematic_osds: list) -> str:
+        """
+        Build formatted error message from problematic OSDs.
+
+        Args:
+            problematic_osds: List of OSD info dictionaries
+
+        Returns:
+            Formatted error message string
+        """
+        error_parts = []
+        for osd in problematic_osds:
+            part = f"Pod Name: {osd['pod_name']}\n"
+            part += f"OSD ID: {osd['osd_id']}\n"
+            part += f"Status: {osd['status']}\n"
+
+            if osd["container_errors"]:
+                part += "Container Errors:\n"
+                for error in osd["container_errors"]:
+                    part += f"  - {error}\n"
+
+            if osd["logs"]:
+                part += f"Recent Logs (last 15 lines or 1 hour):\n{osd['logs']}\n"
+
+            error_parts.append(part)
+
+        return "\n\n".join(error_parts)

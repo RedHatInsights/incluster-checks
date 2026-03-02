@@ -10,6 +10,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.rule import OrchestratorRule
 from in_cluster_checks.core.executor import _add_bash_timeout
 
@@ -39,6 +40,7 @@ class ScenarioParams:
         scenario_title: str,
         cmd_input_output_dict: Dict[str, CmdOutput] = None,
         rsh_cmd_output_dict: Dict[tuple, CmdOutput] = None,
+        oc_cmd_output_dict: Dict[tuple, CmdOutput] = None,
         data_collector_dict: Dict[type, Any] = None,
         library_mocks_dict: Dict[str, Mock] = None,
         tested_object_mock_dict: Dict[str, Mock] = None,
@@ -51,6 +53,8 @@ class ScenarioParams:
             cmd_input_output_dict: Map of {command: CmdOutput} for run_cmd()
             rsh_cmd_output_dict: Map of {(namespace, pod, command): CmdOutput} for run_rsh_cmd()
                 Example: {("openshift-ovn-kubernetes", "ovnkube-node-abc", "ovn-nbctl ls-list"): CmdOutput(...)}
+            oc_cmd_output_dict: Map of {(command, tuple(args)): CmdOutput} for run_oc_command()
+                Example: {("get", ("pv", "-o", "json")): CmdOutput(...)}
             data_collector_dict: Map of {DataCollectorClass: expected_result}
             library_mocks_dict: Map of {module_path: Mock} for mocking library/module functions
                 Example: {"openshift_client.oc.selector": Mock(return_value=...)}
@@ -60,6 +64,7 @@ class ScenarioParams:
         self.scenario_title = scenario_title
         self.cmd_input_output_dict = cmd_input_output_dict or {}
         self.rsh_cmd_output_dict = rsh_cmd_output_dict or {}
+        self.oc_cmd_output_dict = oc_cmd_output_dict or {}
         self.data_collector_dict = data_collector_dict or {}
         self.library_mocks_dict = library_mocks_dict or {}
         self.tested_object_mock_dict = tested_object_mock_dict or {}
@@ -113,7 +118,9 @@ class OperatorTestBase:
         """
         self.cmd_to_output_dict = scenario_params.cmd_input_output_dict
         self.rsh_cmd_to_output_dict = scenario_params.rsh_cmd_output_dict
+        self.oc_cmd_to_output_dict = scenario_params.oc_cmd_output_dict
         self.data_collectors = scenario_params.data_collector_dict
+        self.operator_object = operator_object
 
         # Store mock dictionaries in instance variables (like healthcheck pattern)
         if scenario_params.library_mocks_dict is not None:
@@ -137,6 +144,10 @@ class OperatorTestBase:
         # Mock run_rsh_cmd for OrchestratorRules
         if hasattr(operator_object, 'run_rsh_cmd'):
             operator_object.run_rsh_cmd = Mock(side_effect=self._run_rsh_cmd_side_effects)
+
+        # Mock run_oc_command for OrchestratorRules
+        if hasattr(operator_object, 'run_oc_command'):
+            operator_object.run_oc_command = Mock(side_effect=self._run_oc_command_side_effects)
 
         # Mock run_data_collector
         operator_object.run_data_collector = Mock(
@@ -224,6 +235,44 @@ class OperatorTestBase:
         )
 
         res = self.rsh_cmd_to_output_dict[key]
+        return res.return_code, res.out, res.err
+
+    def _run_oc_command_side_effects(self, command: str, args: list, timeout: int = 120, raise_on_error: bool = True):
+        """
+        Mock side effect for run_oc_command().
+
+        Args:
+            command: oc command (e.g., "get")
+            args: List of command arguments (e.g., ["pv", "-o", "json"])
+            timeout: Timeout (ignored in mock)
+            raise_on_error: Raise exception on non-zero exit
+
+        Returns:
+            Tuple of (return_code, stdout, stderr)
+
+        Raises:
+            UnExpectedSystemOutput: If raise_on_error=True and return_code != 0
+        """
+        _ = timeout  # Acknowledge parameter
+        key = (command, tuple(args))
+
+        assert key in self.oc_cmd_to_output_dict, (
+            f"OC command {key} not mocked. "
+            f"Please add it to oc_cmd_output_dict in test scenario."
+        )
+
+        res = self.oc_cmd_to_output_dict[key]
+
+        # Honor raise_on_error parameter
+        if raise_on_error and res.return_code != 0:
+            cmd_str = f"oc {command} {' '.join(args)}"
+            raise UnExpectedSystemOutput(
+                ip=self.operator_object.get_host_ip(),
+                cmd=cmd_str,
+                output=res.err if res.err else res.out,
+                message=f"Command failed with return code {res.return_code}",
+            )
+
         return res.return_code, res.out, res.err
 
     def _get_output_from_run_cmd_side_effects(self, cmd: str, timeout: int = 30, message: str = None):

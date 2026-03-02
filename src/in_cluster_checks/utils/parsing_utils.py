@@ -4,9 +4,39 @@ Utilities for parsing command output.
 Adapted from support/HealthChecks/tools/python_utils.py
 """
 
-from typing import Dict, Union
+import json
+from typing import Any, Dict, Union
 
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
+
+
+def parse_json(output: str, cmd: str, ip: str) -> Any:
+    """
+    Parse JSON from command output with detailed error reporting.
+
+    Use this for system/API outputs that should always be valid JSON.
+    If JSON parsing fails, it indicates an unexpected system state.
+
+    Args:
+        output: JSON string from command
+        cmd: Command that produced the output (for error reporting)
+        ip: Host IP where command was executed (for error reporting)
+
+    Returns:
+        Parsed JSON data (dict, list, etc.)
+
+    Raises:
+        UnExpectedSystemOutput: If JSON parsing fails
+    """
+    try:
+        return json.loads(output)
+    except json.JSONDecodeError as e:
+        raise UnExpectedSystemOutput(
+            ip=ip,
+            cmd=cmd,
+            output=output,
+            message=f"Failed to parse JSON: {e}",
+        )
 
 
 def parse_int(value: str, cmd: str, ip: str) -> int:

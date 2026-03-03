@@ -13,6 +13,7 @@ import logging
 from typing import Any, Dict, List
 
 from in_cluster_checks import global_config
+from in_cluster_checks.core.executor import OrchestratorExecutor
 from in_cluster_checks.core.parallel_runner import ParallelRunner
 from in_cluster_checks.core.printer import StructedPrinter
 from in_cluster_checks.core.rule import Rule
@@ -119,6 +120,8 @@ class RuleDomain(abc.ABC):
         """
         Create rule instances for a single rule class.
 
+        Simplified since ONE_* roles are now added to executors during factory init.
+
         Args:
             rule_class: Rule class to instantiate
             host_executors_dict: Dictionary of {node_name: NodeExecutor}
@@ -133,22 +136,27 @@ class RuleDomain(abc.ABC):
 
         if is_orchestrator:
             return self._create_orchestrator_instance(rule_class, host_executors_dict)
-        else:
-            return self._create_per_node_instances(rule_class, host_executors_dict)
+
+        # Create instances for matching nodes (handles both ONE_* and multi-type)
+        return self._create_per_node_instances(rule_class, host_executors_dict)
 
     def _create_orchestrator_instance(self, rule_class: type, host_executors_dict: Dict[str, Any]) -> List[Rule]:
         """
         Create single orchestrator instance.
 
+        Passes OrchestratorExecutor as first arg, matching Rule signature.
+        node_executors dict stays pure - never contains orchestrator.
+
         Args:
             rule_class: Orchestrator rule class
-            host_executors_dict: Dictionary of all node executors
+            host_executors_dict: Dictionary of all node executors (only real nodes)
 
         Returns:
             List with single orchestrator instance, or empty list if creation failed
         """
         try:
-            rule = rule_class(node_executors=host_executors_dict)
+            # Pass orchestrator executor as first arg (matching Rule signature)
+            rule = rule_class(OrchestratorExecutor(), node_executors=host_executors_dict)
             self.logger.debug(f"Created {rule_class.__name__} as ORCHESTRATOR")
             return [rule]
         except Exception as e:

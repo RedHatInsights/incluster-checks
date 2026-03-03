@@ -55,9 +55,8 @@ class TestAreAllNodesConnected(RuleTestBase):
         Returns:
             Instance of AreAllNodesConnected
         """
-        # For OrchestratorRule, we don't pass host_executor in constructor
-        # Instead we create it and set node_executors directly
-        tested_obj = self.tested_type()
+        # OrchestratorRule requires host_executor as first argument
+        tested_obj = self.tested_type(host_executor=Mock())
         return tested_obj
 
     scenario_passed = [

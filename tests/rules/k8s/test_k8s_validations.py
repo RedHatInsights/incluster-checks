@@ -42,7 +42,7 @@ class TestAllPodsReadyAndRunning:
     @pytest.fixture
     def tested_object(self):
         """Create instance of AllPodsReadyAndRunning for testing."""
-        return AllPodsReadyAndRunning(node_executors={})
+        return AllPodsReadyAndRunning(host_executor=Mock(), node_executors={})
 
     def test_all_pods_running_and_ready(self, tested_object):
         """Test when all pods are running and ready."""
@@ -113,7 +113,7 @@ class TestNodesAreReady:
     @pytest.fixture
     def tested_object(self):
         """Create instance of NodesAreReady for testing."""
-        return NodesAreReady(node_executors={})
+        return NodesAreReady(host_executor=Mock(), node_executors={})
 
     def test_all_nodes_ready(self, tested_object):
         """Test when all nodes are ready."""
@@ -176,7 +176,7 @@ class TestNodesCpuAndMemoryStatus:
     @pytest.fixture
     def tested_object(self):
         """Create instance of NodesCpuAndMemoryStatus for testing."""
-        return NodesCpuAndMemoryStatus(node_executors={})
+        return NodesCpuAndMemoryStatus(host_executor=Mock(), node_executors={})
 
     def test_all_nodes_normal_usage(self, tested_object):
         """Test when all nodes have normal CPU/memory usage."""
@@ -247,7 +247,7 @@ class TestValidateNamespaceStatus:
     @pytest.fixture
     def tested_object(self):
         """Create instance of ValidateNamespaceStatus for testing."""
-        return ValidateNamespaceStatus(node_executors={})
+        return ValidateNamespaceStatus(host_executor=Mock(), node_executors={})
 
     def test_all_namespaces_active(self, tested_object):
         """Test when all namespaces are active."""
@@ -290,7 +290,7 @@ class TestValidateAllDaemonsetsScheduled:
     @pytest.fixture
     def tested_object(self):
         """Create instance of ValidateAllDaemonsetsScheduled for testing."""
-        return ValidateAllDaemonsetsScheduled(node_executors={})
+        return ValidateAllDaemonsetsScheduled(host_executor=Mock(), node_executors={})
 
     def test_all_daemonsets_scheduled(self, tested_object):
         """Test when all daemonsets have desired number of pods and none unavailable."""
@@ -426,7 +426,7 @@ class TestOpenshiftOperatorStatus:
     @pytest.fixture
     def tested_object(self):
         """Create instance of OpenshiftOperatorStatus for testing."""
-        return OpenshiftOperatorStatus(node_executors={})
+        return OpenshiftOperatorStatus(host_executor=Mock(), node_executors={})
 
     def test_all_operators_available(self, tested_object):
         """Test when all operators are available and not progressing."""

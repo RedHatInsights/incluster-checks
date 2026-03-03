@@ -12,6 +12,7 @@ import pytest
 
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.rule import OrchestratorRule
+from in_cluster_checks.core.operations import DataCollector
 from in_cluster_checks.core.executor import _add_bash_timeout
 
 
@@ -83,27 +84,27 @@ class OperatorTestBase:
     def tested_object(self):
         """
         Create a tested object with mocked executor.
-
         Returns:
             Instance of tested_type with mocked host_executor
         """
         assert self.tested_type, "Please set tested_type in test class"
-
         # Clear any cached command outputs from previous tests
         # (HwFwDataCollector uses class-level cache that persists across tests)
         if hasattr(self.tested_type, 'clear_cache'):
             self.tested_type.clear_cache()
 
+        # Create mock executor for all rules
+        mock_executor = Mock()
+        mock_executor.node_name = "test-node"
+        mock_executor.ip = "192.168.1.10"
+        mock_executor.host_name = "test-node"
+    
         # Check if this is an OrchestratorRule (doesn't need host_executor)
         if issubclass(self.tested_type, OrchestratorRule):
-            # OrchestratorRule expects node_executors dict or None
-            tested_obj = self.tested_type(node_executors=None)
+            # OrchestratorRule requires host_executor and optional node_executors
+            tested_obj = self.tested_type(host_executor=mock_executor, node_executors=None)
         else:
-            # Regular Rule expects host_executor
-            mock_executor = Mock()
-            mock_executor.node_name = "test-node"
-            mock_executor.ip = "192.168.1.10"
-            mock_executor.host_name = "test-node"
+            # Regular Rule requires host_executor
             tested_obj = self.tested_type(mock_executor)
 
         return tested_obj
@@ -308,7 +309,6 @@ class OperatorTestBase:
         Returns:
             Mocked collected data
         """
-        from in_cluster_checks.core.operations import DataCollector
 
         assert issubclass(collector_class, DataCollector), (
             f"{collector_class} is not a DataCollector subclass"

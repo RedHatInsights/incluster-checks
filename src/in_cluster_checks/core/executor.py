@@ -23,6 +23,7 @@ except ImportError:
     oc = None
 
 from in_cluster_checks.core.exceptions import HostNotReachable, UnExpectedSystemOutput
+from in_cluster_checks.utils.enums import ORCHESTRATOR_HOST_IP, ORCHESTRATOR_HOST_NAME, Objectives
 
 
 def _add_bash_timeout(cmd: str, timeout: int, timeout_kill_after_seconds: int = 60) -> str:
@@ -40,7 +41,6 @@ def _configure_oc_logging():
 
     The openshift_client library can produce verbose output when commands fail.
     This function sets the appropriate logging level based on whether we're in debug mode.
-
     In non-debug mode: Set to ERROR to suppress verbose error dumps
     In debug mode: Set to DEBUG to show all details for troubleshooting
     """
@@ -338,3 +338,56 @@ class NodeExecutor:
     def get_host_ip(self) -> str:
         """Get node IP address."""
         return self.ip
+
+    def add_role(self, role: str):
+        """
+        Add a role to this executor.
+
+        Used by factory to assign ONE_* roles to selected executors.
+
+        Args:
+            role: Role to add (e.g., Objectives.ONE_MASTER)
+        """
+        if role not in self.roles:
+            self.roles.append(role)
+
+
+class OrchestratorExecutor:
+    """
+    Executor for orchestrator-level operations running in Pendrive container.
+
+    Not a real cluster node - represents the Pendrive container itself.
+    Cannot run node commands - use run_oc_command() or run_rsh_cmd() for pod access.
+    """
+
+    def __init__(self):
+        """Initialize orchestrator executor."""
+        self.node_name = ORCHESTRATOR_HOST_NAME
+        self.host_name = ORCHESTRATOR_HOST_NAME
+        self.ip = ORCHESTRATOR_HOST_IP
+        self.roles = [Objectives.ORCHESTRATOR]
+        self.node_labels = ""  # No node labels (orchestrator is not a real node)
+        self.is_local = True
+        self.is_connected = True  # No connection needed
+        self.logger = logging.getLogger(__name__)
+
+    def connect(self):
+        """No-op - orchestrator doesn't connect to anything."""
+        pass
+
+    def execute_cmd(self, cmd: str, timeout: int = 120, **kwargs) -> tuple:
+        """
+        Orchestrator cannot execute node commands.
+
+        Raises:
+            NotImplementedError: Always - use run_oc_command() or run_rsh_cmd() instead
+        """
+        raise NotImplementedError(
+            f"execute_cmd('{cmd}') is not available for orchestrator-level operations. "
+            "Orchestrator operations cannot run node commands. "
+            "Use run_oc_command() to run oc commands, or run_rsh_cmd() to execute in pods."
+        )
+
+    def close_connection(self):
+        """No-op - no connection to close."""
+        pass

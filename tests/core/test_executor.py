@@ -1,7 +1,6 @@
 """Tests for NodeExecutor."""
 
 import json
-import subprocess
 import threading
 import time
 from unittest.mock import Mock, patch, MagicMock
@@ -9,7 +8,8 @@ from unittest.mock import Mock, patch, MagicMock
 import pytest
 
 from in_cluster_checks.core.exceptions import HostNotReachable, UnExpectedSystemOutput
-from in_cluster_checks.core.executor import NodeExecutor
+from in_cluster_checks.core.executor import NodeExecutor, OrchestratorExecutor
+from in_cluster_checks.utils.enums import Objectives
 
 
 class TestNodeExecutor:
@@ -333,6 +333,30 @@ class TestNodeExecutor:
         assert executor.get_host_ip() == "192.168.1.10"
 
     @patch('in_cluster_checks.core.executor.oc')
+    def test_add_role(self, mock_oc):
+        """Test adding a role to an executor."""
+        executor = NodeExecutor("test-node", "192.168.1.10", roles=[Objectives.MASTERS, Objectives.ALL_NODES])
+
+        # Add ONE_MASTER role
+        executor.add_role(Objectives.ONE_MASTER)
+
+        assert Objectives.ONE_MASTER in executor.roles
+        assert len(executor.roles) == 3
+        assert executor.roles == [Objectives.MASTERS, Objectives.ALL_NODES, Objectives.ONE_MASTER]
+
+    @patch('in_cluster_checks.core.executor.oc')
+    def test_add_role_no_duplicates(self, mock_oc):
+        """Test that adding same role twice doesn't create duplicates."""
+        executor = NodeExecutor("test-node", "192.168.1.10", roles=[Objectives.MASTERS, Objectives.ALL_NODES])
+
+        # Add ONE_MASTER role twice
+        executor.add_role(Objectives.ONE_MASTER)
+        executor.add_role(Objectives.ONE_MASTER)
+
+        assert executor.roles.count(Objectives.ONE_MASTER) == 1
+        assert len(executor.roles) == 3
+
+    @patch('in_cluster_checks.core.executor.oc')
     def test_thread_lock_prevents_parallel_execution(self, mock_oc):
         """Test that thread lock prevents parallel command execution on same host."""
         executor = NodeExecutor("test-node", "192.168.1.10")
@@ -365,3 +389,43 @@ class TestNodeExecutor:
         thread2.join()
 
         assert execution_order == ["start", "end", "start", "end"]
+
+
+class TestOrchestratorExecutor:
+    """Test OrchestratorExecutor functionality."""
+
+    def test_orchestrator_executor_attributes(self):
+        """Test OrchestratorExecutor has correct attributes."""
+        executor = OrchestratorExecutor()
+
+        assert executor.host_name == "in-cluster-orchestrator"
+        assert executor.node_name == "in-cluster-orchestrator"
+        assert executor.ip == "127.0.0.1"
+        assert Objectives.ORCHESTRATOR in executor.roles
+        assert executor.node_labels == ""
+        assert executor.is_local is True
+        assert executor.is_connected is True
+
+    def test_orchestrator_executor_connect_noop(self):
+        """Test that connect() is a no-op for orchestrator."""
+        executor = OrchestratorExecutor()
+        # Should not raise exception
+        executor.connect()
+        assert executor.is_connected is True
+
+    def test_orchestrator_executor_execute_cmd_raises(self):
+        """Test that execute_cmd raises NotImplementedError."""
+        executor = OrchestratorExecutor()
+
+        with pytest.raises(NotImplementedError) as exc_info:
+            executor.execute_cmd("pwd")
+
+        assert "run_oc_command" in str(exc_info.value)
+        assert "run_rsh_cmd" in str(exc_info.value)
+
+    def test_orchestrator_executor_close_connection_noop(self):
+        """Test that close_connection() is a no-op for orchestrator."""
+        executor = OrchestratorExecutor()
+        # Should not raise exception
+        executor.close_connection()
+        assert executor.is_connected is True

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "in-cluster-checks"
-version = "0.1.0"
+version = "0.1.1"
 description = "Generic framework for running health validation rules on OpenShift cluster nodes"
 readme = "README.md"
 license = "GPL-3.0-or-later"

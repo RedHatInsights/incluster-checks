@@ -197,7 +197,6 @@ def main() -> None:
         runner = InClusterCheckRunner(
             debug_rule_flag=(args.debug_rule != ""),
             debug_rule_name=args.debug_rule,
-            filter_secrets=(args.debug_rule == ""),  # Disable filtering in debug mode
             max_workers=50,
         )
 

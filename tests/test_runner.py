@@ -19,7 +19,6 @@ class TestInClusterCheckRunner:
         # Verify global config was set with defaults
         assert global_config.debug_rule_flag is False
         assert global_config.debug_rule_name == ""
-        assert global_config.filter_secrets is True
         assert global_config.max_workers == 50
 
     def test_init_custom_config(self):
@@ -28,14 +27,12 @@ class TestInClusterCheckRunner:
             debug_rule_flag=True,
             debug_rule_name="TestRule",
             max_workers=75,
-            filter_secrets=False,
         )
 
         # Verify global config was set with custom values
         assert global_config.debug_rule_flag is True
         assert global_config.debug_rule_name == "TestRule"
         assert global_config.max_workers == 75
-        assert global_config.filter_secrets is False
 
     @patch('in_cluster_checks.runner.NodeExecutorFactory')
     def test_run_success(self, mock_executor_factory):

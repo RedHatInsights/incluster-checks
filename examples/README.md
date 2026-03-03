@@ -30,7 +30,6 @@ from in_cluster_checks.runner import InClusterCheckRunner
 
 runner = InClusterCheckRunner(
     max_workers=75,
-    filter_secrets=True,
 )
 ```
 

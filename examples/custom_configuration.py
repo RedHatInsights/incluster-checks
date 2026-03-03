@@ -19,9 +19,6 @@ def main():
         debug_rule_name="",
         # Set maximum concurrent workers (default: 50)
         max_workers=75,
-        # Enable secret filtering (default: True)
-        # Note: automatically disabled when debug_rule_flag=True
-        filter_secrets=True,
     )
 
     # Define output path
@@ -30,7 +27,6 @@ def main():
     # Run checks
     print("Running in-cluster health checks with custom configuration...")
     print(f"- Max workers: 75")
-    print(f"- Secret filtering: True")
     print(f"\nResults will be saved to: {output_path.absolute()}")
 
     result_path = runner.run(output_path=output_path)

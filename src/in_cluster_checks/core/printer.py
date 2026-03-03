@@ -103,7 +103,8 @@ class StructedPrinter:
         # Filter sensitive data (HC pattern: matches StructedPrinter.encrypt_out)
         # Note: bash_cmd_lines and rule_log may contain secrets from system output
         # Exception filtering is done in the exception's __str__() method
-        if global_config.filter_secrets:
+        # Secret filtering is disabled in debug mode
+        if not global_config.debug_rule_flag:
             bash_cmd_lines = SecretFilter.filter_string_array(bash_cmd_lines)
             rule_log = SecretFilter.filter_string_array(rule_log)
 

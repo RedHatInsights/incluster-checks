@@ -74,7 +74,6 @@ runner = InClusterCheckRunner()
 # Or customize configuration
 runner = InClusterCheckRunner(
     max_workers=75,           # Maximum concurrent workers (default: 50)
-    filter_secrets=True,      # Filter sensitive data from output (default: True)
     debug_rule_flag=False,    # Enable debug mode (default: False)
     debug_rule_name="",       # Specific rule to debug (default: "")
 )
@@ -87,7 +86,6 @@ runner.run(output_path=output_path)
 ### Configuration Options
 
 - **max_workers** (int, default: 50): Maximum number of concurrent workers for parallel execution
-- **filter_secrets** (bool, default: True): Whether to filter sensitive data from output. Automatically disabled in debug mode
 - **debug_rule_flag** (bool, default: False): Enable debug mode with verbose output
 - **debug_rule_name** (str, default: ""): Name of specific rule to run in debug mode
 

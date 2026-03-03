@@ -34,7 +34,6 @@ class InClusterCheckRunner:
         self,
         debug_rule_flag: bool = False,
         debug_rule_name: str = "",
-        filter_secrets: bool = True,
         max_workers: int = 50,
         domain_package: str = "in_cluster_checks.domains",
     ):
@@ -44,7 +43,6 @@ class InClusterCheckRunner:
         Args:
             debug_rule_flag: Enable debug mode for detailed output
             debug_rule_name: Name of specific rule to run in debug mode
-            filter_secrets: Whether to filter sensitive data from output
             max_workers: Maximum number of concurrent workers for parallel execution
             domain_package: Python package path for domain discovery
         """
@@ -57,7 +55,6 @@ class InClusterCheckRunner:
         global_config.set_config(
             debug_rule_flag_val=debug_rule_flag,
             debug_rule_name_val=debug_rule_name,
-            filter_secrets_val=filter_secrets,
             max_workers_val=max_workers,
         )
 

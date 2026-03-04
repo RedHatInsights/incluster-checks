@@ -9,7 +9,11 @@ from typing import List
 
 from in_cluster_checks.core.domain import RuleDomain
 from in_cluster_checks.rules.network.node_connectivity_validations import AreAllNodesConnected, VerifyBondedInterfacesUp
-from in_cluster_checks.rules.network.ovnk8s_validations import LogicalSwitchNodeValidator, NodesHaveOvnkubeNodePod
+from in_cluster_checks.rules.network.ovnk8s_validations import (
+    LogicalSwitchNodeValidator,
+    MTUOverlayInterfaces,
+    NodesHaveOvnkubeNodePod,
+)
 from in_cluster_checks.rules.network.ovs_validations import OvsInterfaceAndPortFound
 
 # from in_cluster_checks.rules.network.ovs_validations import Bond0DnsServersComparison
@@ -46,6 +50,7 @@ class NetworkValidationDomain(RuleDomain):
             VerifyBondedInterfacesUp,
             NodesHaveOvnkubeNodePod,
             LogicalSwitchNodeValidator,
+            MTUOverlayInterfaces,
             WhereaboutsDuplicateIPAddresses,
             WhereaboutsMissingPodrefs,
             WhereaboutsMissingAllocations,

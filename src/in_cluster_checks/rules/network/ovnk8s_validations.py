@@ -5,7 +5,7 @@ Validates OVN-Kubernetes networking components and logical switch configurations
 Ported from: support/HealthChecks/flows/Network/ovnk8s_sanity_checks.py
 """
 
-from typing import Dict
+from typing import Dict, List, Optional, Tuple
 
 from in_cluster_checks.core.rule import OrchestratorRule, PrerequisiteResult, RuleResult
 from in_cluster_checks.utils.enums import Objectives
@@ -125,7 +125,7 @@ class LogicalSwitchNodeValidator(OVNKubernetesBase):
         ovn_pod_to_node_dict = self.get_ovn_pod_to_node_dict()
 
         if not ovn_pod_to_node_dict:
-            return RuleResult.skip("No ovnkube-node pods found")
+            return RuleResult.not_applicable("No ovnkube-node pods found")
 
         failed_checks = []
 
@@ -152,3 +152,86 @@ class LogicalSwitchNodeValidator(OVNKubernetesBase):
         return RuleResult.passed(
             f"All {len(ovn_pod_to_node_dict)} ovnkube-node pods have corresponding logical switches"
         )
+
+
+class MTUOverlayInterfaces(OVNKubernetesBase):
+    """
+    Validate MTU overlay interfaces.
+
+    Checks that overlay network interfaces (ovn-k8s-mp0, br-int) on each
+    ovnkube-node pod have the correct MTU as configured in the Network CR
+    (network.operator/cluster). Tunnel devices (geneve, vxlan) are excluded as
+    they use kernel default MTU values. MTU mismatches can cause packet drops
+    and connectivity issues.
+    """
+
+    OVERLAY_KEYWORDS = ["ovn", "br-int"]
+
+    unique_name = "MTU_overlay_interfaces_validator"
+    title = "Validate MTU overlay interfaces"
+
+    def run_rule(self) -> RuleResult:
+        ovn_pod_to_node_dict = self.get_ovn_pod_to_node_dict()
+
+        if not ovn_pod_to_node_dict:
+            return RuleResult.not_applicable("No ovnkube-node pods found")
+
+        expected_mtu = self._get_expected_mtu()
+        if expected_mtu is None:
+            return RuleResult.skip("Cannot determine expected MTU from network.operator/cluster")
+
+        failed_checks = []
+        for ovnkube_pod in ovn_pod_to_node_dict:
+            rc, out, err = self.run_rsh_cmd(
+                namespace="openshift-ovn-kubernetes",
+                pod=ovnkube_pod,
+                command="ip link show",
+            )
+
+            if rc != 0:
+                failed_checks.append(f"[OVNKube Node: {ovnkube_pod}] Failed to run ip link show: {err}")
+                continue
+
+            overlay_interfaces = self._parse_overlay_interfaces(out)
+
+            if not overlay_interfaces:
+                failed_checks.append(f"[OVNKube Node: {ovnkube_pod}] No overlay network interfaces found")
+                continue
+
+            for interface, actual_mtu in overlay_interfaces:
+                if expected_mtu != actual_mtu:
+                    failed_checks.append(
+                        f"[OVNKube Node: {ovnkube_pod}] MTU Mismatch: "
+                        f"Expected (Network CR) = {expected_mtu}, Actual ({interface}) = {actual_mtu}"
+                    )
+
+        if failed_checks:
+            return RuleResult.failed("\n".join(failed_checks))
+
+        return RuleResult.passed()
+
+    def _get_expected_mtu(self) -> Optional[int]:
+        network_obj = self._select_resources(
+            resource_type="network.operator/cluster",
+            single=True,
+        )
+
+        if not network_obj:
+            return None
+
+        try:
+            return int(network_obj.model.spec.defaultNetwork.ovnKubernetesConfig.mtu)
+        except Exception:
+            return None
+
+    def _parse_overlay_interfaces(self, ip_link_output: str) -> List[Tuple[str, int]]:
+        results = []
+        for line in ip_link_output.splitlines():
+            if any(keyword in line for keyword in self.OVERLAY_KEYWORDS) and "mtu" in line:
+                try:
+                    interface = line.split()[1].split(":")[0]
+                    actual_mtu = int(line.split("mtu ")[1].split()[0])
+                    results.append((interface, actual_mtu))
+                except (IndexError, ValueError):
+                    continue
+        return results

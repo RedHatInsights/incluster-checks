@@ -13,6 +13,7 @@ from in_cluster_checks.rules.network.node_connectivity_validations import (
 )
 from in_cluster_checks.rules.network.ovnk8s_validations import (
     LogicalSwitchNodeValidator,
+    MTUOverlayInterfaces,
     NodesHaveOvnkubeNodePod,
 )
 from in_cluster_checks.rules.network.ovs_validations import OvsInterfaceAndPortFound
@@ -40,13 +41,14 @@ class TestNetworkRuleDomain:
         rules = domain.get_rule_classes()
 
         assert isinstance(rules, list)
-        assert len(rules) == 9
+        assert len(rules) == 10
         assert OvsInterfaceAndPortFound in rules
         # assert Bond0DnsServersComparison in rules  # Commented out to match insights-on-prem
         assert AreAllNodesConnected in rules
         assert VerifyBondedInterfacesUp in rules
         assert NodesHaveOvnkubeNodePod in rules
         assert LogicalSwitchNodeValidator in rules
+        assert MTUOverlayInterfaces in rules
         assert WhereaboutsDuplicateIPAddresses in rules
         assert WhereaboutsMissingPodrefs in rules
         assert WhereaboutsMissingAllocations in rules

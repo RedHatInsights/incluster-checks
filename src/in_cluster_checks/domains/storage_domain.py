@@ -10,6 +10,7 @@ from typing import List
 from in_cluster_checks.core.domain import RuleDomain
 from in_cluster_checks.rules.storage.storage_validations import (
     CephOsdTreeWorks,
+    CephSlowOps,
     CheckPoolSize,
     IsCephHealthOk,
     IsCephOSDsNearFull,
@@ -40,6 +41,7 @@ class StorageValidationDomain(RuleDomain):
         """
         return [
             CephOsdTreeWorks,
+            CephSlowOps,
             CheckPoolSize,
             IsCephHealthOk,
             IsCephOSDsNearFull,

@@ -486,6 +486,37 @@ class OrphanCsiVolumes(CephRule):
         return subvolume_names
 
 
+class CephSlowOps(CephRule):
+    """
+    Check if ceph has slow ops.
+
+    This validation checks for slow or blocked operations in the Ceph cluster by running
+    'ceph health detail' and looking for SLOW_OPS warnings. Slow ops can indicate
+    bad media, cluster saturation, or networking issues.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "ceph_slow_ops"
+    title = "Check if ceph has slow ops"
+
+    def run_rule(self) -> RuleResult:
+        cmd = "ceph health detail"
+        return_code, stdout, stderr = self._run_ceph_cmd(cmd, timeout=100)
+
+        if return_code != 0:
+            error_msg = self.build_cmd_error_message("Failed to get ceph health detail.", stdout, stderr)
+            return RuleResult.failed(error_msg)
+
+        if "SLOW_OPS" in stdout or "REQUEST_SLOW" in stdout:
+            return RuleResult.warning(
+                "There are slow ops observed on this cluster. "
+                "Blocked/Slow ops can have numerous possible root causes from bad media, "
+                "cluster saturation and networking issues."
+            )
+
+        return RuleResult.passed()
+
+
 class OsdJournalError(CephRule):
     """
     Check if OSDs had journal errors in the last hour.

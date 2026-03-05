@@ -12,6 +12,7 @@ import pytest
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.rules.storage.storage_validations import (
     CephOsdTreeWorks,
+    CephSlowOps,
     CheckPoolSize,
     IsCephHealthOk,
     IsCephOSDsNearFull,
@@ -892,6 +893,97 @@ class TestCheckPoolSize(RuleTestBase):
                 "_select_resources": Mock(return_value=Mock()),
             },
             failed_msg="Failed to get ceph pool details.\nError: connection refused",
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_warning)
+    def test_scenario_warning(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_warning(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+
+class TestCephSlowOps(RuleTestBase):
+    """Test CephSlowOps rule."""
+
+    tested_type = CephSlowOps
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "no slow ops found",
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph health detail"): CmdOutput(
+                    out="HEALTH_OK", return_code=0
+                )
+            },
+            tested_object_mock_dict={
+                "_get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "_select_resources": Mock(return_value=Mock()),
+            },
+        ),
+    ]
+
+    scenario_warning = [
+        RuleScenarioParams(
+            "SLOW_OPS detected in health detail",
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph health detail"): CmdOutput(
+                    out=(
+                        "HEALTH_WARN 30 slow requests are blocked > 32 sec\n"
+                        "[WRN] SLOW_OPS: 30 slow requests are blocked > 32 sec"
+                    ),
+                    return_code=0,
+                )
+            },
+            tested_object_mock_dict={
+                "_get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "_select_resources": Mock(return_value=Mock()),
+            },
+            failed_msg=(
+                "There are slow ops observed on this cluster. "
+                "Blocked/Slow ops can have numerous possible root causes from bad media, "
+                "cluster saturation and networking issues."
+            ),
+        ),
+        RuleScenarioParams(
+            "REQUEST_SLOW detected in health detail",
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph health detail"): CmdOutput(
+                    out="HEALTH_WARN REQUEST_SLOW: 5 ops are blocked",
+                    return_code=0,
+                )
+            },
+            tested_object_mock_dict={
+                "_get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "_select_resources": Mock(return_value=Mock()),
+            },
+            failed_msg=(
+                "There are slow ops observed on this cluster. "
+                "Blocked/Slow ops can have numerous possible root causes from bad media, "
+                "cluster saturation and networking issues."
+            ),
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "ceph health detail command failed",
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph health detail"): CmdOutput(
+                    out="", err="connection refused", return_code=1
+                )
+            },
+            tested_object_mock_dict={
+                "_get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "_select_resources": Mock(return_value=Mock()),
+            },
+            failed_msg="Failed to get ceph health detail.\nError: connection refused",
         ),
     ]
 

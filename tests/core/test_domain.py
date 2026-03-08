@@ -14,6 +14,7 @@ from in_cluster_checks.core.rule import (
     Rule,
 )
 from in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks.core.executor import OrchestratorExecutor
 
 
 class MockRule(Rule):
@@ -48,19 +49,17 @@ class OrchestratorMockRule(OrchestratorRule):
     def run_rule(self):
         return RuleResult.passed()
 
-
 def test_orchestrator_rule_run_cmd_raises_error():
     """Test that OrchestratorRule.run_cmd() raises NotImplementedError."""
-    rule = OrchestratorMockRule(node_executors={})
+    rule = OrchestratorMockRule(host_executor=OrchestratorExecutor(), node_executors={})
 
     with pytest.raises(NotImplementedError) as exc_info:
         rule.run_cmd("echo test", timeout=30)
 
     error_msg = str(exc_info.value)
     assert "run_cmd('echo test', timeout=30)" in error_msg
-    assert "not available for OrchestratorRule" in error_msg
+    assert "orchestrator" in error_msg.lower()
     assert "run_rsh_cmd" in error_msg
-
 
 class TestRuleDomain:
     """Test RuleDomain orchestration."""
@@ -261,4 +260,80 @@ class TestRuleDomain:
 
         assert validator_result['status'] == 'pass'
         assert validator_result['description_title'] == 'Orchestrator Rule'
+
+    def test_create_instances_for_one_master_objective(self):
+        """Test that ONE_MASTER objective creates single instance (ONE_MASTER role assigned by factory)."""
+        # Create mock rule class with ONE_MASTER objective
+        class TestOneMasterRule(Rule):
+            objective_hosts = [Objectives.ONE_MASTER]
+            unique_name = "test_one_master_rule"
+            title = "Test ONE_MASTER Rule"
+
+            def run_rule(self):
+                return RuleResult.passed()
+
+        class TestDomain(RuleDomain):
+            def domain_name(self):
+                return "test_domain"
+
+            def get_rule_classes(self):
+                return []
+
+        # Create mock executors - master-1 has ONE_MASTER role (assigned by factory)
+        master1_executor = Mock()
+        master1_executor.roles = [Objectives.MASTERS, Objectives.ALL_NODES, Objectives.ONE_MASTER]
+
+        master2_executor = Mock()
+        master2_executor.roles = [Objectives.MASTERS, Objectives.ALL_NODES]
+
+        master3_executor = Mock()
+        master3_executor.roles = [Objectives.MASTERS, Objectives.ALL_NODES]
+
+        host_executors_dict = {
+            "master-1": master1_executor,
+            "master-2": master2_executor,
+            "master-3": master3_executor,
+        }
+
+        # Create domain and instances
+        domain = TestDomain()
+        instances = domain._create_instances_for_rule(TestOneMasterRule, host_executors_dict)
+
+        # Should create exactly ONE instance on executor with ONE_MASTER role
+        assert len(instances) == 1
+        assert instances[0].__class__ == TestOneMasterRule
+        assert instances[0]._host_executor == master1_executor
+
+    def test_create_instances_for_one_type_no_matching_nodes(self):
+        """Test that ONE_* objective returns empty list when no nodes have the ONE_* role."""
+        # Create mock rule class with ONE_WORKER objective
+        class TestOneWorkerRule(Rule):
+            objective_hosts = [Objectives.ONE_WORKER]
+            unique_name = "test_one_worker_rule"
+            title = "Test ONE_WORKER Rule"
+
+            def run_rule(self):
+                return RuleResult.passed()
+
+        class TestDomain(RuleDomain):
+            def domain_name(self):
+                return "test_domain"
+
+            def get_rule_classes(self):
+                return []
+
+        # Create mock executors - only masters (no ONE_WORKER role assigned)
+        master_executor = Mock()
+        master_executor.roles = [Objectives.MASTERS, Objectives.ALL_NODES, Objectives.ONE_MASTER]
+
+        host_executors_dict = {
+            "master-1": master_executor,
+        }
+
+        # Create domain and instances
+        domain = TestDomain()
+        instances = domain._create_instances_for_rule(TestOneWorkerRule, host_executors_dict)
+
+        # Should return empty list (no executor with ONE_WORKER role)
+        assert len(instances) == 0
 

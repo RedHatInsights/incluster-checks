@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Dict
 
 from in_cluster_checks import global_config
+from in_cluster_checks.core.data_collector_runner import DataCollectorRunner
 from in_cluster_checks.core.domain import RuleDomain
 from in_cluster_checks.core.executor_factory import NodeExecutorFactory
 from in_cluster_checks.core.printer import StructedPrinter
@@ -182,6 +183,9 @@ class InClusterCheckRunner:
                 self.logger.info(f"Running in-cluster domain: {domain_name}")
                 domain_result = domain.verify(self.node_executors)
                 results.append(domain_result)
+
+            # Clear data collector cache after all domains complete
+            DataCollectorRunner.clear_data_collector_cache()
 
             # 6. Aggregate and format results
             reports = StructedPrinter.format_results(results, rule_component_map)

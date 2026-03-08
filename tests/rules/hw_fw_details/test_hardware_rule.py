@@ -18,17 +18,26 @@ from in_cluster_checks.utils.enums import Status
 class TestHardwareDetailsRule:
     """Test HardwareDetailsRule class."""
 
-    def test_get_data_collectors(self):
+    @pytest.fixture
+    def mock_executor(self):
+        """Create mock executor for OrchestratorRule."""
+        executor = Mock()
+        executor.node_name = "test-node"
+        executor.ip = "192.168.1.10"
+        executor.host_name = "test-node"
+        return executor
+
+    def test_get_data_collectors(self, mock_executor):
         """Test that rule returns correct data collectors."""
-        rule = HardwareDetailsRule()
+        rule = HardwareDetailsRule(host_executor=mock_executor)
         collectors = rule.get_data_collectors()
 
         assert ProcessorType in collectors
         assert len(collectors) >= 1
 
-    def test_check_group_uniformity_uniform(self):
+    def test_check_group_uniformity_uniform(self, mock_executor):
         """Test uniformity check with uniform data."""
-        rule = HardwareDetailsRule()
+        rule = HardwareDetailsRule(host_executor=mock_executor)
 
         # All nodes have identical data
         group_data = {
@@ -40,9 +49,9 @@ class TestHardwareDetailsRule:
         result = rule._check_group_uniformity(group_data)
         assert result is True
 
-    def test_check_group_uniformity_mixed(self):
+    def test_check_group_uniformity_mixed(self, mock_executor):
         """Test uniformity check with mixed data."""
-        rule = HardwareDetailsRule()
+        rule = HardwareDetailsRule(host_executor=mock_executor)
 
         # Some nodes have different data
         group_data = {
@@ -54,9 +63,9 @@ class TestHardwareDetailsRule:
         result = rule._check_group_uniformity(group_data)
         assert result is False
 
-    def test_check_group_uniformity_single_node(self):
+    def test_check_group_uniformity_single_node(self, mock_executor):
         """Test uniformity check with single node."""
-        rule = HardwareDetailsRule()
+        rule = HardwareDetailsRule(host_executor=mock_executor)
 
         group_data = {
             "master-0": {"CPU0": "Intel Xeon Gold 6238"}
@@ -65,9 +74,9 @@ class TestHardwareDetailsRule:
         result = rule._check_group_uniformity(group_data)
         assert result is True
 
-    def test_get_list_of_id_host_name_data_format(self):
+    def test_get_list_of_id_host_name_data_format(self, mock_executor):
         """Test HC Blueprint format for non-uniform values."""
-        rule = HardwareDetailsRule()
+        rule = HardwareDetailsRule(host_executor=mock_executor)
 
         # Input: {node_name: {component_id: value}}
         group_data = {
@@ -93,9 +102,9 @@ class TestHardwareDetailsRule:
         assert len(result) == 2
         assert result == expected
 
-    def test_get_list_of_id_host_name_data_with_none(self):
+    def test_get_list_of_id_host_name_data_with_none(self, mock_executor):
         """Test HC Blueprint format when node data is None."""
-        rule = HardwareDetailsRule()
+        rule = HardwareDetailsRule(host_executor=mock_executor)
 
         group_data = {
             "worker-0": {"CPU0": "Intel Xeon Gold 6238"},
@@ -112,9 +121,9 @@ class TestHardwareDetailsRule:
         # Second entry is empty dict due to None
         assert result[1] == {}
 
-    def test_compare_within_groups_uniform(self):
+    def test_compare_within_groups_uniform(self, mock_executor):
         """Test compare_within_groups with uniform data."""
-        rule = HardwareDetailsRule()
+        rule = HardwareDetailsRule(host_executor=mock_executor)
 
         # Mock node executors
         executor1 = Mock()
@@ -159,9 +168,9 @@ class TestHardwareDetailsRule:
         # When uniform, value should be the representative value
         assert hw_data["value"] == {"CPU0": "Intel Xeon Gold 6238", "CPU1": "Intel Xeon Gold 6238"}
 
-    def test_compare_within_groups_mixed(self):
+    def test_compare_within_groups_mixed(self, mock_executor):
         """Test compare_within_groups with mixed data (HC format)."""
-        rule = HardwareDetailsRule()
+        rule = HardwareDetailsRule(host_executor=mock_executor)
 
         # Mock node executors
         executor1 = Mock()
@@ -239,9 +248,9 @@ class TestHardwareDetailsRule:
         # All nodes should be represented
         assert set(hostnames_found) == {"worker-0", "worker-1", "worker-2"}
 
-    def test_compare_within_groups_multiple_groups(self):
+    def test_compare_within_groups_multiple_groups(self, mock_executor):
         """Test compare_within_groups with multiple node groups."""
-        rule = HardwareDetailsRule()
+        rule = HardwareDetailsRule(host_executor=mock_executor)
 
         # Mock executors for different groups
         master1 = Mock()
@@ -289,9 +298,9 @@ class TestHardwareDetailsRule:
         assert len(workers_hw["value"]) == 2
 
 
-    def test_parse_objective_name(self):
+    def test_parse_objective_name(self, mock_executor):
         """Test parsing objective names in HC format."""
-        rule = HardwareDetailsRule()
+        rule = HardwareDetailsRule(host_executor=mock_executor)
 
         topic, name = rule._parse_objective_name("Processor@type")
         assert topic == "Processor"
@@ -301,7 +310,7 @@ class TestHardwareDetailsRule:
         with pytest.raises(AssertionError):
             rule._parse_objective_name("invalid")
 
-    def test_run_rule_hc_nested_format(self):
+    def test_run_rule_hc_nested_format(self, mock_executor):
         """
         Test run_rule() returns HC Blueprint nested structure (topic -> name).
 
@@ -328,7 +337,7 @@ class TestHardwareDetailsRule:
         worker3.node_name = "worker-2"
         worker3.node_labels = "worker"
 
-        rule = HardwareDetailsRule()
+        rule = HardwareDetailsRule(host_executor=mock_executor)
         rule._node_executors = {"worker-0": worker1, "worker-1": worker2, "worker-2": worker3}
 
         # 2 workers same CPU, 1 different
@@ -413,7 +422,7 @@ class TestHardwareDetailsRule:
         assert result.status == Status.INFO
         assert result.extra["blueprint_data"] == expected
 
-    def test_multiple_properties_mixed_uniformity(self):
+    def test_multiple_properties_mixed_uniformity(self, mock_executor):
         """
         Test with multiple properties under same topic where some are uniform and some are mixed.
 
@@ -451,7 +460,7 @@ class TestHardwareDetailsRule:
         worker3.node_name = "worker-2"
         worker3.node_labels = "worker"
 
-        rule = HardwareDetailsRule()
+        rule = HardwareDetailsRule(host_executor=mock_executor)
         rule._node_executors = {"worker-0": worker1, "worker-1": worker2, "worker-2": worker3}
 
         # Create proper mock collector classes
@@ -506,7 +515,7 @@ class TestHardwareDetailsRule:
         assert freq_values[1] == {"CPU0": {"worker-1": "2.1 GHz"}}
         assert freq_values[2] == {"CPU0": {"worker-2": "2.5 GHz"}}
 
-    def test_run_rule_full_mixed_json_comparison(self):
+    def test_run_rule_full_mixed_json_comparison(self, mock_executor):
         """
         Comprehensive test with run_rule() comparing complete expected JSON.
 
@@ -525,7 +534,7 @@ class TestHardwareDetailsRule:
         for i, w in enumerate(workers):
             w.node_name, w.node_labels = f"worker-{i}", "worker"
 
-        rule = HardwareDetailsRule()
+        rule = HardwareDetailsRule(host_executor=mock_executor)
         rule._node_executors = {
             "master-0": master1,
             "master-1": master2,
@@ -622,7 +631,7 @@ class TestHardwareDetailsRule:
         assert result.extra["html_tab"] == "blueprint"
         assert result.extra["is_uniform"] is False
 
-    def test_collect_all_data_handles_none_from_exceptions(self):
+    def test_collect_all_data_handles_none_from_exceptions(self, mock_executor):
         """
         Test that _collect_all_data handles None data from failed collectors.
 
@@ -636,7 +645,7 @@ class TestHardwareDetailsRule:
         worker1.node_name = "worker-0"
         worker2.node_name = "worker-1"
 
-        rule = HardwareDetailsRule()
+        rule = HardwareDetailsRule(host_executor=mock_executor)
         rule._node_executors = {"worker-0": worker1, "worker-1": worker2}
 
         # Mock collector class
@@ -671,7 +680,7 @@ class TestHardwareDetailsRule:
         assert processor_data["worker-1"] is not None
         assert processor_data["worker-1"] == {"CPU0": "---", "CPU1": "---"}
 
-    def test_compare_with_failed_collector(self):
+    def test_compare_with_failed_collector(self, mock_executor):
         """
         Test that compare_within_groups properly handles nodes with "---" from failed collectors.
 
@@ -688,7 +697,7 @@ class TestHardwareDetailsRule:
         worker1.node_name, worker1.node_labels = "worker-0", "worker"
         worker2.node_name, worker2.node_labels = "worker-1", "worker"
 
-        rule = HardwareDetailsRule()
+        rule = HardwareDetailsRule(host_executor=mock_executor)
         rule._node_executors = {"worker-0": worker1, "worker-1": worker2}
 
         # Mock collector

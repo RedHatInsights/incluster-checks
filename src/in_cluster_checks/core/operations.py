@@ -389,10 +389,29 @@ class DataCollector(FlowsOperator):
     Data collectors gather information from nodes/containers without
     validating anything. They can be used by validators for comparison
     or analysis.
+
+    Important: Data collectors do NOT support many-to-many relationships.
+    Supported patterns:
+    - one-to-one: ONE_MASTER -> ONE_WORKER (both single types)
+    - many-to-one: ALL_NODES -> ONE_MASTER (source is multi, target is single) [CACHED]
+    - one-to-many: ONE_MASTER -> ALL_NODES (source is single, target is multi)
+
+    NOT supported:
+    - many-to-many: ALL_NODES -> ALL_WORKERS (both are multi)
+
+    The validation is enforced in Rule.run_data_collector() before execution.
+
+    Cache Implementation:
+    - Cache is ONLY used for many-to-one relationships
+    - When multiple source nodes collect from same target, data is cached
+      to avoid redundant collection operations
+    - Uses class-level threadLock for thread-safe access to cache
+    - Cache is managed by ParallelRunner.run_DataCollector_many_to_one()
+    - For one-to-one and one-to-many, collectors run independently without cache
     """
 
     objective_hosts = []
-    threadLock = threading.RLock()  # HC-style: Thread-safe access to cached data
+    threadLock = threading.RLock()  # HC-style: Thread-safe access for many-to-one cache
     raise_collection_errors = True  # Raise exception if collection fails on all hosts
 
     def __init__(self, host_executor=None):

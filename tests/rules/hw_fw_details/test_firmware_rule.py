@@ -5,7 +5,6 @@ Tests the Blueprint firmware validation rule including data collection,
 uniformity checking, and result formatting.
 """
 
-from collections import OrderedDict
 from unittest.mock import Mock, patch
 
 import pytest
@@ -19,9 +18,18 @@ from in_cluster_checks.utils.enums import Status
 class TestFirmwareDetailsRule:
     """Test FirmwareDetailsRule class."""
 
-    def test_get_data_collectors(self):
+    @pytest.fixture
+    def mock_executor(self):
+        """Create mock executor for OrchestratorRule."""
+        executor = Mock()
+        executor.node_name = "test-node"
+        executor.ip = "192.168.1.10"
+        executor.host_name = "test-node"
+        return executor
+
+    def test_get_data_collectors(self, mock_executor):
         """Test that rule returns correct firmware data collectors."""
-        rule = FirmwareDetailsRule()
+        rule = FirmwareDetailsRule(host_executor=mock_executor)
         collectors = rule.get_data_collectors()
 
         # Verify OS/Kernel collectors
@@ -32,34 +40,34 @@ class TestFirmwareDetailsRule:
         # Should have 6 collectors total (OS, Kernel, 4 BIOS)
         assert len(collectors) == 6
 
-    def test_get_data_category_key(self):
+    def test_get_data_category_key(self, mock_executor):
         """Test that rule returns correct data category key."""
-        rule = FirmwareDetailsRule()
+        rule = FirmwareDetailsRule(host_executor=mock_executor)
         assert rule.get_data_category_key() == "firmware"
 
-    def test_unique_name(self):
+    def test_unique_name(self, mock_executor):
         """Test rule unique name."""
-        rule = FirmwareDetailsRule()
+        rule = FirmwareDetailsRule(host_executor=mock_executor)
         assert rule.unique_name == "firmware_details"
 
-    def test_title(self):
+    def test_title(self, mock_executor):
         """Test rule title."""
-        rule = FirmwareDetailsRule()
+        rule = FirmwareDetailsRule(host_executor=mock_executor)
         assert rule.title == "Firmware Details"
 
     @patch("in_cluster_checks.rules.hw_fw_details.hw_fw_base.HwFwRule._collect_all_data")
     @patch("in_cluster_checks.rules.hw_fw_details.hw_fw_base.HwFwRule.compare_within_groups")
-    def test_run_rule_calls_base_methods(self, mock_compare, mock_collect):
+    def test_run_rule_calls_base_methods(self, mock_compare, mock_collect, mock_executor):
         """Test that run_rule calls base class methods correctly."""
-        rule = FirmwareDetailsRule()
+        rule = FirmwareDetailsRule(host_executor=mock_executor)
 
-        # Mock executor
-        mock_executor = Mock()
-        mock_executor.node_name = "master-0"
-        mock_executor.node_labels = "master"
+        # Mock additional executor
+        mock_node_executor = Mock()
+        mock_node_executor.node_name = "master-0"
+        mock_node_executor.node_labels = "master"
 
         # _node_executors should be a dict, not list
-        rule._node_executors = {"master-0": mock_executor}
+        rule._node_executors = {"master-0": mock_node_executor}
 
         # Mock return values
         mock_collect.return_value = {}
@@ -75,9 +83,9 @@ class TestFirmwareDetailsRule:
 
     @patch("in_cluster_checks.rules.hw_fw_details.hw_fw_base.HwFwRule._group_nodes_by_labels")
     @patch("in_cluster_checks.rules.hw_fw_details.hw_fw_base.HwFwRule._collect_all_data")
-    def test_run_rule_groups_nodes(self, mock_collect, mock_group):
+    def test_run_rule_groups_nodes(self, mock_collect, mock_group, mock_executor):
         """Test that run_rule groups nodes by labels."""
-        rule = FirmwareDetailsRule()
+        rule = FirmwareDetailsRule(host_executor=mock_executor)
 
         # Mock executors
         mock_executor1 = Mock()
@@ -100,9 +108,9 @@ class TestFirmwareDetailsRule:
         # Verify grouping was called
         assert mock_group.called
 
-    def test_check_group_uniformity_uniform_firmware(self):
+    def test_check_group_uniformity_uniform_firmware(self, mock_executor):
         """Test uniformity check with uniform firmware data."""
-        rule = FirmwareDetailsRule()
+        rule = FirmwareDetailsRule(host_executor=mock_executor)
 
         # All nodes have identical firmware
         group_data = {
@@ -114,9 +122,9 @@ class TestFirmwareDetailsRule:
         result = rule._check_group_uniformity(group_data)
         assert result is True
 
-    def test_check_group_uniformity_mixed_firmware(self):
+    def test_check_group_uniformity_mixed_firmware(self, mock_executor):
         """Test uniformity check with mixed firmware data."""
-        rule = FirmwareDetailsRule()
+        rule = FirmwareDetailsRule(host_executor=mock_executor)
 
         # Some nodes have different firmware
         group_data = {
@@ -128,14 +136,14 @@ class TestFirmwareDetailsRule:
         result = rule._check_group_uniformity(group_data)
         assert result is False
 
-    def test_run_rule_hc_nested_format(self):
+    def test_run_rule_hc_nested_format(self, mock_executor):
         """Test that run_rule returns HC-style nested format in blueprint_data."""
         # Mock executors
         mock_executor1 = Mock()
         mock_executor1.node_name = "master-0"
         mock_executor1.node_labels = "master"
 
-        rule = FirmwareDetailsRule()
+        rule = FirmwareDetailsRule(host_executor=mock_executor)
         rule._node_executors = {"master-0": mock_executor1}
 
         # Mock data returned by run_data_collector
@@ -182,7 +190,7 @@ class TestFirmwareDetailsRule:
                 assert "is_uniform" in objective_data
                 assert "value" in objective_data
 
-    def test_run_rule_with_non_uniform_firmware(self):
+    def test_run_rule_with_non_uniform_firmware(self, mock_executor):
         """Test run_rule with non-uniform firmware shows correct uniformity status."""
         # Mock executors
         mock_executor1 = Mock()
@@ -193,7 +201,7 @@ class TestFirmwareDetailsRule:
         mock_executor2.node_name = "worker-1"
         mock_executor2.node_labels = "worker"
 
-        rule = FirmwareDetailsRule()
+        rule = FirmwareDetailsRule(host_executor=mock_executor)
         rule._node_executors = {"worker-0": mock_executor1, "worker-1": mock_executor2}
 
         # Create different OS versions but same kernel

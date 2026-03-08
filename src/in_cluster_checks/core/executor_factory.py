@@ -40,6 +40,12 @@ class NodeExecutorFactory:
         "monitor": Objectives.MONITORS,  # Monitoring nodes (e.g., Prometheus)
     }
 
+    # Mapping for adding ONE_* roles to selected executors (like HealthCheck's SINGLE_ROLES_TO_ADD)
+    SINGLE_ROLES_TO_ADD = {
+        Objectives.MASTERS: Objectives.ONE_MASTER,
+        Objectives.WORKERS: Objectives.ONE_WORKER,
+    }
+
     def __init__(self):
         """Initialize the factory."""
         if oc is None:
@@ -77,6 +83,10 @@ class NodeExecutorFactory:
                 self.logger.warning(f"No internal IP found for node {node_name}")
 
         self.logger.info(f"Built {len(self._host_executors_dict)} node executor(s)")
+
+        # Add ONE_* roles to selected executors (like HealthCheck)
+        self._add_single_roles()
+
         return self._host_executors_dict
 
     def _get_internal_ip(self, node_dict: dict) -> str:
@@ -159,6 +169,33 @@ class NodeExecutorFactory:
         executor = NodeExecutor(node_name, node_ip, roles=roles, node_labels=node_labels)
         self._host_executors_dict[node_name] = executor
         self.logger.debug(f"Added executor for {node_name} ({node_ip}) with roles: {roles}, labels: {node_labels}")
+
+    def _add_single_roles(self):
+        """
+        Add ONE_* roles to selected executors.
+
+        For each multi-type role (MASTERS, WORKERS), selects one executor
+        and adds the corresponding ONE_* role to it.
+
+        Follows HealthCheck's add_single_role_from_objective() pattern from
+        BaseHostExecutorsFactory.
+        """
+        for multi_role, single_role in self.SINGLE_ROLES_TO_ADD.items():
+            # Find executors with the multi-type role
+            candidates = [
+                (name, executor) for name, executor in self._host_executors_dict.items() if multi_role in executor.roles
+            ]
+
+            if not candidates:
+                self.logger.warning(f"No executors found with role {multi_role}")
+                continue
+
+            # Select first executor (sorted by name for consistency)
+            selected_name, selected_executor = sorted(candidates)[0]
+
+            # Add the ONE_* role
+            selected_executor.add_role(single_role)
+            self.logger.debug(f"Added {single_role} role to {selected_name}")
 
     def get_all_host_executors(self) -> Dict[str, NodeExecutor]:
         """

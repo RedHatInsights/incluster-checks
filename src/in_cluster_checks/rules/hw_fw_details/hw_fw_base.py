@@ -10,6 +10,7 @@ import json
 from collections import OrderedDict
 from typing import Any, Dict, List
 
+from in_cluster_checks.core.data_collector_runner import DataCollectorRunner
 from in_cluster_checks.core.operations import DataCollector
 from in_cluster_checks.core.rule import OrchestratorRule
 from in_cluster_checks.core.rule_result import RuleResult
@@ -440,7 +441,7 @@ class HwFwRule(OrchestratorRule):
             # Store results
             all_data[collector_name] = collected
 
-        self.raise_if_no_collector_passed()
+        DataCollectorRunner.raise_if_no_collector_passed(self)
         return all_data
 
     def _parse_objective_name(self, objective_name: str) -> tuple:

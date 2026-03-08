@@ -115,9 +115,11 @@ class TestNodeExecutorFactory:
         mock_selector.objects.return_value = [mock_node1, mock_node2]
         mock_oc.selector.return_value = mock_selector
 
-        # Mock NodeExecutor instances
+        # Mock NodeExecutor instances with roles attribute
         mock_executor1 = Mock()
+        mock_executor1.roles = [Objectives.MASTERS, Objectives.ALL_NODES]
         mock_executor2 = Mock()
+        mock_executor2.roles = [Objectives.WORKERS, Objectives.ALL_NODES]
         mock_executor_class.side_effect = [mock_executor1, mock_executor2]
 
         executors = factory.build_host_executors()
@@ -178,3 +180,99 @@ class TestNodeExecutorFactory:
 
         mock_executor1.close_connection.assert_called_once()
         mock_executor2.close_connection.assert_called_once()
+
+    @patch("in_cluster_checks.core.executor_factory.oc")
+    def test_add_single_roles_adds_one_master(self, mock_oc):
+        """Test that ONE_MASTER role is added to one master executor."""
+        factory = NodeExecutorFactory()
+
+        # Create mock executors
+        master1 = Mock()
+        master1.roles = [Objectives.MASTERS, Objectives.ALL_NODES]
+        master2 = Mock()
+        master2.roles = [Objectives.MASTERS, Objectives.ALL_NODES]
+        worker1 = Mock()
+        worker1.roles = [Objectives.WORKERS, Objectives.ALL_NODES]
+
+        factory._host_executors_dict = {
+            "master-1": master1,
+            "master-2": master2,
+            "worker-1": worker1,
+        }
+
+        # Call _add_single_roles
+        factory._add_single_roles()
+
+        # Verify exactly ONE executor has ONE_MASTER
+        master1.add_role.assert_called_once_with(Objectives.ONE_MASTER)
+        master2.add_role.assert_not_called()
+
+    @patch("in_cluster_checks.core.executor_factory.oc")
+    def test_add_single_roles_adds_one_worker(self, mock_oc):
+        """Test that ONE_WORKER role is added to one worker executor."""
+        factory = NodeExecutorFactory()
+
+        # Create mock executors
+        master1 = Mock()
+        master1.roles = [Objectives.MASTERS, Objectives.ALL_NODES]
+        worker1 = Mock()
+        worker1.roles = [Objectives.WORKERS, Objectives.ALL_NODES]
+        worker2 = Mock()
+        worker2.roles = [Objectives.WORKERS, Objectives.ALL_NODES]
+
+        factory._host_executors_dict = {
+            "master-1": master1,
+            "worker-1": worker1,
+            "worker-2": worker2,
+        }
+
+        # Call _add_single_roles
+        factory._add_single_roles()
+
+        # Verify exactly ONE worker has ONE_WORKER
+        worker1.add_role.assert_called_once_with(Objectives.ONE_WORKER)
+        worker2.add_role.assert_not_called()
+
+    @patch("in_cluster_checks.core.executor_factory.oc")
+    def test_add_single_roles_selects_first_alphabetically(self, mock_oc):
+        """Test that first executor (alphabetically) is selected for ONE_* role."""
+        factory = NodeExecutorFactory()
+
+        # Create mock executors with specific names
+        master_a = Mock()
+        master_a.roles = [Objectives.MASTERS, Objectives.ALL_NODES]
+        master_z = Mock()
+        master_z.roles = [Objectives.MASTERS, Objectives.ALL_NODES]
+
+        factory._host_executors_dict = {
+            "master-z": master_z,  # Added first but not alphabetically first
+            "master-a": master_a,  # Added second but alphabetically first
+        }
+
+        # Call _add_single_roles
+        factory._add_single_roles()
+
+        # Verify master-a gets ONE_MASTER (alphabetically first)
+        master_a.add_role.assert_called_once_with(Objectives.ONE_MASTER)
+        master_z.add_role.assert_not_called()
+
+    @patch("in_cluster_checks.core.executor_factory.oc")
+    def test_add_single_roles_no_matching_role(self, mock_oc):
+        """Test that no ONE_* role is added when no matching nodes exist."""
+        factory = NodeExecutorFactory()
+
+        # Create mock executors - only workers, no masters
+        worker1 = Mock()
+        worker1.roles = [Objectives.WORKERS, Objectives.ALL_NODES]
+
+        factory._host_executors_dict = {
+            "worker-1": worker1,
+        }
+
+        # Call _add_single_roles (should not raise, should log warning)
+        factory._add_single_roles()
+
+        # ONE_WORKER should be added
+        worker1.add_role.assert_called_once_with(Objectives.ONE_WORKER)
+
+        # But since there are no masters, the loop for MASTERS->ONE_MASTER should just skip

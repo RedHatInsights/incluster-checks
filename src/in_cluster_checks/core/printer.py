@@ -75,6 +75,7 @@ class StructedPrinter:
         table_headers: list = None,
         table_data: list = None,
         extra: dict = None,
+        links: list = None,
     ):
         """
         Central print method (HC-style pattern).
@@ -99,6 +100,7 @@ class StructedPrinter:
             node_labels: Node role labels (e.g., "control-plane,worker")
             system_info: Structured data from RuleResult (e.g., Blueprint data)
             extra: Extra fields not shown in regular HTML view (e.g., html_tab, is_uniform)
+            links: List of reference URLs for this rule (optional)
         """
         # Filter sensitive data (HC pattern: matches StructedPrinter.encrypt_out)
         # Note: bash_cmd_lines and rule_log may contain secrets from system output
@@ -144,6 +146,8 @@ class StructedPrinter:
             result["table_data"] = table_data
         if extra is not None:
             result["extra"] = extra
+        if links is not None:
+            result["links"] = links
 
         self.add_result(host_key, unique_operation_name, result)
 
@@ -355,6 +359,7 @@ class StructedPrinter:
                                 rule_name, f"in_cluster_checks.{domain_name}.{rule_name}"
                             ),
                             "host_results": [],
+                            "links": result.get("links"),
                         }
 
                     # Build host-level result
@@ -422,6 +427,10 @@ class StructedPrinter:
                 "domain": domain_name,
                 "details": group_data["host_results"],  # Array of host results
             }
+
+            # Only include links if present (backward compatibility)
+            if group_data.get("links"):
+                report["links"] = group_data["links"]
 
             reports.append(report)
 

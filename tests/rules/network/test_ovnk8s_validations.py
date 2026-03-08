@@ -10,6 +10,7 @@ from unittest.mock import Mock
 
 from in_cluster_checks.rules.network.ovnk8s_validations import (
     LogicalSwitchNodeValidator,
+    MTUOverlayInterfaces,
     NodesHaveOvnkubeNodePod,
 )
 from tests.pytest_tools.test_operator_base import CmdOutput
@@ -170,6 +171,122 @@ class TestLogicalSwitchNodeValidator(OVNKubernetesTestBase):
             },
             failed_msg="ovnkube-node ovnkube-node-7dphn: there is no logical switch with node name - mgmt1-m2\novnkube-node ovnkube-node-927b4: there is no logical switch with node name - mgmt1-m1",
         )
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+
+IP_LINK_SHOW_ALL_MATCH = (
+    "1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN\n"
+    "    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00\n"
+    "2: ens3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 9000 qdisc mq state UP\n"
+    "    link/ether fa:16:3e:ab:cd:ef brd ff:ff:ff:ff:ff:ff\n"
+    "3: ovs-system: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN\n"
+    "4: br-int: <BROADCAST,MULTICAST> mtu 1400 qdisc noop state DOWN\n"
+    "5: ovn-k8s-mp0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1400 qdisc noqueue state UNKNOWN\n"
+)
+
+IP_LINK_SHOW_MTU_MISMATCH = (
+    "1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN\n"
+    "2: br-int: <BROADCAST,MULTICAST> mtu 1500 qdisc noop state DOWN\n"
+    "3: ovn-k8s-mp0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1400 qdisc noqueue state UNKNOWN\n"
+)
+
+IP_LINK_SHOW_NO_OVERLAY = (
+    "1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN\n"
+    "2: ens3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 9000 qdisc mq state UP\n"
+)
+
+
+class TestMTUOverlayInterfaces(OVNKubernetesTestBase):
+    """Tests for MTUOverlayInterfaces validator."""
+
+    tested_type = MTUOverlayInterfaces
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "all overlay interfaces have correct MTU",
+            tested_object_mock_dict={
+                "get_ovn_pod_to_node_dict": Mock(
+                    return_value={
+                        "ovnkube-node-7dphn": "mgmt1-m2",
+                        "ovnkube-node-927b4": "mgmt1-m1",
+                    }
+                ),
+                "_get_expected_mtu": Mock(return_value=1400),
+            },
+            rsh_cmd_output_dict={
+                ("openshift-ovn-kubernetes", "ovnkube-node-7dphn", "ip link show"): CmdOutput(
+                    IP_LINK_SHOW_ALL_MATCH
+                ),
+                ("openshift-ovn-kubernetes", "ovnkube-node-927b4", "ip link show"): CmdOutput(
+                    IP_LINK_SHOW_ALL_MATCH
+                ),
+            },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "overlay interface has wrong MTU",
+            tested_object_mock_dict={
+                "get_ovn_pod_to_node_dict": Mock(
+                    return_value={
+                        "ovnkube-node-7dphn": "mgmt1-m2",
+                    }
+                ),
+                "_get_expected_mtu": Mock(return_value=1400),
+            },
+            rsh_cmd_output_dict={
+                ("openshift-ovn-kubernetes", "ovnkube-node-7dphn", "ip link show"): CmdOutput(
+                    IP_LINK_SHOW_MTU_MISMATCH
+                ),
+            },
+            failed_msg=(
+                "[OVNKube Node: ovnkube-node-7dphn] MTU Mismatch: "
+                "Expected (Network CR) = 1400, Actual (br-int) = 1500"
+            ),
+        ),
+        RuleScenarioParams(
+            "no overlay network interfaces found",
+            tested_object_mock_dict={
+                "get_ovn_pod_to_node_dict": Mock(
+                    return_value={
+                        "ovnkube-node-7dphn": "mgmt1-m2",
+                    }
+                ),
+                "_get_expected_mtu": Mock(return_value=1400),
+            },
+            rsh_cmd_output_dict={
+                ("openshift-ovn-kubernetes", "ovnkube-node-7dphn", "ip link show"): CmdOutput(
+                    IP_LINK_SHOW_NO_OVERLAY
+                ),
+            },
+            failed_msg="[OVNKube Node: ovnkube-node-7dphn] No overlay network interfaces found",
+        ),
+        RuleScenarioParams(
+            "ip link show command fails",
+            tested_object_mock_dict={
+                "get_ovn_pod_to_node_dict": Mock(
+                    return_value={
+                        "ovnkube-node-7dphn": "mgmt1-m2",
+                    }
+                ),
+                "_get_expected_mtu": Mock(return_value=1400),
+            },
+            rsh_cmd_output_dict={
+                ("openshift-ovn-kubernetes", "ovnkube-node-7dphn", "ip link show"): CmdOutput(
+                    "", return_code=1, err="command not found"
+                ),
+            },
+            failed_msg="[OVNKube Node: ovnkube-node-7dphn] Failed to run ip link show: command not found",
+        ),
     ]
 
     @pytest.mark.parametrize("scenario_params", scenario_passed)

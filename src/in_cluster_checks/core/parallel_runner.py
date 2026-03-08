@@ -343,6 +343,7 @@ class ParallelRunner:
                     describe_msg=prerequisite_result.message or "Prerequisites not fulfilled",
                     documentation_link=hosted_rule_instance.get_documentation_link(),
                     node_labels=hosted_rule_instance.get_node_labels(),
+                    links=hosted_rule_instance.__class__.get_links(),
                 )
                 return
 
@@ -390,4 +391,5 @@ class ParallelRunner:
                 table_headers=result.table_headers,  # Add table headers
                 table_data=result.table_data,  # Add table data
                 extra=result.extra,  # Add custom fields
+                links=hosted_rule_instance.__class__.get_links(),
             )

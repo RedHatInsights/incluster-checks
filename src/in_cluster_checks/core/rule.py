@@ -31,11 +31,14 @@ class Rule(FlowsOperator):
     - unique_name: Unique identifier for this rule (optional, can set in set_document())
     - title: Human-readable title for this rule (optional)
     - objective_hosts: List of Objectives where this rule should run (required)
+    - links: List of reference URLs (optional)
+              Format: ["https://docs.example.com", "https://access.redhat.com/..."]
     """
 
     PREREQUISITES_CHECKS = []
     unique_name = None
     title = None
+    links = None
 
     def __init__(self, host_executor, node_executors=None):
         """
@@ -82,6 +85,16 @@ class Rule(FlowsOperator):
             Unique operation name if set as class variable, None otherwise
         """
         return cls.unique_name
+
+    @classmethod
+    def get_links(cls) -> list:
+        """
+        Get reference links without instantiation.
+
+        Returns:
+            List of reference URLs, or empty list if not set
+        """
+        return cls.links or []
 
     def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
         """

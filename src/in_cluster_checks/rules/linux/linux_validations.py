@@ -228,6 +228,12 @@ class SelinuxMode(Rule):
     objective_hosts = [Objectives.ALL_NODES]
     unique_name = "selinux_mode"
     title = "SELinux enforcing mode"
+    links = [
+        (
+            "https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/9/html/"
+            "using_selinux/getting-started-with-selinux_using-selinux"
+        ),
+    ]
 
     def run_rule(self):
         cmd = "/usr/sbin/getenforce"

@@ -10,6 +10,7 @@ from in_cluster_checks.core.operations import DataCollector
 from in_cluster_checks.core.rule import OrchestratorRule, Rule
 from in_cluster_checks.core.rule_result import RuleResult
 from in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 class OvsInterfaceAndPortFound(Rule):
@@ -35,7 +36,7 @@ class OvsInterfaceAndPortFound(Rule):
             RuleResult indicating if both ovs-if-phys and ovs-port-phys exist
         """
         # Get NetworkManager connections
-        connections = self.get_output_from_run_cmd("nmcli connection show").splitlines()
+        connections = self.get_output_from_run_cmd(SafeCmdString("nmcli connection show")).splitlines()
 
         # Check for ovs-if-phys and ovs-port-phys
         is_interface_exist = any(line.startswith("ovs-if-phys") for line in connections)
@@ -74,11 +75,9 @@ class Bond0Dns(DataCollector):
             Example: {'ipv4': {'8.8.8.8', '8.8.4.4'}, 'ipv6': set()}
             Returns None if bond0 connection doesn't exist
         """
-        cmd = "nmcli conn show bond0"
-
         # Try to get bond0 connection info
         # If bond0 doesn't exist, return None (not an error, just doesn't apply)
-        rc, out, err = self.run_cmd(cmd)
+        rc, out, err = self.run_cmd(SafeCmdString("nmcli conn show bond0"))
 
         if rc != 0:
             # bond0 connection doesn't exist (common on SNO or clusters without bonded interfaces)

@@ -24,6 +24,7 @@ except ImportError:
 
 from in_cluster_checks.core.exceptions import HostNotReachable
 from in_cluster_checks.utils.enums import ORCHESTRATOR_HOST_IP, ORCHESTRATOR_HOST_NAME, Objectives
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 def _add_bash_timeout(cmd: str, timeout: int, timeout_kill_after_seconds: int = 60) -> str:
@@ -201,7 +202,7 @@ class NodeExecutor:
 
     def execute_cmd(
         self,
-        cmd: str,
+        cmd: SafeCmdString,
         timeout: int = 120,
         get_not_ascii: bool = False,
         suppress_errors: bool = False,
@@ -211,7 +212,7 @@ class NodeExecutor:
         Execute command on node using persistent debug pod.
 
         Args:
-            cmd: Command to execute on the node
+            cmd: SafeCmdString object with command to execute on the node
             timeout: Timeout in seconds (default: 120)
             get_not_ascii: Not used, kept for interface compatibility
             suppress_errors: If True, suppress verbose openshift_client error logging (used for prerequisite checks)
@@ -219,9 +220,22 @@ class NodeExecutor:
 
         Returns:
             Tuple of (return_code, stdout, stderr)
+
+        Raises:
+            TypeError: If cmd is not a SafeCmdString instance
         """
+        # Enforce SafeCmdString usage to prevent shell injection
+        if not isinstance(cmd, SafeCmdString):
+            raise TypeError(
+                f"execute_cmd() requires SafeCmdString, got {type(cmd).__name__}. "
+                f"Use: SafeCmdString('cmd {{var}}').format(var=value)"
+            )
+
+        # Convert SafeCmdString to string
+        cmd_str = str(cmd)
+
         if add_bash_timeout:
-            cmd = _add_bash_timeout(cmd, timeout)
+            cmd_str = _add_bash_timeout(cmd_str, timeout)
 
         with self._threadLock:
             if not self.is_connected:
@@ -229,9 +243,9 @@ class NodeExecutor:
 
             if suppress_errors:
                 with suppress_oc_logging():
-                    return self._execute_cmd_internal(cmd, timeout)
+                    return self._execute_cmd_internal(cmd_str, timeout)
             else:
-                return self._execute_cmd_internal(cmd, timeout)
+                return self._execute_cmd_internal(cmd_str, timeout)
 
     def _execute_cmd_internal(self, cmd: str, timeout: int) -> tuple:
         """
@@ -342,7 +356,7 @@ class OrchestratorExecutor:
         """No-op - orchestrator doesn't connect to anything."""
         pass
 
-    def execute_cmd(self, cmd: str, timeout: int = 120, **kwargs) -> tuple:
+    def execute_cmd(self, cmd: SafeCmdString, timeout: int = 120, **kwargs) -> tuple:
         """
         Orchestrator cannot execute node commands.
 

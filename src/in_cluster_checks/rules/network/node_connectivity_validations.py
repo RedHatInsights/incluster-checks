@@ -9,6 +9,7 @@ import os
 
 from in_cluster_checks.core.rule import OrchestratorRule, PrerequisiteResult, Rule, RuleResult
 from in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 class AreAllNodesConnected(OrchestratorRule):
@@ -60,7 +61,7 @@ class VerifyBondedInterfacesUp(Rule):
     unique_name = "check_if_bonded_interfaces_are_up"
     title = "Check if bonded interfaces are up"
 
-    BONDING_PATH = "/proc/net/bonding/"
+    BONDING_PATH = "/proc/net/bonding"
 
     def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
         """
@@ -81,7 +82,9 @@ class VerifyBondedInterfacesUp(Rule):
             RuleResult indicating status of bonded interfaces
         """
         # Get list of bond interfaces
-        bond_list_out = self.get_output_from_run_cmd(f"ls {self.BONDING_PATH}")
+        bond_list_out = self.get_output_from_run_cmd(
+            SafeCmdString("ls {bonding_path}").format(bonding_path=self.BONDING_PATH)
+        )
         bond_list = bond_list_out.strip().split()
 
         if not bond_list:
@@ -93,11 +96,15 @@ class VerifyBondedInterfacesUp(Rule):
             bond_file = os.path.join(self.BONDING_PATH, bond)
 
             # Get MII Status lines
-            mii_out = self.get_output_from_run_cmd(f"cat {bond_file} | grep 'MII Status'")
+            mii_out = self.get_output_from_run_cmd(
+                SafeCmdString("cat {bond_file} | grep 'MII Status'").format(bond_file=bond_file)
+            )
             mii_status_list = [line.split("MII Status: ")[1].strip() for line in mii_out.splitlines()]
 
             # Get Slave Interface lines
-            slave_out = self.get_output_from_run_cmd(f"cat {bond_file} | grep 'Slave Interface'")
+            slave_out = self.get_output_from_run_cmd(
+                SafeCmdString("cat {bond_file} | grep 'Slave Interface'").format(bond_file=bond_file)
+            )
             interfaces_list = [line.split("Slave Interface: ")[1].strip() for line in slave_out.splitlines()]
             interfaces_list.insert(0, "master")
 

@@ -15,6 +15,7 @@ from in_cluster_checks.core.operations import DataCollector
 from in_cluster_checks.core.rule import OrchestratorRule
 from in_cluster_checks.core.rule_result import RuleResult
 from in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 class HwFwDataCollector(DataCollector):
@@ -114,7 +115,7 @@ class HwFwDataCollector(DataCollector):
         """
         raise NotImplementedError(f"collect_data() must be implemented in {self.__class__.__name__}")
 
-    def _run_cached_command(self, cmd: str, timeout: int = 30, ignore_errors: bool = False) -> str:
+    def _run_cached_command(self, cmd: SafeCmdString, timeout: int = 30, ignore_errors: bool = False) -> str:
         """
         Run command with caching to avoid duplicate executions.
 
@@ -133,7 +134,7 @@ class HwFwDataCollector(DataCollector):
             Exception: If command fails and ignore_errors is False
         """
         node_name = self.get_host_name()
-        cache_key = (node_name, cmd)
+        cache_key = (node_name, str(cmd))
 
         # Check cache first (thread-safe)
         with self.threadLock:

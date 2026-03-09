@@ -70,6 +70,27 @@ class TestCephOsdTreeWorks(RuleTestBase):
 
     tested_type = CephOsdTreeWorks
 
+    scenario_prerequisite_not_fulfilled = [
+        RuleScenarioParams(
+            "no operator pod available",
+            tested_object_mock_dict={
+                # Both tools and operator pods return None
+                "_get_pod_name": Mock(return_value=None),
+                "_select_resources": Mock(return_value=Mock()),
+            },
+        )
+    ]
+
+    scenario_prerequisite_fulfilled = [
+        RuleScenarioParams(
+            "operator pod available",
+            tested_object_mock_dict={
+                "_get_pod_name": Mock(return_value="rook-ceph-operator-abc123"),
+                "_select_resources": Mock(return_value=Mock()),
+            },
+        )
+    ]
+
     scenario_passed = [
         RuleScenarioParams(
             "ceph osd tree command succeeds",
@@ -81,6 +102,20 @@ class TestCephOsdTreeWorks(RuleTestBase):
             },
             tested_object_mock_dict={
                 "_get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "_select_resources": Mock(return_value=Mock()),
+            },
+        ),
+        RuleScenarioParams(
+            "ceph osd tree via operator pod (tools pod not available)",
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-operator-abc123", "ceph osd tree -c /var/lib/rook/openshift-storage/openshift-storage.config"): CmdOutput(
+                    out="ID CLASS WEIGHT  TYPE NAME       STATUS REWEIGHT PRI-AFF\n-1       1.00000 root default",
+                    return_code=0,
+                )
+            },
+            tested_object_mock_dict={
+                # First call returns None (no tools pod), second call returns operator pod
+                "_get_pod_name": Mock(side_effect=[None, "rook-ceph-operator-abc123"]),
                 "_select_resources": Mock(return_value=Mock()),
             },
         )
@@ -99,8 +134,29 @@ class TestCephOsdTreeWorks(RuleTestBase):
                 "_select_resources": Mock(return_value=Mock()),
             },
             failed_msg="ceph osd tree is not working.\nError: connection refused",
+        ),
+        RuleScenarioParams(
+            "ceph osd tree via operator pod fails",
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-operator-abc123", "ceph osd tree -c /var/lib/rook/openshift-storage/openshift-storage.config"): CmdOutput(
+                    out="", err="failed to connect", return_code=1
+                )
+            },
+            tested_object_mock_dict={
+                "_get_pod_name": Mock(side_effect=[None, "rook-ceph-operator-abc123"]),
+                "_select_resources": Mock(return_value=Mock()),
+            },
+            failed_msg="ceph osd tree is not working.\nError: failed to connect",
         )
     ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
+    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_fulfilled)
+    def test_prerequisite_fulfilled(self, scenario_params, tested_object):
+        RuleTestBase.test_prerequisite_fulfilled(self, scenario_params, tested_object)
 
     @pytest.mark.parametrize("scenario_params", scenario_passed)
     def test_scenario_passed(self, scenario_params, tested_object):
@@ -177,6 +233,20 @@ class TestIsCephHealthOk(RuleTestBase):
                 "_select_resources": Mock(return_value=Mock()),
             },
         ),
+        RuleScenarioParams(
+            "ceph health via operator pod (tools pod not available)",
+            rsh_cmd_output_dict={
+                (
+                    "openshift-storage",
+                    "rook-ceph-operator-abc123",
+                    "ceph health -f json -c /var/lib/rook/openshift-storage/openshift-storage.config",
+                ): CmdOutput(out=health_ok_json, return_code=0)
+            },
+            tested_object_mock_dict={
+                "_get_pod_name": Mock(side_effect=[None, "rook-ceph-operator-abc123"]),
+                "_select_resources": Mock(return_value=Mock()),
+            },
+        ),
     ]
 
     scenario_failed = [
@@ -246,6 +316,21 @@ class TestIsCephHealthOk(RuleTestBase):
                 "_select_resources": Mock(return_value=Mock()),
             },
             failed_msg="Failed to get ceph health status.\nError: connection timeout",
+        ),
+        RuleScenarioParams(
+            "ceph health via operator pod fails",
+            rsh_cmd_output_dict={
+                (
+                    "openshift-storage",
+                    "rook-ceph-operator-abc123",
+                    "ceph health -f json -c /var/lib/rook/openshift-storage/openshift-storage.config",
+                ): CmdOutput(out="", err="cluster unreachable", return_code=1)
+            },
+            tested_object_mock_dict={
+                "_get_pod_name": Mock(side_effect=[None, "rook-ceph-operator-abc123"]),
+                "_select_resources": Mock(return_value=Mock()),
+            },
+            failed_msg="Failed to get ceph health status.\nError: cluster unreachable",
         ),
     ]
 
@@ -577,7 +662,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
                 ): CmdOutput('[{"name": "csi-vol-abc123"}, {"name": "csi-vol-def456"}]'),
             },
             tested_object_mock_dict={
-                "_get_ceph_pod": Mock(return_value=("openshift-storage", "rook-ceph-tools-xyz", "")),
+                "_get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
             },
         ),
     ]
@@ -598,7 +683,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
                 ): CmdOutput("[]"),  # Won't be reached but needed for mock
             },
             tested_object_mock_dict={
-                "_get_ceph_pod": Mock(return_value=("openshift-storage", "rook-ceph-tools-xyz", "")),
+                "_get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
             },
         ),
         RuleScenarioParams(
@@ -616,7 +701,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
                 ): CmdOutput("NOT A JSON"),
             },
             tested_object_mock_dict={
-                "_get_ceph_pod": Mock(return_value=("openshift-storage", "rook-ceph-tools-xyz", "")),
+                "_get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
             },
         ),
     ]
@@ -637,7 +722,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
                 ): CmdOutput('[{"name": "csi-vol-abc123"}, {"name": "csi-vol-orphan"}]'),
             },
             tested_object_mock_dict={
-                "_get_ceph_pod": Mock(return_value=("openshift-storage", "rook-ceph-tools-xyz", "")),
+                "_get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
             },
         ),
         RuleScenarioParams(
@@ -657,7 +742,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
                 ),
             },
             tested_object_mock_dict={
-                "_get_ceph_pod": Mock(return_value=("openshift-storage", "rook-ceph-tools-xyz", "")),
+                "_get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
             },
         ),
         RuleScenarioParams(
@@ -673,7 +758,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
                 ): CmdOutput('[{"name": "csi-vol-orphan1"}, {"name": "csi-vol-orphan2"}]'),
             },
             tested_object_mock_dict={
-                "_get_ceph_pod": Mock(return_value=("openshift-storage", "rook-ceph-tools-xyz", "")),
+                "_get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
             },
         ),
         RuleScenarioParams(
@@ -691,7 +776,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
                 ): CmdOutput("", return_code=1, err="Error: unable to connect to ceph cluster"),
             },
             tested_object_mock_dict={
-                "_get_ceph_pod": Mock(return_value=("openshift-storage", "rook-ceph-tools-xyz", "")),
+                "_get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
             },
             failed_msg="Failed to list CSI subvolumes from Ceph.\nError: Error: unable to connect to ceph cluster",
         ),
@@ -710,7 +795,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
                 ): CmdOutput(""),
             },
             tested_object_mock_dict={
-                "_get_ceph_pod": Mock(return_value=("openshift-storage", "rook-ceph-tools-xyz", "")),
+                "_get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
             },
             failed_msg="Empty results from ceph fs subvolume ls command",
         ),

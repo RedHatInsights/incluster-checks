@@ -10,6 +10,7 @@ import pytest
 from in_cluster_checks.core.exceptions import HostNotReachable, UnExpectedSystemOutput
 from in_cluster_checks.core.executor import NodeExecutor, OrchestratorExecutor
 from in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 class TestNodeExecutor:
@@ -119,7 +120,7 @@ class TestNodeExecutor:
         mock_result.err.return_value = ""
         mock_oc.invoke.return_value = mock_result
 
-        rc, out, err = executor.execute_cmd("echo test")
+        rc, out, err = executor.execute_cmd(SafeCmdString("echo test"))
 
         assert rc == 0
         assert out == "command output"
@@ -141,7 +142,7 @@ class TestNodeExecutor:
 
         executor = NodeExecutor("test-node", "192.168.1.10")
 
-        rc, out, err = executor.execute_cmd("echo test")
+        rc, out, err = executor.execute_cmd(SafeCmdString("echo test"))
 
         assert executor.is_connected is True
 
@@ -183,7 +184,7 @@ class TestNodeExecutor:
 
         with patch('in_cluster_checks.core.executor.time'), \
              patch('in_cluster_checks.core.executor.atexit'):
-            rc, out, err = executor.execute_cmd("echo test")
+            rc, out, err = executor.execute_cmd(SafeCmdString("echo test"))
 
         assert rc == 0
         assert out == "output"
@@ -198,7 +199,7 @@ class TestNodeExecutor:
         mock_oc.invoke.side_effect = Exception("Some other error")
 
         with pytest.raises(Exception, match="Some other error"):
-            executor.execute_cmd("echo test")
+            executor.execute_cmd(SafeCmdString("echo test"))
 
     @patch('in_cluster_checks.core.executor.oc')
     def test_execute_cmd_success_with_output_stripping(self, mock_oc):
@@ -213,7 +214,7 @@ class TestNodeExecutor:
         mock_result.err.return_value = ""
         mock_oc.invoke.return_value = mock_result
 
-        rc, out, err = executor.execute_cmd("echo test")
+        rc, out, err = executor.execute_cmd(SafeCmdString("echo test"))
 
         assert rc == 0
         assert out.strip() == "output with spaces"
@@ -231,7 +232,7 @@ class TestNodeExecutor:
         mock_result.err.return_value = "error message"
         mock_oc.invoke.return_value = mock_result
 
-        rc, out, err = executor.execute_cmd("failing command")
+        rc, out, err = executor.execute_cmd(SafeCmdString("failing command"))
 
         assert rc == 1
         assert err == "error message"
@@ -249,7 +250,7 @@ class TestNodeExecutor:
         mock_result.err.return_value = ""
         mock_oc.invoke.return_value = mock_result
 
-        rc, out, err = executor.execute_cmd("slow command")
+        rc, out, err = executor.execute_cmd(SafeCmdString("slow command"))
 
         assert rc == 124
         assert out == ""
@@ -377,7 +378,7 @@ class TestNodeExecutor:
         mock_oc.invoke.side_effect = slow_command
 
         def run_command():
-            executor.execute_cmd("echo test")
+            executor.execute_cmd(SafeCmdString("echo test"))
 
         thread1 = threading.Thread(target=run_command)
         thread2 = threading.Thread(target=run_command)
@@ -417,7 +418,7 @@ class TestOrchestratorExecutor:
         executor = OrchestratorExecutor()
 
         with pytest.raises(NotImplementedError) as exc_info:
-            executor.execute_cmd("pwd")
+            executor.execute_cmd(SafeCmdString("pwd"))
 
         assert "run_oc_command" in str(exc_info.value)
         assert "run_rsh_cmd" in str(exc_info.value)

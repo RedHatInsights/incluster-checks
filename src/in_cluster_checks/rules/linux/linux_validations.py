@@ -13,6 +13,7 @@ from in_cluster_checks.core.rule import Rule
 from in_cluster_checks.core.rule_result import RuleResult
 from in_cluster_checks.utils.enums import Objectives
 from in_cluster_checks.utils.parsing_utils import get_dict_from_string, parse_int
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 class SystemdServicesStatus(Rule):
@@ -51,7 +52,7 @@ class SystemdServicesStatus(Rule):
         critical_failed_services = []
         warning_failed_services = []
 
-        return_code, out, err = self.run_cmd("systemctl list-units | grep failed", timeout=60)
+        return_code, out, err = self.run_cmd(SafeCmdString("systemctl list-units | grep failed"), timeout=60)
 
         if return_code > 0:
             return RuleResult.passed()
@@ -83,7 +84,7 @@ class IsHostReachable(Rule):
     title = "Verify can run simple command (echo) on host"
 
     def run_rule(self):
-        ok = self.run_cmd_return_is_successful("echo 'regards to host'")
+        ok = self.run_cmd_return_is_successful(SafeCmdString("echo 'regards to host'"))
         if ok:
             return RuleResult.passed()
         else:
@@ -99,7 +100,7 @@ class VerifyDuNotHang(Rule):
 
     def run_rule(self):
         # Use add_bash_timeout to wrap the du command with timeout (matching HC's add_bash_timeout=True)
-        ret, out, err = self.run_cmd("du /tmp > /dev/null 2>&1", add_bash_timeout=True)
+        ret, out, err = self.run_cmd(SafeCmdString("du /tmp > /dev/null 2>&1"), add_bash_timeout=True)
 
         # Timeout command returns 124 if the command times out
         if ret == 124:
@@ -118,7 +119,7 @@ class ClockSynchronized(Rule):
     def run_rule(self):
         """Validate clock synchronization using timedatectl."""
         # Get timedatectl output (will raise exception if command fails)
-        out = self.get_output_from_run_cmd("timedatectl", timeout=30)
+        out = self.get_output_from_run_cmd(SafeCmdString("timedatectl"), timeout=30)
 
         # Parse timedatectl output using the helper function
         timedatectl_dict = get_dict_from_string(out, delimiter=":")
@@ -151,7 +152,7 @@ class TooManyOpenFilesCheck(Rule):
     title = "Validate the opened file descriptors are not exceeded the limit per proc"
 
     def run_rule(self):
-        check_error_in_log_cmd = "grep -n -E 'Too many open files' /var/log/messages 2>/dev/null"
+        check_error_in_log_cmd = SafeCmdString("grep -n -E 'Too many open files' /var/log/messages 2>/dev/null")
         exit_code, out, err = self.run_cmd(check_error_in_log_cmd)
 
         is_a_real_error = False
@@ -162,14 +163,16 @@ class TooManyOpenFilesCheck(Rule):
 
         if is_a_real_error:
             # Going over all the processes only if there's evidence of "Too many open files"
-            open_files_limit_per_process_cmd = "ulimit -n"
+            open_files_limit_per_process_cmd = SafeCmdString("ulimit -n")
             exit_code, out, err = self.run_cmd(open_files_limit_per_process_cmd)
             opened_files_limit = parse_int(out.strip(), open_files_limit_per_process_cmd, self.get_host_ip())
 
             # Original command from healthcheck-backup
-            get_exceeded_processes_cmd = (
-                "find /proc/ 2>/dev/null | grep -E '/proc/[0-9]+/fd/' | "
-                "sed 's/\\/fd\\/.*/\\/fd\\//g' | sort | uniq -c | sort -n -r -k1"
+            get_exceeded_processes_cmd = SafeCmdString(
+                (
+                    "find /proc/ 2>/dev/null | grep -E '/proc/[0-9]+/fd/' | "
+                    "sed 's/\\/fd\\/.*/\\/fd\\//g' | sort | uniq -c | sort -n -r -k1"
+                )
             )
             exit_code, out, err = self.run_cmd(get_exceeded_processes_cmd, timeout=60)
 
@@ -189,7 +192,9 @@ class TooManyOpenFilesCheck(Rule):
 
                 if fd_count > opened_files_limit:
                     # Check specific process limit using prlimit
-                    check_specific_process_limit_cmd = f"prlimit -p {pid} --nofile -o HARD --noheadings 2>/dev/null"
+                    check_specific_process_limit_cmd = SafeCmdString(
+                        "prlimit -p {pid} --nofile -o HARD --noheadings 2>/dev/null"
+                    ).format(pid=pid)
                     ret, limit_out, _ = self.run_cmd(check_specific_process_limit_cmd)
 
                     if ret == 0 and limit_out.strip():
@@ -198,7 +203,7 @@ class TooManyOpenFilesCheck(Rule):
                         )
                         if fd_count > specific_limit:
                             # Get process name from /proc/{pid}/status
-                            cmd_get_name = f"grep Name /proc/{pid}/status 2>/dev/null"
+                            cmd_get_name = SafeCmdString("grep Name /proc/{pid}/status 2>/dev/null").format(pid=pid)
                             exit_code, name_out, _ = self.run_cmd(cmd_get_name)
                             if exit_code == 0 and name_out:
                                 name = name_out.split()[1]
@@ -236,7 +241,7 @@ class SelinuxMode(Rule):
     ]
 
     def run_rule(self):
-        cmd = "/usr/sbin/getenforce"
+        cmd = SafeCmdString("/usr/sbin/getenforce")
         stdout = self.get_output_from_run_cmd(cmd)
         mode = stdout.strip().lower()
 
@@ -301,7 +306,7 @@ class AuditdBacklogLimit(Rule):
         return stdout_dict
 
     def run_rule(self):
-        cmd1 = "/usr/sbin/auditctl -s"
+        cmd1 = SafeCmdString("/usr/sbin/auditctl -s")
         n, wait_seconds = 10, 0.25
         stream1 = self._measure_auditd_stats_n_times(cmd=cmd1, n=n, wait_seconds=wait_seconds)
 
@@ -355,7 +360,7 @@ class YumlockFileCheck(Rule):
 
     def run_rule(self):
         # Verify yum.pid file exists or not
-        return_code, output, err = self.run_cmd("ls /var/run/yum.pid")
+        return_code, output, err = self.run_cmd(SafeCmdString("ls /var/run/yum.pid"))
 
         if return_code == 2:
             return RuleResult.passed()

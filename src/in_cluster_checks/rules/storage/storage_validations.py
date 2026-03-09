@@ -13,6 +13,7 @@ from in_cluster_checks.core.rule import OrchestratorRule
 from in_cluster_checks.core.rule_result import PrerequisiteResult, RuleResult
 from in_cluster_checks.utils.enums import Objectives
 from in_cluster_checks.utils.parsing_utils import parse_int, parse_json
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 class CephRule(OrchestratorRule):
@@ -28,30 +29,7 @@ class CephRule(OrchestratorRule):
 
     NAMESPACE = "openshift-storage"
 
-    def _get_ceph_pod(self) -> tuple:
-        """
-        Get the appropriate ceph pod for executing commands.
-
-        For OpenShift with Rook-Ceph, we need to execute commands inside the
-        rook-ceph-tools pod or ceph operator pod.
-
-        Returns:
-            Tuple of (namespace, pod_name, ceph_config_args)
-            - namespace: Namespace where the pod is located
-            - pod_name: Name of the pod
-            - ceph_config_args: Additional ceph arguments (e.g., "-c /path/to/config" or "")
-        """
-        # First, try to find the rook-ceph-tools pod (preferred)
-        pod_name = self._get_pod_name(self.NAMESPACE, {"app": "rook-ceph-tools"}, log_errors=False)
-        if pod_name:
-            return self.NAMESPACE, pod_name, ""
-
-        # Fallback: use ceph operator pod (guaranteed to exist by prerequisite check)
-        pod_name = self._get_pod_name(self.NAMESPACE, {"app": "rook-ceph-operator"})
-        ceph_conf = f"/var/lib/rook/{self.NAMESPACE}/{self.NAMESPACE}.config"
-        return self.NAMESPACE, pod_name, f"-c {ceph_conf}"
-
-    def _run_ceph_cmd(self, cmd: str, timeout: int = 30) -> tuple[int, str, str]:
+    def _run_ceph_cmd(self, cmd: SafeCmdString, timeout: int = 30) -> tuple[int, str, str]:
         """
         Execute a ceph command inside the appropriate pod.
 
@@ -61,18 +39,24 @@ class CephRule(OrchestratorRule):
         3. Executing the command via run_rsh_cmd
 
         Args:
-            cmd: The ceph command to execute (e.g., "ceph health -f json")
+            cmd: SafeCmdString with the ceph command to execute
             timeout: Command timeout in seconds (default: 30)
 
         Returns:
             Tuple of (return_code, stdout, stderr)
         """
-        namespace, pod_name, ceph_config_args = self._get_ceph_pod()
+        # First, try to find the rook-ceph-tools pod (preferred)
+        pod_name = self._get_pod_name(self.NAMESPACE, {"app": "rook-ceph-tools"}, log_errors=False)
+        if pod_name:
+            # Tools pod doesn't need config file
+            return self.run_rsh_cmd(self.NAMESPACE, pod_name, cmd, timeout=timeout)
 
-        if ceph_config_args:
-            cmd += f" {ceph_config_args}"
-
-        return self.run_rsh_cmd(namespace, pod_name, cmd, timeout=timeout)
+        # Fallback: use ceph operator pod (guaranteed to exist by prerequisite check)
+        pod_name = self._get_pod_name(self.NAMESPACE, {"app": "rook-ceph-operator"})
+        ceph_conf = f"/var/lib/rook/{self.NAMESPACE}/{self.NAMESPACE}.config"
+        # Append config file path to command (pass SafeCmdString directly for composition)
+        cmd_with_config = SafeCmdString("{cmd} -c {conf}").format(cmd=cmd, conf=ceph_conf)
+        return self.run_rsh_cmd(self.NAMESPACE, pod_name, cmd_with_config, timeout=timeout)
 
     def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
         """
@@ -122,7 +106,7 @@ class CephOsdTreeWorks(CephRule):
     title = "Check if ceph osd tree working"
 
     def run_rule(self) -> RuleResult:
-        return_code, stdout, stderr = self._run_ceph_cmd("ceph osd tree")
+        return_code, stdout, stderr = self._run_ceph_cmd(SafeCmdString("ceph osd tree"))
 
         if return_code == 0:
             return RuleResult.passed()
@@ -145,7 +129,7 @@ class IsCephHealthOk(CephRule):
     title = "Check if ceph health is ok"
 
     def run_rule(self) -> RuleResult:
-        cmd = "ceph health -f json"
+        cmd = SafeCmdString("ceph health -f json")
         return_code, stdout, stderr = self._run_ceph_cmd(cmd)
 
         if return_code != 0:
@@ -197,7 +181,7 @@ class IsCephOSDsNearFull(CephRule):
     THRESHOLD_CRITICAL = 90
 
     def run_rule(self) -> RuleResult:
-        cmd = "ceph osd df -f json"
+        cmd = SafeCmdString("ceph osd df -f json")
         return_code, stdout, stderr = self._run_ceph_cmd(cmd)
 
         if return_code != 0:
@@ -276,7 +260,7 @@ class IsOSDsUp(CephRule):
     title = "Check if all osds are up"
 
     def run_rule(self) -> RuleResult:
-        cmd = "ceph osd tree -f json"
+        cmd = SafeCmdString("ceph osd tree -f json")
         return_code, stdout, stderr = self._run_ceph_cmd(cmd)
 
         if return_code != 0:
@@ -327,7 +311,7 @@ class IsOSDsWeightOK(CephRule):
     ACCEPTABLE_RANGE = 0.05  # 5% tolerance
 
     def run_rule(self) -> RuleResult:
-        cmd = "ceph osd df -f json"
+        cmd = SafeCmdString("ceph osd df -f json")
         return_code, stdout, stderr = self._run_ceph_cmd(cmd)
 
         if return_code != 0:
@@ -462,7 +446,7 @@ class OrphanCsiVolumes(CephRule):
         Returns:
             List of CSI subvolume names or RuleResult if operation failed
         """
-        cmd = "ceph fs subvolume ls ocs-storagecluster-cephfilesystem csi -f json"
+        cmd = SafeCmdString("ceph fs subvolume ls ocs-storagecluster-cephfilesystem csi -f json")
         return_code, stdout, stderr = self._run_ceph_cmd(cmd)
 
         if return_code != 0:
@@ -500,7 +484,7 @@ class CephSlowOps(CephRule):
     title = "Check if ceph has slow ops"
 
     def run_rule(self) -> RuleResult:
-        cmd = "ceph health detail"
+        cmd = SafeCmdString("ceph health detail")
         return_code, stdout, stderr = self._run_ceph_cmd(cmd, timeout=100)
 
         if return_code != 0:
@@ -724,7 +708,7 @@ class CheckPoolSize(CephRule):
     title = "Check ceph replication factor is at least 2"
 
     def run_rule(self) -> RuleResult:
-        cmd = "ceph osd pool ls detail -f json"
+        cmd = SafeCmdString("ceph osd pool ls detail -f json")
         return_code, stdout, stderr = self._run_ceph_cmd(cmd)
 
         if return_code != 0:

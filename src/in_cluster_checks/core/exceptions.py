@@ -5,6 +5,7 @@ Adapted from support/HealthChecks/tools/Exceptions.py
 Matches HC's exception hierarchy for proper exception classification.
 """
 
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 from in_cluster_checks.utils.secret_filter import SecretFilter
 
 
@@ -18,26 +19,31 @@ class UnExpectedSystemOutput(ExecutionException):
     """Exception raised when command produces unexpected output or fails."""
 
     def __init__(
-        self, ip: str, cmd: str, output: str, message: str = "Unexpected command output", full_trace: str = ""
+        self,
+        ip: str,
+        cmd: str | SafeCmdString,
+        output: str,
+        message: str = "Unexpected command output",
+        full_trace: str = "",
     ):
         """
         Initialize exception.
 
         Args:
             ip: Host IP address where command was executed
-            cmd: Command that failed
+            cmd: Command that failed (str or SafeCmdString)
             output: Command output (stdout + stderr)
             message: Error message describing the failure
             full_trace: Full exception traceback (optional)
         """
         self.ip = ip
-        self.cmd = cmd
+        self.cmd = str(cmd)  # Convert SafeCmdString to str if needed
         self.output = output
         self.message = message
         self.full_trace = full_trace
 
         # Sanitize command before including in exception message
-        safe_cmd = SecretFilter.sanitize(cmd)
+        safe_cmd = SecretFilter.sanitize(self.cmd)
         super().__init__(f"{message} on {ip}: {safe_cmd}\nOutput: {output[:500]}")  # Limit output length
 
     def __str__(self):
@@ -56,7 +62,7 @@ class UnExpectedSystemTimeOut(UnExpectedSystemOutput):
     def __init__(
         self,
         ip: str,
-        cmd: str,
+        cmd: str | SafeCmdString,
         timeout: int,
         output: str = "",
         message: str = "Command timed out",
@@ -68,7 +74,7 @@ class UnExpectedSystemTimeOut(UnExpectedSystemOutput):
 
         Args:
             ip: Host IP address
-            cmd: Command that timed out
+            cmd: Command that timed out (str or SafeCmdString)
             timeout: Timeout value in seconds
             output: Partial output before timeout
             message: Error message

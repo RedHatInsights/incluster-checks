@@ -5,12 +5,16 @@ Adapted from support/HealthChecks/tools/python_utils.py
 """
 
 import json
+from datetime import datetime
 from typing import Any, Dict, Union
 
+import dateutil.parser
+
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
-def parse_json(output: str, cmd: str, ip: str) -> Any:
+def parse_json(output: str, cmd: str | SafeCmdString, ip: str) -> Any:
     """
     Parse JSON from command output with detailed error reporting.
 
@@ -39,7 +43,7 @@ def parse_json(output: str, cmd: str, ip: str) -> Any:
         )
 
 
-def parse_int(value: str, cmd: str, ip: str) -> int:
+def parse_int(value: str, cmd: str | SafeCmdString, ip: str) -> int:
     """
     Parse integer from command output with detailed error reporting.
     """
@@ -53,6 +57,34 @@ def parse_int(value: str, cmd: str, ip: str) -> int:
             message=f"Failed to parse as integer. "
             f"Expected numeric value, got: {value[:100]!r}. "
             f"Error: {str(e)}",
+        )
+
+
+def parse_datetime(string_datetime: str, cmd: str | SafeCmdString, ip: str) -> datetime:
+    """
+    Parse datetime string from command output with detailed error reporting.
+
+    Uses dateutil.parser.parse to handle various datetime formats flexibly.
+
+    Args:
+        string_datetime: Datetime string from command output
+        cmd: Command that produced the output (for error reporting)
+        ip: Host IP where command was executed (for error reporting)
+
+    Returns:
+        Parsed datetime object
+
+    Raises:
+        UnExpectedSystemOutput: If datetime parsing fails
+    """
+    try:
+        return dateutil.parser.parse(string_datetime)
+    except (ValueError, dateutil.parser.ParserError) as e:
+        raise UnExpectedSystemOutput(
+            ip=ip,
+            cmd=cmd,
+            output=string_datetime,
+            message=f"Date/time could not be parsed.\n{str(e)}",
         )
 
 

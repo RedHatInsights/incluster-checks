@@ -190,6 +190,42 @@ pytest tests/rules/<domain>/test_<file>.py -v
 
 **NEVER use `self.logger` in rules** - Return error messages via `RuleResult.failed()` or `RuleResult.warning()` instead. The framework handles logging automatically.
 
+**Command Security - SafeCmdString:**
+
+**REQUIRED** for all `run_cmd()`, `get_output_from_run_cmd()`, and `run_rsh_cmd()` to prevent command injection.
+
+**Examples:**
+```python
+# Static command
+self.run_cmd(SafeCmdString("systemctl status"))
+# Named placeholder
+cmd = SafeCmdString("cat {file}").format(file="/etc/hostname")
+self.run_cmd(cmd)
+
+# Positional placeholder
+cmd = SafeCmdString("cat {}").format("/etc/hostname")
+self.run_cmd(cmd)
+
+# Concatenation with + operator
+self.run_cmd(SafeCmdString("cat /etc/hostname") + SafeCmdString("| grep localhost"))
+
+# SafeCmdString as variable (bypasses validation - already safe)
+cmd1 = SafeCmdString("etcdctl version")
+cmd2 = SafeCmdString("Running: {cmd}").format(cmd=cmd1)
+self.run_rsh_cmd(namespace, pod, cmd2)
+```
+
+**Allowed patterns in format() variables:**
+- Absolute paths
+- Generic identifiers: `[a-zA-Z0-9 ]+`
+- Etcd URLs
+- PCI addresses
+
+**Pre-commit linter enforces:**
+- Template must be string literal (not variable/f-string/expression)
+- One SafeCmdString per line (except `SafeCmdString() + SafeCmdString()` is allowed)
+
+
 ## Checklist
 
 - [ ] Rule class created with `objective_hosts`, `unique_name`, `title`
@@ -197,6 +233,7 @@ pytest tests/rules/<domain>/test_<file>.py -v
 - [ ] `is_prerequisite_fulfilled()` added if rule requires specific tools/conditions
 - [ ] `UnExpectedSystemOutput` used for command failures
 - [ ] NO use of `self.logger` in rule - return error messages via RuleResult
+- [ ] All commands use `SafeCmdString` for `run_cmd()`, `get_output_from_run_cmd()`, `run_rsh_cmd()` 
 - [ ] Rule registered in the appropriate domain's `get_rule_classes()`
 - [ ] Tests written with both `scenario_passed` and `scenario_failed`
 - [ ] Domain test updated to include new rule

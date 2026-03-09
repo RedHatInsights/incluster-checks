@@ -9,6 +9,7 @@ from datetime import datetime
 
 from in_cluster_checks.core.rule import PrerequisiteResult, Rule, RuleResult
 from in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 class NodeCertificateExpiry(Rule):
@@ -28,15 +29,15 @@ class NodeCertificateExpiry(Rule):
 
     # Common certificate paths on OpenShift nodes
     CERT_PATHS = [
-        "/var/lib/kubelet/pki/kubelet-client-current.pem",
-        "/var/lib/kubelet/pki/kubelet-server-current.pem",
-        "/etc/kubernetes/static-pod-certs/secrets/etcd-all-certs/etcd-serving-*.crt",
-        "/etc/kubernetes/static-pod-certs/secrets/etcd-all-certs/etcd-peer-*.crt",
+        SafeCmdString("/var/lib/kubelet/pki/kubelet-client-current.pem"),
+        SafeCmdString("/var/lib/kubelet/pki/kubelet-server-current.pem"),
+        SafeCmdString("/etc/kubernetes/static-pod-certs/secrets/etcd-all-certs/etcd-serving-*.crt"),
+        SafeCmdString("/etc/kubernetes/static-pod-certs/secrets/etcd-all-certs/etcd-peer-*.crt"),
     ]
 
     def is_prerequisite_fulfilled(self):
         """Check if openssl is available."""
-        rc, _, _ = self.run_cmd("which openssl")
+        rc, _, _ = self.run_cmd(SafeCmdString("which openssl"))
         if rc != 0:
             return PrerequisiteResult.not_met("openssl is not available on this system")
         return PrerequisiteResult.met()
@@ -51,7 +52,7 @@ class NodeCertificateExpiry(Rule):
         Returns:
             tuple: (success: bool, end_date_str: str, error_msg: str)
         """
-        cmd = f"openssl x509 -enddate -noout -in {cert_path}"
+        cmd = SafeCmdString("openssl x509 -enddate -noout -in {cert_path}").format(cert_path=cert_path)
         rc, out, err = self.run_cmd(cmd)
 
         if rc != 0:
@@ -166,13 +167,13 @@ class NodeCertificateExpiry(Rule):
         """
         expanded_paths = []
         for path in cert_paths:
-            if "*" in path:
+            if "*" in str(path):
                 # Use ls to expand glob
-                rc, out, _ = self.run_cmd(f"ls {path} 2>/dev/null")
+                rc, out, _ = self.run_cmd(SafeCmdString("ls {path} 2>/dev/null").format(path=path))
                 if rc == 0 and out.strip():
                     expanded_paths.extend(out.strip().split("\n"))
             else:
-                expanded_paths.append(path)
+                expanded_paths.append(str(path))
         return expanded_paths
 
     def run_rule(self):

@@ -8,6 +8,7 @@ from in_cluster_checks import global_config
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.operations import Operator
 from in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 class DummyOperator(Operator):
@@ -49,7 +50,7 @@ class TestOperator:
 
         try:
             operator = DummyOperator(mock_executor)
-            ret, out, err = operator.run_cmd("test command")
+            ret, out, err = operator.run_cmd(SafeCmdString("test command"))
 
             assert ret == 0
             assert out == "output"
@@ -71,7 +72,7 @@ class TestOperator:
 
         try:
             operator = DummyOperator(mock_executor)
-            ret, out, err = operator.run_cmd("test command")
+            ret, out, err = operator.run_cmd(SafeCmdString("test command"))
 
             # Check return values
             assert ret == 1
@@ -103,7 +104,7 @@ class TestOperator:
 
         try:
             operator = DummyOperator(mock_executor)
-            output = operator.get_output_from_run_cmd("test command")
+            output = operator.get_output_from_run_cmd(SafeCmdString("test command"))
 
             assert output == "command output"
             assert "test command" in operator.get_bash_cmd_lines()
@@ -124,7 +125,7 @@ class TestOperator:
 
         try:
             operator = DummyOperator(mock_executor)
-            output = operator.get_output_from_run_cmd("test command")
+            output = operator.get_output_from_run_cmd(SafeCmdString("test command"))
 
             assert output == "command output"
 
@@ -188,7 +189,7 @@ class TestOperator:
 
         try:
             operator = DummyOperator(mock_executor)
-            result = operator.run_cmd_return_is_successful("test command")
+            result = operator.run_cmd_return_is_successful(SafeCmdString("test command"))
 
             assert result is True
         finally:
@@ -208,7 +209,7 @@ class TestOperator:
 
         try:
             operator = DummyOperator(mock_executor)
-            result = operator.run_cmd_return_is_successful("test command")
+            result = operator.run_cmd_return_is_successful(SafeCmdString("test command"))
 
             assert result is False
         finally:
@@ -228,7 +229,7 @@ class TestOperator:
 
         try:
             operator = DummyOperator(mock_executor)
-            result = operator.run_and_get_the_nth_field("test command", 2)
+            result = operator.run_and_get_the_nth_field(SafeCmdString("test command"), 2)
 
             assert result == "field2"
         finally:

@@ -87,6 +87,7 @@ Create a new rule in the appropriate domain directory (e.g., `src/in_cluster_che
 from in_cluster_checks.core.rule import Rule
 from in_cluster_checks.core.rule_result import RuleResult
 from in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 class YourNewRule(Rule):
     """Rule description - what this rule verifies."""
@@ -101,14 +102,82 @@ class YourNewRule(Rule):
 
     def run_rule(self):
         """Execute the rule logic."""
-        # Run command on the node
-        return_code, stdout, stderr = self.run_cmd("your-command")
+        # Use SafeCmdString for all commands (see Command Security section below)
+        cmd = SafeCmdString("cat {file}").format(file="/etc/hostname")
+        return_code, stdout, stderr = self.run_cmd(cmd)
 
         # Parse output and determine pass/fail
         if return_code == 0:
             return RuleResult.passed("Rule passed")
         else:
             return RuleResult.failed(f"Rule failed: {stderr}")
+```
+
+**Command Security - SafeCmdString:**
+
+**REQUIRED** for all `run_cmd()`, `get_output_from_run_cmd()`, and `run_rsh_cmd()` to prevent command injection.
+
+**Examples:**
+```python
+# Static command
+self.run_cmd(SafeCmdString("systemctl status"))
+
+# Named placeholder
+cmd = SafeCmdString("cat {file}").format(file="/etc/hostname")
+self.run_cmd(cmd)
+
+# Positional placeholder
+cmd = SafeCmdString("cat {}").format("/etc/hostname")
+self.run_cmd(cmd)
+
+# Concatenation with + operator
+self.run_cmd(SafeCmdString("cat /etc/hostname") + SafeCmdString("| grep localhost"))
+
+# SafeCmdString as variable (bypasses validation - already safe)
+cmd1 = SafeCmdString("etcdctl version")
+cmd2 = SafeCmdString("Running: {cmd}").format(cmd=cmd1)
+self.run_rsh_cmd(namespace, pod, cmd2)
+```
+
+**Allowed patterns in format() variables:**
+- Absolute paths: `/var/log/messages`, `/etc/file.conf` (one dot max for extension)
+- Generic identifiers: `[a-zA-Z0-9 ]+` (letters, digits, spaces only - no leading dashes)
+- Etcd URLs: `https://etcd-N.etcd.openshift-etcd.svc:2379/path`
+- PCI addresses: `01:00.0`, `0000:01:00.0`
+
+**Pre-commit linter enforces:**
+- Template must be string literal (not variable/f-string/expression)
+- One SafeCmdString per line (except `SafeCmdString() + SafeCmdString()` is allowed)
+
+**Pre-commit Blocked patterns:**
+```python
+check_cmd = "systemctl status"
+SafeCmdString(check_cmd)         # Variable - BLOCKED
+
+SafeCmdString(f"cat {file}")     # f-string - BLOCKED
+
+SafeCmdString("cat " + file)     # Expression - BLOCKED
+```
+
+**Pre-commit failure example:**
+```python
+check_cmd = "systemctl status"
+cmd = SafeCmdString(check_cmd)
+return_code, out, err = self.run_cmd(cmd)
+```
+
+Output:
+```
+Check SafeCmdString usage................................................Failed
+- hook id: safe-cmd-string-check
+- exit code: 1
+
+Found unsafe SafeCmdString usage:
+
+  src/in_cluster_checks/rules/<domain>/<file>.py:53: SafeCmdString() only accepts literal strings, not variables ('check_cmd'). Use SafeCmdString('template {var}').format(var=...) instead.
+
+Use SafeCmdString('template {var}').format(var=...) for safe command formatting.
+This validates variables to prevent shell injection.
 ```
 
 **Best Practices:**

@@ -10,6 +10,7 @@ from typing import Dict, List
 
 from in_cluster_checks.rules.hw_fw_details.hw_fw_base import HwFwDataCollector
 from in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 class DiskDataCollector(HwFwDataCollector):
@@ -31,7 +32,7 @@ class DiskDataCollector(HwFwDataCollector):
             List of disk names (e.g., ["sda", "sdb", "nvme0n1"])
             Only includes real physical disks (no virtual/loop devices)
         """
-        cmd = "sudo lsblk -d -o name,model"
+        cmd = SafeCmdString("sudo lsblk -d -o name,model")
         output = self._run_cached_command(cmd, timeout=30)
 
         lines = output.splitlines()
@@ -92,7 +93,7 @@ class DiskDataCollector(HwFwDataCollector):
         Returns:
             Dict of {disk_name: field_value}
         """
-        cmd = f"sudo lsblk -d -o name,{field_name}"
+        cmd = SafeCmdString("sudo lsblk -d -o name,{field_name}").format(field_name=field_name)
         output = self._run_cached_command(cmd, timeout=30)
 
         lines = output.splitlines()
@@ -192,7 +193,7 @@ class DiskType(DiskDataCollector):
             return "NVMe"
 
         # Use smartctl to check (cached, ignore errors as smartctl returns 64 for old SMART data)
-        cmd = f"sudo smartctl -a /dev/{disk_name}"
+        cmd = SafeCmdString("sudo smartctl -a /dev/{disk_name}").format(disk_name=disk_name)
         output = self._run_cached_command(cmd, timeout=30, ignore_errors=True)
 
         # Check for NVMe indicators in output
@@ -289,7 +290,7 @@ class DiskSize(DiskDataCollector):
             Example: {"sda": 960197, "nvme0n1": 3840755}
         """
         # Get size in bytes
-        cmd = "sudo lsblk -d -o name,size -b"
+        cmd = SafeCmdString("sudo lsblk -d -o name,size -b")
         output = self._run_cached_command(cmd, timeout=30)
 
         lines = output.splitlines()
@@ -356,7 +357,7 @@ class OperatingSystemDisk(DiskDataCollector):
             List of disk names (e.g., ["sda"] or ["sda", "sdb"])
             Empty list if no OS disks found
         """
-        cmd = "sudo lsblk -n"
+        cmd = SafeCmdString("sudo lsblk -n")
         output = self._run_cached_command(cmd, timeout=30)
         return self._parse_lsblk_output(output)
 
@@ -412,7 +413,7 @@ class OperatingSystemDisk(DiskDataCollector):
         real_disk_names = super().get_component_ids()
 
         # Collect disk rotation data (0=SSD, 1=HDD)
-        cmd = "sudo lsblk -d -o name,rota"
+        cmd = SafeCmdString("sudo lsblk -d -o name,rota")
         output = self._run_cached_command(cmd, timeout=30)
 
         lines = output.splitlines()
@@ -462,7 +463,7 @@ class OperatingSystemDisk(DiskDataCollector):
         # Use parent's get_component_ids() to get real disk names
         real_disk_names = super().get_component_ids()
 
-        cmd = "sudo lsblk -d -o name,size -b"
+        cmd = SafeCmdString("sudo lsblk -d -o name,size -b")
         output = self._run_cached_command(cmd, timeout=30)
 
         lines = output.splitlines()

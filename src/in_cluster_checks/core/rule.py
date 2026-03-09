@@ -16,6 +16,7 @@ from in_cluster_checks.core.data_collector_runner import DataCollectorRunner
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.operations import Operator
 from in_cluster_checks.core.rule_result import PrerequisiteResult, RuleResult
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 class Rule(Operator):
@@ -228,7 +229,7 @@ class OrchestratorRule(Rule):
                 f"objective_hosts not defined for {self.__class__.__name__}. " "Please define as class variable."
             )
 
-    def run_cmd(self, cmd: str, timeout: int = 120) -> tuple:
+    def run_cmd(self, cmd: SafeCmdString, timeout: int = 120) -> tuple:
         """
         Not available for OrchestratorRule - use run_rsh_cmd() instead.
         OrchestratorRule runs locally and doesn't have a host_executor.
@@ -382,26 +383,39 @@ class OrchestratorRule(Rule):
             self.logger.info(error_msg)
         return None
 
-    def run_rsh_cmd(self, namespace: str, pod: str, command: str, timeout: int = 120) -> tuple:
+    def run_rsh_cmd(self, namespace: str, pod: str, command: SafeCmdString, timeout: int = 120) -> tuple:
         """
         Run command in a pod using oc rsh.
 
         Args:
             namespace: Namespace where the pod is located
             pod: Pod name
-            command: Command to execute in the pod
+            command: SafeCmdString object with command to execute in the pod
             timeout: Timeout in seconds (default: 120)
 
         Returns:
             Tuple of (return_code, stdout, stderr)
+
+        Raises:
+            TypeError: If command is not a SafeCmdString instance
         """
-        self._add_cmd_to_log(f'oc -n {namespace} rsh {pod} bash -c "{command}"')
+        # Enforce SafeCmdString usage to prevent shell injection
+        if not isinstance(command, SafeCmdString):
+            raise TypeError(
+                f"run_rsh_cmd() requires SafeCmdString, got {type(command).__name__}. "
+                f"Use: SafeCmdString('cmd {{var}}').format(var=value)"
+            )
+
+        # Convert SafeCmdString to string
+        cmd_str = str(command)
+
+        self._add_cmd_to_log(f'oc -n {namespace} rsh {pod} bash -c "{cmd_str}"')
         try:
             with oc.timeout(timeout):
                 with oc.project(namespace):
                     result = oc.invoke(
                         "rsh",
-                        cmd_args=[pod, "bash", "-c", command],
+                        cmd_args=[pod, "bash", "-c", cmd_str],
                         auto_raise=False,
                     )
             return result.status(), result.out(), result.err()

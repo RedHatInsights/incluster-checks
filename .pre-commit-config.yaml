@@ -51,6 +51,13 @@ repos:
         types: [python]
         files: ^src/in_cluster_checks/
 
+      - id: safe-cmd-string-check
+        name: check SafeCmdString usage
+        entry: python tests/linters/check_safe_cmd_string.py
+        language: system
+        types: [python]
+        files: ^src/in_cluster_checks/
+
       - id: pytest-coverage
         name: pytest with coverage
         entry: python -m pytest

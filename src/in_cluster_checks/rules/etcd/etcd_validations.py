@@ -10,6 +10,7 @@ import json
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.rule import OrchestratorRule, RuleResult
 from in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 class EtcdRule(OrchestratorRule):
@@ -44,7 +45,7 @@ class EtcdRule(OrchestratorRule):
 
         return pod_name
 
-    def _run_etcdctl_cmd(self, etcd_cmd, pod_name=None):
+    def _run_etcdctl_cmd(self, etcd_cmd: SafeCmdString, pod_name=None):
         """
         Run etcdctl command inside etcd pod.
 
@@ -58,16 +59,17 @@ class EtcdRule(OrchestratorRule):
         if pod_name is None:
             pod_name = self._get_etcd_pod_name()
 
-        rc, out, err = self.run_rsh_cmd("openshift-etcd", pod_name, f"etcdctl {etcd_cmd}")
+        rc, out, err = self.run_rsh_cmd("openshift-etcd", pod_name, etcd_cmd)
         return rc, out, err
 
-    def _run_curl_in_pod(self, url, pod_name=None):
+    def _run_curl_in_pod(self, url, pod_name=None, grep_pattern=None):
         """
         Run curl command inside etcd pod with proper certificate authentication.
 
         Args:
             url: URL to curl
             pod_name: Etcd pod name (if None, will get it automatically)
+            grep_pattern: Optional grep pattern to filter curl output
 
         Returns:
             Tuple of (rc, stdout, stderr)
@@ -75,8 +77,16 @@ class EtcdRule(OrchestratorRule):
         if pod_name is None:
             pod_name = self._get_etcd_pod_name()
 
-        # Use run_rsh_cmd which automatically wraps in bash -c for env var expansion
-        curl_cmd = f"curl --max-time 10 -s --key $ETCDCTL_KEY --cert $ETCDCTL_CERT --cacert $ETCDCTL_CACERT -XGET {url}"
+        # Environment variables are trusted (set by Kubernetes), only escape the URL
+        if grep_pattern:
+            curl_cmd = SafeCmdString(
+                "curl --max-time 10 -s --key $ETCDCTL_KEY --cert $ETCDCTL_CERT "
+                "--cacert $ETCDCTL_CACERT -XGET {url} | grep {pattern}"
+            ).format(url=url, pattern=grep_pattern)
+        else:
+            curl_cmd = SafeCmdString(
+                "curl --max-time 10 -s --key $ETCDCTL_KEY --cert $ETCDCTL_CERT --cacert $ETCDCTL_CACERT -XGET {url}"
+            ).format(url=url)
 
         rc, out, err = self.run_rsh_cmd("openshift-etcd", pod_name, curl_cmd)
         return rc, out, err
@@ -102,7 +112,7 @@ class EtcdBasicCheck(EtcdRule):
             RuleResult: Passed if etcd is reachable, failed otherwise
         """
         # Test etcd connectivity with version command
-        rc, out, err = self._run_etcdctl_cmd("version")
+        rc, out, err = self._run_etcdctl_cmd(SafeCmdString("etcdctl version"))
 
         if rc != 0:
             return RuleResult.failed(
@@ -132,7 +142,7 @@ class EtcdAlarmCheck(EtcdRule):
             RuleResult: Passed if no alarms, failed if alarms present
         """
         # Check for alarms
-        rc, out, err = self._run_etcdctl_cmd("alarm list")
+        rc, out, err = self._run_etcdctl_cmd(SafeCmdString("etcdctl alarm list"))
 
         # Empty output means no alarms
         if out.strip():
@@ -163,7 +173,7 @@ class EtcdMemberCountCheck(EtcdRule):
             RuleResult: Passed if >= 3 members, failed otherwise
         """
         # Get member list
-        rc, out, err = self._run_etcdctl_cmd("member list -w=json")
+        rc, out, err = self._run_etcdctl_cmd(SafeCmdString("etcdctl member list -w=json"))
 
         try:
             members_data = json.loads(out)
@@ -206,7 +216,7 @@ class EtcdLeaderCheck(EtcdRule):
             RuleResult: Passed if leader exists, failed otherwise
         """
         # Get endpoint status as JSON
-        rc, out, err = self._run_etcdctl_cmd("endpoint status -w=json")
+        rc, out, err = self._run_etcdctl_cmd(SafeCmdString("etcdctl endpoint status -w=json"))
 
         if rc != 0:
             return RuleResult.failed(
@@ -254,7 +264,7 @@ class EtcdEndpointHealthCheck(EtcdRule):
             RuleResult: Passed if all endpoints healthy, failed otherwise
         """
         # Get member list to find all endpoints
-        rc, out, err = self._run_etcdctl_cmd("member list -w=json")
+        rc, out, err = self._run_etcdctl_cmd(SafeCmdString("etcdctl member list -w=json"))
 
         try:
             members_data = json.loads(out)
@@ -328,25 +338,27 @@ class EtcdWriteReadCycleCheck(EtcdRule):
             RuleResult: Passed if write/read cycle succeeds, failed otherwise
         """
         # Use UUIDs as test key/value (same as HealthChecks)
-        test_key = "52093047-521a-4039-baee-429e1779c268"
-        test_value = "40c774ad-35e4-46c5-bcd3-e1ff2b95fb67"
+        test_key = SafeCmdString("52093047-521a-4039-baee-429e1779c268")
+        test_value = SafeCmdString("40c774ad-35e4-46c5-bcd3-e1ff2b95fb67")
 
         # Write test data
-        rc, out, err = self._run_etcdctl_cmd(f"put {test_key} {test_value}")
+        rc, out, err = self._run_etcdctl_cmd(
+            SafeCmdString("etcdctl put {test_key} {test_value}").format(test_key=test_key, test_value=test_value)
+        )
         if rc != 0:
             return RuleResult.failed(
                 f"Failed to write test data to etcd (rc={rc})\nError: {err}",
             )
 
         # Read test data
-        rc, get_out, err = self._run_etcdctl_cmd(f"get {test_key}")
+        rc, get_out, err = self._run_etcdctl_cmd(SafeCmdString("etcdctl get {test_key}").format(test_key=test_key))
         if rc != 0:
             return RuleResult.failed(
                 f"Failed to read test data from etcd (rc={rc})\nError: {err}",
             )
 
         # Delete test data
-        self._run_etcdctl_cmd(f"del {test_key}")
+        self._run_etcdctl_cmd(SafeCmdString("etcdctl del {test_key}").format(test_key=test_key))
 
         # Verify read value matches written value
         response_lines = get_out.strip().splitlines()
@@ -356,7 +368,7 @@ class EtcdWriteReadCycleCheck(EtcdRule):
             )
 
         read_value = response_lines[1].strip()
-        if read_value != test_value:
+        if read_value != str(test_value):
             return RuleResult.failed(
                 f"Read value '{read_value}' does not match written value '{test_value}'",
             )
@@ -385,7 +397,7 @@ class EtcdWalFsyncPerformanceCheck(EtcdRule):
             RuleResult: Warning if performance is slow, passed otherwise
         """
         # Get member list to find all endpoints
-        rc, out, err = self._run_etcdctl_cmd("member list -w=json")
+        rc, out, err = self._run_etcdctl_cmd(SafeCmdString("etcdctl member list -w=json"))
 
         try:
             members_data = json.loads(out)
@@ -413,7 +425,7 @@ class EtcdWalFsyncPerformanceCheck(EtcdRule):
         for endpoint in endpoints:
             # Get WAL fsync metrics
             rc, metrics_out, err = self._run_curl_in_pod(
-                f"{endpoint}/metrics | grep etcd_disk_wal_fsync_duration_seconds", pod_name
+                f"{endpoint}/metrics", pod_name, grep_pattern=SafeCmdString("etcd_disk_wal_fsync_duration_seconds")
             )
 
             if rc != 0:
@@ -482,7 +494,7 @@ class EtcdBackendCommitPerformanceCheck(EtcdRule):
             RuleResult: Warning if performance is slow, passed otherwise
         """
         # Get member list to find all endpoints
-        rc, out, err = self._run_etcdctl_cmd("member list -w=json")
+        rc, out, err = self._run_etcdctl_cmd(SafeCmdString("etcdctl member list -w=json"))
 
         try:
             members_data = json.loads(out)
@@ -510,7 +522,7 @@ class EtcdBackendCommitPerformanceCheck(EtcdRule):
         for endpoint in endpoints:
             # Get backend commit metrics
             rc, metrics_out, err = self._run_curl_in_pod(
-                f"{endpoint}/metrics | grep etcd_disk_backend_commit_duration_seconds", pod_name
+                f"{endpoint}/metrics", pod_name, grep_pattern=SafeCmdString("etcd_disk_backend_commit_duration_seconds")
             )
 
             if rc != 0:

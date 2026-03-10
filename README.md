@@ -1,176 +1,111 @@
 # In-Cluster Checks
 
 [![CI](https://github.com/sprizend-rh/in-cluster-checks/workflows/CI/badge.svg)](https://github.com/sprizend-rh/in-cluster-checks/actions)
-[![codecov](https://codecov.io/gh/sprizend-rh/in-cluster-checks/branch/main/graph/badge.svg)](https://codecov.io/gh/sprizend-rh/in-cluster-checks)
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![codecov](https://codecov.io/gh/sprizend-rh/in-cluster-checks/branch/main/graph/badge.svg)](https://codecov.io/gh/sprizend-rh/in-cluster-checks) <!-- why unknown -->
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0) <!-- to update license -->
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 
 A generic framework for running health validation rules directly on OpenShift cluster nodes using `oc debug`.
 
-## Overview
+## Key Advantages
 
-This framework provides infrastructure for:
-- Running validation rules on cluster nodes via `oc debug`
-- Parallel execution of rules across multiple nodes
-- Secret filtering and output formatting
-- Prerequisite checking and domain orchestration
-- Insights-compatible JSON output
+- **Direct node access** - Rules run directly on cluster nodes via `oc debug`
+- **Fast execution** - Parallel rule execution across multiple nodes
+- **Relevant rules execution** - Only relevant rules run based on prerequisite checks
+- **Easy debugging** - Full visibility into commands executed for each rule
 
+<br>
 Originally developed as part of Red Hat's Pendrive project, this framework has been extracted as open-source to benefit the broader OpenShift community.
 
-## Features
-
-- **Generic validation framework**: Base classes for creating custom health check rules
-- **OpenShift integration**: Direct node access via `oc debug` with persistent connections
-- **Domain organization**: Group related rules into domains (hardware, network, linux, storage)
-- **Parallel execution**: Run rules concurrently across multiple nodes
-- **Secret filtering**: Automatic redaction of sensitive data from outputs
-- **Extensible**: Easy to add new rules and domains
+Rules are organized by topic into domains (hardware, network, linux, storage).
 
 ## Installation
 
+**Prerequisites:**
+- Python >= 3.12
+- pip (Python package installer)
+
+### Connected Environment
+
+**Install the framework:**
 ```bash
 pip install in-cluster-checks
 ```
 
-## Quick Start
+Or if `pip` is not found, use:
+```bash
+python3 -m pip install in-cluster-checks
+```
 
-First, ensure you're logged into your OpenShift cluster:
+### Disconnected Environment
+
+For environments without internet access:
+
+1. **Download the package** on a connected machine:
+   ```bash
+   pip download in-cluster-checks --dest ./packages
+   # Or: python3 -m pip download in-cluster-checks --dest ./packages
+   ```
+
+2. **Transfer the packages** to the disconnected environment (copy the `./packages` directory)
+
+3. **Install from local packages**:
+   ```bash
+   pip install --no-index --find-links=./packages in-cluster-checks
+   # Or: python3 -m pip install --no-index --find-links=./packages in-cluster-checks
+   ```
+
+## Running in-cluster-checks
+
+### Cluster Login
+Ensure you're logged into your OpenShift cluster.
+
+You can login by one of the following options:
+
+#### Login with Username and Password:
+
+Use the cluster API URL and your credentials.
 
 ```bash
 oc login https://api.your-cluster.com:6443
 ```
+#### Login Using a Kubeconfig File:
 
-Then run the checks:
+If you already have a kubeconfig file with credentials:
+```bash
+export KUBECONFIG=/path/to/kubeconfig
+```
+
+### Usage Examples
+You can run in-cluster-checks with the following options:
 
 ```bash
-# Run all checks (output saved to ./cluster-checks.json)
+# Run all checks. Use --output to save run results to ./cluster-checks.json
 in-cluster-checks --output ./cluster-checks.json
+
+# Run a specific rule (disables secret filtering)
+in-cluster-checks --debug-rule "check_disk_usage"
 
 # Run with debug logging
 in-cluster-checks --log-level DEBUG
-
-# Debug a specific rule (disables secret filtering)
-in-cluster-checks --debug-rule "check_disk_usage"
-
-# List available domains
-in-cluster-checks --list-domains
-
-# List all available rules
-in-cluster-checks --list-rules
 ```
 
-## Programmatic Usage
-
-You can also use the framework programmatically in your Python code:
-
-```python
-from in_cluster_checks.runner import InClusterCheckRunner
-from pathlib import Path
-
-# Create runner with default configuration
-runner = InClusterCheckRunner()
-
-# Or customize configuration
-runner = InClusterCheckRunner(
-    max_workers=75,           # Maximum concurrent workers (default: 50)
-    debug_rule_flag=False,    # Enable debug mode (default: False)
-    debug_rule_name="",       # Specific rule to debug (default: "")
-)
-
-# Run checks and save results
-output_path = Path("./results/cluster-checks.json")
-runner.run(output_path=output_path)
-```
-
-### Configuration Options
-
-- **max_workers** (int, default: 50): Maximum number of concurrent workers for parallel execution
-- **debug_rule_flag** (bool, default: False): Enable debug mode with verbose output
-- **debug_rule_name** (str, default: ""): Name of specific rule to run in debug mode
-
-**Note:** When debug mode is enabled:
-- Only the specified rule runs
-- Secret filtering is automatically disabled
-- JSON output is disabled (real-time console output only)
-- Detailed command execution logs are printed
-
-## Architecture
-
-### Core Components
-
-- **Rule**: Base class for validation rules
-- **RuleDomain**: Orchestrator for groups of related rules
-- **Operator**: Command execution abstraction
-- **NodeExecutor**: Execute commands on cluster nodes via `oc debug`
-- **LoggerInterface**: Pluggable logging abstraction
-
-### Built-in Domains
-
-- **Hardware**: Disk usage, memory, CPU, temperature validation
-- **Network**: OVS, DNS, bonding checks
-- **Linux**: Systemd, SELinux, clock synchronization
-- **Storage**: Storage validation rules
-- **Hardware/Firmware Details**: Informational collectors for hardware inventory
-
-## Creating Custom Rules
-
-```python
-from in_cluster_checks.core.rule import Rule
-from in_cluster_checks.core.rule_result import RuleResult
-from in_cluster_checks.utils.enums import Status, Objectives
-
-class MyCustomRule(Rule):
-    """Example custom validation rule."""
-
-    objective_hosts = [Objectives.ALL_NODES]
-
-    def set_document(self):
-        self.unique_name = "my_custom_rule"
-        self.title = "My Custom Validation Rule"
-
-    def run_rule(self):
-        # Run validation logic
-        return_code, stdout, stderr = self.run_cmd("my-command")
-
-        if return_code == 0:
-            return RuleResult.passed("Validation passed")
-        else:
-            return RuleResult.failed(f"Validation failed: {stderr}")
-```
-
-## Requirements
-
-- Python 3.9+
-- OpenShift CLI (`oc`) installed and configured
-- Access to OpenShift cluster
-
-## Development
-
+To see all available options, run:
 ```bash
-# Clone repository
-git clone https://github.com/sprizend-rh/in-cluster-checks.git
-cd in-cluster-checks
-
-# Install development dependencies
-pip install -e ".[dev]"
-
-# Run tests
-pytest
-
-# Run pre-commit checks
-pre-commit run --all-files
+in-cluster-checks --help
 ```
 
-## License
 
-GNU General Public License v3.0 or later
+**Note:** To control execution performance, use `--max-workers` to set the maximum number of parallel workers (default: 50).
 
-See [LICENSE](LICENSE) for full text.
+
+
 
 ## Contributing
 
 Contributions are welcome! Please feel free to submit pull requests or open issues.
+For more information about contribution, check out for CONTRIBUTING.md 
+<!-- put CONTRIBUTING.md  as link -->
 
 ## Related Projects
 
@@ -180,3 +115,9 @@ Contributions are welcome! Please feel free to submit pull requests or open issu
 ## Acknowledgments
 
 This framework was extracted from Red Hat's Pendrive project. The core validation infrastructure is generic and contains no confidential logic, making it suitable for open-source release to benefit the wider OpenShift community.
+
+## License
+<!-- Update to BSD after pull -->
+GNU General Public License v3.0 or later
+
+See [LICENSE](LICENSE) for full text.

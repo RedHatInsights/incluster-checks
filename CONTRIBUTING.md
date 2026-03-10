@@ -14,13 +14,14 @@ Thank you for your interest in contributing! This document provides guidelines f
 - [Code Style](#code-style)
 - [Submitting Changes](#submitting-changes)
 
+<!-- can be deleted -->
 ## Code of Conduct
 
 This project follows a code of conduct. By participating, you are expected to uphold this code. Please be respectful and professional in all interactions.
 
 ## Getting Started
 
-1. **Fork the repository** on GitHub
+1. **Fork the repository** on GitHub <!-- do we want to give gitlab url? --> 
 2. **Clone your fork** locally:
    ```bash
    git clone https://github.com/YOUR-USERNAME/in-cluster-checks.git
@@ -41,6 +42,7 @@ This project follows a code of conduct. By participating, you are expected to up
    ```
 
 2. **Install development dependencies**:
+    <!-- what is ".[dev]"? will it install requirements as Python >= 3.12? -->
    ```bash
    pip install -e ".[dev]"
    ```
@@ -56,30 +58,90 @@ This project follows a code of conduct. By participating, you are expected to up
    pre-commit run --all-files
    ```
 
-## Making Changes
+## Making Code Changes
 
 1. **Create a new branch**:
    ```bash
-   git checkout -b feature/your-feature-name
+   git checkout -b YOUR-FEATURE-NAME
    ```
 
 2. **Make your changes** following the code style guidelines
 
 3. **Test your changes**:
+    <!-- do we want to add proceedure how to test the code on env'? -->
    ```bash
    pytest
    pre-commit run --all-files
    ```
 
 4. **Commit your changes**:
+    <!-- should commit be related to JIRA ticket which can be more informative about the contribution? -->
    ```bash
    git add .
    git commit -m "Description of changes"
    ```
 
+   <!-- we should mention 'git pull' command and also 'git push' -->
+
+## Understanding the Rules Hierarchy
+
+The in-cluster-checks framework is organized into a three-level hierarchy:
+
+### 1. **Rules** (Bottom Level)
+Individual validation checks that run on cluster nodes. Each rule:
+- Inherits from the `Rule` base class
+- Executes specific commands via `oc debug`
+- Returns pass/fail results with diagnostic information
+- Targets specific node types (masters, workers, or all nodes)
+
+**Location:** `src/in_cluster_checks/rules/<domain>/`
+
+**Example:** `CheckDiskUsage`, `CheckNetworkConnectivity`, `CheckKernelVersion`
+
+### 2. **Domains** (Middle Level)
+Logical groupings of related rules. Each domain:
+- Inherits from the `RuleDomain` base class
+- Contains thematically related rules (e.g., hardware, network, storage)
+- Returns a list of rule classes to execute
+
+**Location:** `src/in_cluster_checks/domains/`
+
+**Example Domains:**
+- `hw` - Hardware validation rules (disk, CPU, memory)
+- `network` - Network connectivity and configuration rules
+- `linux` - OS-level checks (kernel, packages, services)
+- `storage` - Storage and filesystem validation
+
+### 3. **Runner** (Top Level)
+The main orchestrator that:
+- Auto-discovers all domain classes in the `domains` package
+- Executes rules in parallel across multiple nodes
+- Aggregates results and generates JSON output
+- Manages `oc debug` connections and cleanup
+
+**Location:** `src/in_cluster_checks/runner.py`
+
+### Execution Flow
+
+```
+Runner (discovers domains)
+  └─> Domain 1 (e.g., HWValidationDomain)
+       ├─> Rule 1 (e.g., CheckDiskUsage)
+       ├─> Rule 2 (e.g., CheckCPUInfo)
+       └─> Rule 3 (e.g., CheckMemory)
+  └─> Domain 2 (e.g., NetworkValidationDomain)
+       ├─> Rule 1 (e.g., CheckNetworkConnectivity)
+       └─> Rule 2 (e.g., CheckDNSResolution)
+```
+
+When adding new functionality:
+- **Adding a check** → Create a new Rule in an existing domain
+- **Adding a new category** → Create a new Domain with its rules
+- **No registration needed** → The Runner auto-discovers everything
+
 ## Adding New Rules
 
-To add a new validation rule:
+To add a new validation rule follow the following guidelines:
 
 ### 1. Create the Rule Class
 
@@ -99,7 +161,7 @@ class YourNewRule(Rule):
 
     def set_document(self):
         """Set rule metadata."""
-        self.unique_name = "your_new_rule"  # Must be unique!
+        self.unique_name = "your_new_rule"  # Must be unique without spaces in small letters!
         self.title = "Human-readable rule title"
 
     def run_rule(self):
@@ -125,13 +187,13 @@ class HWValidationDomain(RuleDomain):
     def get_rule_classes(self) -> List[type]:
         return [
             # ... existing rules ...
-            YourNewRule,  # Add your rule here
+            YourNewRule,  # Add your rule class here
         ]
 ```
 
 ### 3. Write Tests
 
-Create tests in `tests/rules/`:
+Create related tests in `tests/rules/`:
 
 ```python
 def test_your_new_rule():
@@ -190,7 +252,7 @@ The `InClusterCheckRunner` automatically discovers all domains in the `domains` 
 ## Testing Your Changes
 
 ### Manual Testing
-
+<!-- is there an option for the developer to edit code on IDE and copy to the env' or we expect them to develop using 'vi' on the env' itself? -->
 Test your changes manually using the CLI or programmatically:
 
 ```bash
@@ -213,7 +275,7 @@ runner.run(output_path=Path('./test-results.json'))
 **Debug Mode Features:**
 - Only runs the specified rule
 - Shows detailed command execution output
-- Disables secret filtering for easier debugging
+- Disables secret filtering for easier debugging <!-- we should explain how to do it -->
 - Disables JSON output (shows results in console)
 
 ### Automated Testing
@@ -231,7 +293,7 @@ pytest tests/rules/hw/test_hw_validations.py -v
 ```
 
 ### Run with Coverage
-
+<!-- what does it mean? -->
 ```bash
 pytest --cov=src/in_cluster_checks --cov-report=term-missing
 ```
@@ -274,6 +336,17 @@ pre-commit run --all-files
   - Functions/methods: `snake_case`
   - Constants: `UPPER_CASE`
   - Private: prefix with `_`
+- **Function return values**: When unpacking function returns, accept exactly the values the function returns
+  - Match the number of return values when unpacking tuples
+  - Don't use `_` to ignore values unless you genuinely don't need them
+  - Example:
+    ```python
+    # Good - unpacks all three values that run_cmd() returns
+    return_code, stdout, stderr = self.run_cmd("df -h")
+
+    # Bad - ignoring stderr when the function returns it
+    return_code, stdout, _ = self.run_cmd("df -h")  # Only if stderr is truly unused
+    ```
 
 ### Code Quality Guidelines
 
@@ -322,7 +395,7 @@ When you find similar code in multiple places:
 - Consistent behavior across all code paths
 - Easier to test and maintain
 - Better separation of concerns
-
+<!-- I don't think it's a good example... -->
 ### Example
 
 ```python
@@ -355,7 +428,7 @@ class MyNewRule(Rule):
         return Rule.RuleResult.passed("Validation passed")
 ```
 
-## Submitting Changes
+## Submitting Code Changes
 
 ### 1. Update Your Branch
 
@@ -367,7 +440,7 @@ git rebase upstream/main
 ### 2. Push to Your Fork
 
 ```bash
-git push origin feature/your-feature-name
+git push origin YOUR-FEATURE-NAME
 ```
 
 ### 3. Create Pull Request
@@ -402,7 +475,7 @@ Before submitting, ensure:
 
 ## Questions?
 
-- **Issues**: Open an issue on GitHub for bugs or feature requests
+- **Issues**: Open an issue on GitHub for bugs or feature requests <!-- I should we explain how to do it? -->
 - **Discussions**: Use GitHub Discussions for questions
 - **Email**: Contact maintainers for private concerns
 

@@ -127,12 +127,15 @@ class ParallelRunner:
             if rules_list:
                 # Get rule name from first instance
                 rule_name = rules_list[0].get_unique_name()
+                is_enabled = rules_list[0].is_enabled_for_active_profile()
+                if is_enabled:
+                    # Run all instances of this rule in parallel
+                    ParallelRunner.run_operator_on_all_hosts(rules_list, target, printer)
 
-                # Run all instances of this rule in parallel
-                ParallelRunner.run_operator_on_all_hosts(rules_list, target, printer)
-
-                # Log completion after all nodes finish for this rule
-                logger.info(f"Completed rule '{rule_name}' on all applicable nodes")
+                    # Log completion after all nodes finish for this rule
+                    logger.info(f"Completed rule '{rule_name}' on all applicable nodes")
+                else:
+                    logger.info(f"Rule '{rule_name}' is disabled for profile '{global_config.active_profile}'")
 
     @staticmethod
     def run_operator_on_all_hosts(operator_list: List[Any], target: Callable, printer, **kwargs):
@@ -323,6 +326,7 @@ class ParallelRunner:
             start_time = time.time()
 
             # Check prerequisites first
+
             prerequisite_result = hosted_rule_instance.is_prerequisite_fulfilled()
 
             if not prerequisite_result.fulfilled:

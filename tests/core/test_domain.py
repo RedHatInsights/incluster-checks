@@ -8,13 +8,33 @@ from unittest.mock import Mock, patch
 import pytest
 
 from in_cluster_checks.core.domain import RuleDomain
+from in_cluster_checks.core.executor import OrchestratorExecutor
 from in_cluster_checks.core.rule import (
     OrchestratorRule,
     RuleResult,
     Rule,
 )
 from in_cluster_checks.utils.enums import Objectives
-from in_cluster_checks.core.executor import OrchestratorExecutor
+from in_cluster_checks import global_config
+from profiles.profile import Profiles
+
+
+@pytest.fixture(autouse=True)
+def setup_profiles():
+    """Set up profiles for all tests in this module."""
+    # Create minimal profile configuration
+    profile = Profiles()
+    profile['general'] = {'general'}  # Minimal profile: general includes only itself
+
+    # Set global config
+    global_config.profiles_hierarchy = profile
+    global_config.active_profile = "general"
+
+    yield
+
+    # Cleanup
+    global_config.profiles_hierarchy = Profiles()
+    global_config.active_profile = ""
 
 
 class MockRule(Rule):

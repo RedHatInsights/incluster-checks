@@ -18,20 +18,26 @@ Based on the description, choose ONE type (see "Rule Types" in the linked guidel
 ## Step 2: Create the Rule Class
 
 Place the rule in the appropriate file under `src/in_cluster_checks/rules/<domain>/`.
+For example: `src/in_cluster_checks/rules/hw/hw_validations.py`
+
 Use an existing domain folder or create a new one with an `__init__.py`.
 
 ### Standard Rule Template
 
 ```python
-from in_cluster_checks.core.rule import Rule, RuleResult, PrerequisiteResult
+from in_cluster_checks.core.rule import Rule
+from in_cluster_checks.core.rule_result import RuleResult, PrerequisiteResult
 from in_cluster_checks.utils.enums import Objectives
 
 class MyRuleName(Rule):
-    """One-line description of what this rule validates."""
+    """Rule description - what this rule verifies."""
 
-    objective_hosts = [Objectives.ALL_NODES]
-    unique_name = "my_rule_name"
-    title = "Description shown in reports"
+    objective_hosts = [Objectives.ALL_NODES]  # or MASTERS, WORKERS, etc.
+    unique_name = "my_rule_name"  # Must be unique, lowercase with underscores
+    title = "Human-readable rule title"
+    links = [
+        "https://link-to-documentation-or-kb-article",
+    ]
 
     def is_prerequisite_fulfilled(self):
         """Optional: Check if rule can run on this node."""
@@ -41,15 +47,21 @@ class MyRuleName(Rule):
         return PrerequisiteResult.met()
 
     def run_rule(self):
-        return_code, out, err = self.run_cmd("some_command")
+        """Execute the rule logic."""
+        return_code, stdout, stderr = self.run_cmd("your-command")
 
-        if validation_failed:
-            return RuleResult.failed("Description of what failed")
-        elif has_warnings:
-            return RuleResult.warning("Description of warning")
+        # Parse output and determine pass/fail
+        if return_code == 0:
+            return RuleResult.passed("Rule passed")
         else:
-            return RuleResult.passed()
+            return RuleResult.failed(f"Rule failed: {stderr}")
 ```
+
+**Best Practices:**
+- Use descriptive `unique_name` values (e.g., `is_disk_space_sufficient`, `is_network_reachable`)
+- Include helpful error messages in failed results
+- Use `RuleResult.warning()` for non-critical issues
+- Parse command output carefully and handle edge cases
 
 ### OrchestratorRule Template (multi-node comparison)
 
@@ -100,14 +112,14 @@ If a new domain is needed, create it following `hw_domain.py` as a template.
 
 ## Step 4: Write Tests
 
-Create tests in `tests/unit/rules/<domain>/test_<file>.py`:
+Create tests in `tests/rules/<domain>/test_<file>.py`:
 
 ```python
 import pytest
 
 from in_cluster_checks.rules.<domain>.<file> import MyRuleName
-from tests.unit.pytest_tools.test_operator_base import CmdOutput
-from tests.unit.pytest_tools.test_rule_base import (
+from tests.pytest_tools.test_operator_base import CmdOutput
+from tests.pytest_tools.test_rule_base import (
     RuleTestBase,
     RuleScenarioParams,
 )
@@ -169,7 +181,7 @@ RuleScenarioParams(
 
 ```bash
 source .venv/bin/activate
-pytest tests/unit/rules/<domain>/test_<file>.py -v
+pytest tests/rules/<domain>/test_<file>.py -v
 ```
 
 ---
@@ -189,5 +201,5 @@ pytest tests/unit/rules/<domain>/test_<file>.py -v
 - [ ] Tests written with both `scenario_passed` and `scenario_failed`
 - [ ] Domain test updated to include new rule
 - [ ] All command strings in tests match EXACTLY what the rule executes
-- [ ] Tests pass: `pytest tests/unit/ -v`
+- [ ] Tests pass: `pytest tests/ -v`
 - [ ] Imports at top of file, following PEP 8 order

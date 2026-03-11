@@ -65,8 +65,11 @@ All rules use the `Status` enum (`utils/enums.py`):
 
 ## Existing Domains
 
-- **HwDomain** (`domains/hw_domain.py`): Hardware checks (disk, memory, CPU)
-- **NetworkDomain** (`domains/network_domain.py`): Network checks (OVS, DNS, bonding)
-- **LinuxDomain** (`domains/linux_domain.py`): Linux system checks (systemd, SELinux, clock)
-- **StorageDomain** (`domains/storage_domain.py`): Storage validation
-- **HwFwDetailsDomain** (`domains/hw_fw_details_domain.py`): Hardware/firmware information collection
+- **HWValidationDomain** (`domains/hw_domain.py`): Hardware checks (disk usage, CPU, memory, temperature)
+- **NetworkValidationDomain** (`domains/network_domain.py`): Network connectivity and configuration (OVN-K8s, OVS, Whereabouts)
+- **LinuxValidationDomain** (`domains/linux_domain.py`): OS-level checks (kernel, packages, services)
+- **StorageValidationDomain** (`domains/storage_domain.py`): Storage and filesystem checks
+- **K8sValidationDomain** (`domains/k8s_domain.py`): Kubernetes-specific checks
+- **EtcdValidationDomain** (`domains/etcd_domain.py`): etcd cluster health checks
+- **SecurityValidationDomain** (`domains/security_domain.py`): Security-related checks (certificate expiry)
+- **HwFwDetailsDomain** (`domains/hw_fw_details_domain.py`): Hardware and firmware inventory collection

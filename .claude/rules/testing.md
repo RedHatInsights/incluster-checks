@@ -11,27 +11,55 @@ pytest
 ## Testing Methods
 - **Pre-commit Checks**: Run `pre-commit run --all-files` to validate code quality, formatting, and tests
 - **Unit Tests**: Run `pytest` (requires venv activation)
-- **Coverage Check**: `pytest --cov=src/in_cluster_checks --cov-report=term-missing`
+- **Coverage Check**: `pytest --cov=src/in_cluster_checks --cov-report=term-missing` - measures which lines of code are executed during tests, shows missing coverage
 
-## Testing Workflow
+## Test Commands
 
-1. **Local unit tests**:
-   - Activate venv: `source .venv/bin/activate`
-   - Run pre-commit: `pre-commit run --all-files`
-   - Run tests: `pytest --cov=src/in_cluster_checks --cov-report=term-missing`
+**Run all tests:**
+```bash
+source .venv/bin/activate
+pytest
+```
 
-2. **Integration testing** (requires live cluster):
-   - Ensure `oc login` to a test cluster
-   - Run: `in-cluster-checks --output ./test-results.json`
-   - Verify JSON output format
+**Run with coverage:**
+```bash
+pytest --cov=src/in_cluster_checks --cov-report=term-missing
+```
+
+**Run specific test file:**
+```bash
+pytest tests/rules/hw/test_hw_validations.py -v
+```
+
+**Run specific test class:**
+```bash
+pytest tests/rules/hw/test_hw_validations.py::TestCheckDiskUsage -v
+```
+
+**Run pre-commit checks (includes tests):**
+```bash
+pre-commit run --all-files
+```
+
+## Manual Testing
+
+Test specific rules using the CLI:
+
+```bash
+# Test a specific rule in debug mode (disables secret filtering)
+in-cluster-checks --debug-rule your_rule_name
+
+# Run all checks with debug logging
+in-cluster-checks --log-level DEBUG --output ./test-results.json
+```
 
 ## Test Structure
 
 Tests are organized by component:
-- `tests/unit/core/`: Core framework tests
-- `tests/unit/domains/`: Domain orchestrator tests
-- `tests/unit/rules/`: Individual rule tests
-- `tests/integration/`: End-to-end integration tests (requires cluster access)
+- `tests/core/`: Core framework tests
+- `tests/domains/`: Domain orchestrator tests
+- `tests/rules/`: Individual rule tests
+- `tests/pytest_tools/`: Test utilities and base classes
 
 ## Writing Rule Tests
 
@@ -40,9 +68,9 @@ Use the `RuleTestBase` framework for consistent rule testing:
 ```python
 import pytest
 
-from in_cluster_checks.rules.hw.disk_usage import CheckDiskUsage
-from tests.unit.pytest_tools.test_operator_base import CmdOutput
-from tests.unit.pytest_tools.test_rule_base import (
+from in_cluster_checks.rules.hw.hw_validations import CheckDiskUsage
+from tests.pytest_tools.test_operator_base import CmdOutput
+from tests.pytest_tools.test_rule_base import (
     RuleTestBase,
     RuleScenarioParams,
 )
@@ -53,21 +81,29 @@ class TestCheckDiskUsage(RuleTestBase):
 
     tested_type = CheckDiskUsage
 
-    good_output = "Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1       100G   50G   50G  50% /"
-    bad_output = "Filesystem      Size  Used Avail Use% Mounted on\n/dev/sda1       100G   95G    5G  95% /"
+    df_output_ok = """Filesystem     Type      Size  Used Avail Use% Mounted on
+/dev/sda1      ext4       50G   30G   18G  63% /
+/dev/sdb1      xfs       100G   50G   46G  53% /data
+"""
+
+    df_output_error = """Filesystem     Type      Size  Used Avail Use% Mounted on
+/dev/sda1      ext4       50G   47G    1G  98% /
+"""
+
+    df_cmd = "df -hT -x tmpfs -x devtmpfs -x overlay -x composefs -x efivarfs -x squashfs -x iso9660"
 
     scenario_passed = [
         RuleScenarioParams(
-            "disk usage below threshold",
-            {"df -h": CmdOutput(good_output)},
+            "disk usage below warning threshold",
+            {df_cmd: CmdOutput(df_output_ok)},
         ),
     ]
 
     scenario_failed = [
         RuleScenarioParams(
-            "disk usage above threshold",
-            {"df -h": CmdOutput(bad_output)},
-            failed_msg="Disk usage above 90%",
+            "disk usage above error threshold (>90%)",
+            {df_cmd: CmdOutput(df_output_error)},
+            failed_msg="Disk usage critical:\n/dev/sda1 (mounted on: /) usage is 98% (threshold: 90%)",
         ),
     ]
 

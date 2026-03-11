@@ -4,12 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-In-Cluster Checks is a generic open-source framework for running health validation rules directly on OpenShift cluster nodes using `oc debug`. Originally extracted from Red Hat's internal Pendrive project, this framework provides infrastructure for parallel rule execution, prerequisite checking, and Insights-compatible JSON output.
+In-Cluster Checks is a generic open-source framework for running health check rules directly on OpenShift cluster nodes using `oc debug`. Originally extracted from Red Hat's internal Pendrive project, this framework provides infrastructure for parallel rule execution, prerequisite checking, and Insights-compatible JSON output.
 
 **Key Features:**
-- Generic validation framework with base classes for custom health check rules
+- Generic framework with base classes for custom health check rules
 - OpenShift integration via `oc debug` with persistent connections
-- Domain-based organization (hardware, network, linux, storage)
+- Domain-based organization (hw, network, linux, storage, k8s, etcd, security, hw_fw_details)
 - Parallel execution across multiple nodes
 - Secret filtering for sensitive data
 - Extensible architecture for custom rules and domains
@@ -54,7 +54,7 @@ in-cluster-checks --output ./cluster-checks.json
 in-cluster-checks --log-level DEBUG
 
 # Debug a specific rule (disables secret filtering)
-in-cluster-checks --debug-rule "check_disk_usage"
+in-cluster-checks --debug-rule "is_disk_space_sufficient"
 
 # List available domains
 in-cluster-checks --list-domains
@@ -73,3 +73,8 @@ The framework is built around these core components:
 - `src/in_cluster_checks/cli.py`: Command-line interface entry point
 
 See [@.claude/rules/in-cluster-check.md](rules/in-cluster-check.md) for detailed architecture documentation.
+
+## Additional Resources
+
+- **Project Wiki**: https://github.com/sprizend-rh/in-cluster-checks/wiki - Detailed knowledge sharing about rules and documentation
+- **Contributing Guide**: See [CONTRIBUTING.md](../CONTRIBUTING.md) for development setup and contribution guidelines

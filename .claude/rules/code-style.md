@@ -1,5 +1,16 @@
 # Code Style
 
+## Code Style Guidelines
+
+- **Line length**: 120 characters
+- **Docstrings**: Use Google-style docstrings
+- **Type hints**: Use type hints where appropriate (Python 3.12+)
+- **Naming**:
+  - Classes: `PascalCase`
+  - Functions/methods: `snake_case`
+  - Constants: `UPPER_CASE`
+  - Private: prefix with `_`
+
 ## Import Organization
 
 **ALWAYS place all imports at the top of the file** - never add imports in the middle of functions or methods.

@@ -46,12 +46,20 @@ For environments without internet access:
    # Or: python3 -m pip download in-cluster-checks --dest ./packages
    ```
 
-2. **Transfer the packages** to the disconnected environment (copy the `./packages` directory)
+2. **Transfer the packages** to the disconnected environment
+
+   Copy the entire `./packages` directory to the disconnected machine. You can place it anywhere, but note the location for the next step.
 
 3. **Install from local packages**:
    ```bash
+   # If packages are in the current directory:
    pip install --no-index --find-links=./packages in-cluster-checks
-   # Or: python3 -m pip install --no-index --find-links=./packages in-cluster-checks
+
+   # Or specify the full path to where you copied them:
+   pip install --no-index --find-links=/path/to/packages in-cluster-checks
+
+   # Using python3 -m pip:
+   # python3 -m pip install --no-index --find-links=./packages in-cluster-checks
    ```
 
 ## Running in-cluster-checks

@@ -9,6 +9,7 @@ from typing import List
 
 from in_cluster_checks.core.domain import RuleDomain
 from in_cluster_checks.rules.security.certificate_expiry import NodeCertificateExpiry
+from in_cluster_checks.rules.security.tls_certificate_expiry import TlsCertificateExpiry
 
 
 class SecurityValidationDomain(RuleDomain):
@@ -31,4 +32,5 @@ class SecurityValidationDomain(RuleDomain):
         """
         return [
             NodeCertificateExpiry,
+            TlsCertificateExpiry,
         ]

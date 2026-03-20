@@ -400,7 +400,6 @@ class AllDeploymentsAvailable(OrchestratorRule):
 
     def run_rule(self):
         """Check if all deployments have Available condition set to True."""
-        # Get all deployments from all namespaces
         deployment_objects = self.get_all_deployments()
 
         if not deployment_objects:
@@ -433,7 +432,7 @@ class AllDeploymentsAvailable(OrchestratorRule):
                     f"{namespace}/{name} - Status: {available_condition.get('status')}, "
                     f"Reason: {reason}, Message: {message}"
                 )
-        # Check if there are any deployments that are not available
+
         if unavailable_deployments:
             message = "Following deployments are not available:\n  "
             message += "\n  ".join(unavailable_deployments)
@@ -451,14 +450,13 @@ class CheckDeploymentsReplicaStatus(OrchestratorRule):
 
     def run_rule(self):
         """Check if all deployments have desired number of replicas ready."""
-        # Get all deployments from all namespaces
         deployment_objects = self.get_all_deployments()
 
         if not deployment_objects:
             return RuleResult.failed("No deployments found in cluster")
 
         problematic_deployments = []
-        # Check each deployment for replica counts
+
         for item in deployment_objects:
             item_data = item.as_dict()
             metadata = item_data.get("metadata", {})
@@ -489,7 +487,7 @@ class CheckDeploymentsReplicaStatus(OrchestratorRule):
                     f"{namespace}/{name} - Desired: {desired_replicas}, Updated: {updated_replicas} "
                     "(rollout in progress)"
                 )
-        # Check if there are any deployments that have replica count issues
+
         if problematic_deployments:
             message = "Following deployments have replica count issues:\n  "
             message += "\n  ".join(problematic_deployments)

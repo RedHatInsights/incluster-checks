@@ -12,6 +12,7 @@ import sys
 from pathlib import Path
 
 from in_cluster_checks.runner import InClusterCheckRunner
+from profiles.loader import ProfileLoader
 
 
 def setup_logging(level: str) -> None:
@@ -177,12 +178,18 @@ def main() -> None:
         help="List all available rules by domain and exit",
     )
 
+    # Get available profiles for the argument choices
+    try:
+        available_profiles = ProfileLoader.get_available_profiles()
+    except Exception:
+        available_profiles = None
+
     parser.add_argument(
         "--profile",
         type=str,
+        choices=available_profiles,
         default="general",
-        help="Active profile used to filter rules according to solution or use case (default: general). "
-        "Examples: general, nvidia, ai, telco",
+        help="Active profile used to filter rules according to solution or use case (default: general)",
     )
 
     args = parser.parse_args()

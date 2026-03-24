@@ -999,12 +999,7 @@ class TestAllStatefulsetsReady(RuleTestBase):
             },
             failed_msg="Following statefulsets are not ready:\n"
             "  default/statefulset1 - Desired: 3, Ready: 0",
-        ),
-        RuleScenarioParams(
-            "no statefulsets found in cluster",
-            tested_object_mock_dict={"get_all_statefulsets": Mock(return_value=[])},
-            failed_msg="No statefulsets found in cluster",
-        ),
+        ),        
         RuleScenarioParams(
             "statefulsets in mixed states",
             tested_object_mock_dict={
@@ -1037,6 +1032,14 @@ class TestAllStatefulsetsReady(RuleTestBase):
         ),
     ]
 
+    scenario_warning = [
+        RuleScenarioParams(
+            "no statefulsets found in cluster",
+            tested_object_mock_dict={"get_all_statefulsets": Mock(return_value=[])},
+            failed_msg="No statefulsets found in cluster",
+        ),
+    ]
+
     @pytest.mark.parametrize("scenario_params", scenario_passed)
     def test_scenario_passed(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
@@ -1044,3 +1047,7 @@ class TestAllStatefulsetsReady(RuleTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_warning)
+    def test_scenario_warning(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_warning(self, scenario_params, tested_object)

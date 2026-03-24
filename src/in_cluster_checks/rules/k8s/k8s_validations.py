@@ -512,7 +512,7 @@ class AllStatefulsetsReady(OrchestratorRule):
         statefulset_objects = self.get_all_statefulsets()
 
         if not statefulset_objects:
-            return RuleResult.failed("No statefulsets found in cluster")
+            return RuleResult.warning("No statefulsets found in cluster")
 
         not_ready_statefulsets = []
 

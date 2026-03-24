@@ -389,6 +389,12 @@ class StructedPrinter:
                     if "system_info" in result:
                         host_result["system_info"] = result["system_info"]
 
+                    if "table_headers" in result:
+                        host_result["table_headers"] = result["table_headers"]
+
+                    if "table_data" in result:
+                        host_result["table_data"] = result["table_data"]
+
                     if "extra" in result:
                         host_result["extra"] = result["extra"]
 

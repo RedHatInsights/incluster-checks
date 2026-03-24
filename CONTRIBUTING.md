@@ -4,6 +4,7 @@ Thank you for your interest in contributing! This document provides guidelines f
 
 ## Table of Contents
 
+- [About In-Cluster Checks](#about-in-cluster-checks)
 - [Understanding the Framework](#understanding-the-rules-hierarchy)
 - [Development Setup](#development-setup)
 - [Making Code Changes](#making-code-changes)
@@ -13,6 +14,36 @@ Thank you for your interest in contributing! This document provides guidelines f
 - [Testing](#testing)
 - [Submitting Code Changes](#submitting-code-changes)
 - [Questions](#questions)
+
+
+## About In-Cluster Checks
+
+In-Cluster Checks is a generic framework for running health validation rules **directly on OpenShift cluster nodes in real-time** using `oc debug`.
+
+**What makes it special:**
+
+This approach offers:
+
+
+- **Direct node access** - Commands run on actual nodes, not from external collectors
+- **On-the-fly execution** - No pre-collected data needed; validations happen when you run them
+- **Real-time diagnostics** - Immediate feedback on node health and configuration
+- **Relevant rule execution** - Only relevant rules run based on prerequisite checks
+- **Fast execution** - Parallel rule execution across multiple nodes
+- **Easy debugging** - Full visibility into commands executed for each rule
+
+The framework has been extracted from **Pendrive** project as open-source to benefit the broader OpenShift community, providing a generic infrastructure for anyone to build custom health check rules.
+
+### ⚠️ Important Safety Disclaimer
+
+**Because In-Cluster Checks runs commands directly on cluster nodes, you must carefully review your code before submitting:**
+
+- **Use read-only commands only** - Rules should observe and report, never modify cluster state
+- **No destructive operations** - Do not use commands that modify, delete, or change any data on the cluster
+- **Review every command** - Before pushing your code, verify that all commands are safe and non-destructive
+- **Test in non-production first** - Always test new rules in development/test environments
+
+Your responsibility as a contributor is to ensure that the commands in your rules cannot cause harm to the cluster, even if executed repeatedly or in parallel.
 
 
 ## Understanding the Rules Hierarchy
@@ -117,6 +148,10 @@ class YourNewRule(Rule):
 
 **REQUIRED** for all `run_cmd()`, `get_output_from_run_cmd()`, and `run_rsh_cmd()` to prevent command injection.
 
+**Why is SafeCmdString critical?**
+
+SafeCmdString provides multi-layer protection against shell injection attacks. Without it, user-controlled values or dynamic data could be interpreted as shell commands, potentially allowing execution of arbitrary commands on cluster nodes. SafeCmdString validates all variables inserted into commands, ensuring they match safe patterns (paths, identifiers, etc.) and cannot contain shell metacharacters or command separators. This is essential because In-Cluster Checks runs commands directly on production cluster nodes.
+
 **Examples:**
 ```python
 # Static command
@@ -185,6 +220,14 @@ This validates variables to prevent shell injection.
 - Include helpful error messages in failed results
 - Use `RuleResult.warning()` for non-critical issues
 - Parse command output carefully and handle edge cases
+
+**Command Execution Best Practices:**
+- **Run simple commands** - Execute basic commands and parse the output in Python
+- **Parse in Python, not in shell** - Use Python's string methods, regex, and parsing libraries instead of chaining multiple shell commands
+- **Avoid command chaining** - Don't use multiple pipes (`|`) with `grep`, `awk`, `sed`, etc.
+- **Single grep is acceptable** - Using one `grep` to filter relevant lines is fine (e.g., `cat /proc/meminfo | grep MemTotal`)
+- **Never use `awk`** - Parse text in Python instead of using `awk` in commands
+
 
 ### 2. Add Rule to Domain
 
@@ -375,8 +418,14 @@ pytest tests/rules/hw/test_hw_validations.py::TestCheckDiskUsage -v
 ```
 
 ### Manual Testing
+Rules that work on one cluster configuration might fail or produce incorrect results on others. Therefore, **test new rules on various environments** to verify your code handles different cluster configurations:
 
-Test specific rules using the CLI:
+- **Different versions** - Test on multiple versions when possible
+- **Different node types** - Test on worker nodes, master nodes, and different infrastructure platforms (bare metal, VMs, cloud providers)
+- **Different configurations** - Verify on nodes with varying hardware specs and operating system versions (RHCOS/RHEL)
+- **Edge cases** - Test on nodes where certain features may not be available (e.g., cpufreq files missing on VMs)
+
+**Testing commands:**
 
 ```bash
 # Test a specific rule in debug mode (disables secret filtering)
@@ -403,15 +452,41 @@ We recommend developing and testing directly on a machine with OpenShift cluster
 
 ### Clone the Repository
 
-1. **Fork the repository** on GitHub: https://github.com/sprizend-rh/in-cluster-checks
+1. **Set up SSH key with GitHub** (recommended for easier authentication):
 
-2. **Clone your fork**:
+   If you don't have an SSH key configured with GitHub, follow these steps:
+
+   a. Generate an SSH key (if you don't have one):
+   ```bash
+   ssh-keygen -t ed25519 -C "your_email@example.com"
+   # Press Enter to accept default file location
+   # Optionally set a passphrase
+   ```
+
+   b. Add the SSH key to your GitHub account:
+   ```bash
+   # Display your public key
+   cat ~/.ssh/id_ed25519.pub
+   # Copy the output
+   ```
+
+   c. Go to GitHub → Settings → SSH and GPG keys → New SSH key, paste your public key and save
+
+   d. Test your connection:
+   ```bash
+   ssh -T git@github.com
+   # You should see: "Hi USERNAME! You've successfully authenticated..."
+   ```
+
+2. **Fork the repository** on GitHub: https://github.com/sprizend-rh/in-cluster-checks
+
+3. **Clone your fork**:
    ```bash
    git clone https://github.com/YOUR-USERNAME/in-cluster-checks.git
    cd in-cluster-checks
    ```
 
-3. **Add upstream remote**:
+4. **Add upstream remote**:
    ```bash
    git remote add upstream https://github.com/sprizend-rh/in-cluster-checks.git
    ```
@@ -445,6 +520,8 @@ If all tests pass and pre-commit runs successfully, your development environment
 ### Making Code Changes
 
 1. **Create a new branch**:
+
+    Always work on a local branch - Never commit directly to the `main` branch:
    ```bash
    git checkout -b YOUR-FEATURE-NAME
    ```

@@ -55,17 +55,114 @@ def test_safe_cmd_string_format_no_kwargs_returns_self():
     assert result is cmd
 
 
-def test_safe_cmd_string_spaces_in_value():
-    """Test that values with spaces are auto-quoted."""
+def test_safe_cmd_string_network_interface_names():
+    """Test that network interface names with dashes and dots are allowed."""
+    cmd = SafeCmdString("ip link show {iface}")
+
+    # Interface names with dashes and dots should work
+    result = cmd.format(iface="br-ex")
+    assert str(result) == "ip link show br-ex"
+
+    result = cmd.format(iface="bond0.110")
+    assert str(result) == "ip link show bond0.110"
+
+    result = cmd.format(iface="ovn-k8s-mp0")
+    assert str(result) == "ip link show ovn-k8s-mp0"
+
+    assert isinstance(result, SafeCmdString)
+
+
+def test_safe_cmd_string_allows_spaces():
+    """Test that spaces are allowed in identifiers."""
     cmd = SafeCmdString("echo {message}")
 
-    # Spaces trigger shlex.quote() to wrap in quotes
+    # Spaces should work
     result = cmd.format(message="hello world")
+    assert str(result) == "echo 'hello world'"
 
-    result_str = str(result)
-    # shlex.quote should wrap it in single quotes
-    assert result_str == "echo 'hello world'"
+    # Test with positional placeholder
+    cmd = SafeCmdString("echo {}")
+    result = cmd.format("hello world")
+    assert str(result) == "echo 'hello world'"
+
     assert isinstance(result, SafeCmdString)
+
+
+def test_safe_cmd_string_blocks_leading_dash():
+    """Test that leading dashes are blocked (security issue)."""
+    cmd = SafeCmdString("rm {file}")
+
+    # Leading dash could be interpreted as flag (-rf, --help, etc.)
+    with pytest.raises(ValueError) as exc_info:
+        cmd.format(file="-rf")
+
+    error_msg = str(exc_info.value)
+    assert "invalid characters" in error_msg.lower()
+
+    with pytest.raises(ValueError) as exc_info:
+        cmd.format(file="--help")
+
+    error_msg = str(exc_info.value)
+    assert "invalid characters" in error_msg.lower()
+
+
+def test_safe_cmd_string_blocks_leading_dot():
+    """Test that leading dots are blocked (hidden files and path traversal)."""
+    cmd = SafeCmdString("cat {file}")
+
+    # Leading dot could access hidden files
+    with pytest.raises(ValueError) as exc_info:
+        cmd.format(file=".hidden")
+
+    error_msg = str(exc_info.value)
+    assert "invalid characters" in error_msg.lower()
+
+    # Double dot for parent directory traversal
+    with pytest.raises(ValueError) as exc_info:
+        cmd.format(file="..")
+
+    error_msg = str(exc_info.value)
+    assert "invalid characters" in error_msg.lower()
+
+    # Path traversal attacks
+    with pytest.raises(ValueError) as exc_info:
+        cmd.format(file="../../../etc/passwd")
+
+    error_msg = str(exc_info.value)
+    assert "invalid characters" in error_msg.lower()
+
+    # Hidden shell config files
+    with pytest.raises(ValueError) as exc_info:
+        cmd.format(file=".bashrc")
+
+    error_msg = str(exc_info.value)
+    assert "invalid characters" in error_msg.lower()
+
+    # Executing local scripts with ./
+    with pytest.raises(ValueError) as exc_info:
+        cmd.format(file="./script")
+
+    error_msg = str(exc_info.value)
+    assert "invalid characters" in error_msg.lower()
+
+
+def test_safe_cmd_string_blocks_leading_space():
+    """Test that leading spaces are blocked."""
+    cmd = SafeCmdString("echo {value}")
+
+    # Leading space could cause parsing issues
+    with pytest.raises(ValueError) as exc_info:
+        cmd.format(value=" test")
+
+    error_msg = str(exc_info.value)
+    assert "invalid characters" in error_msg.lower()
+
+    # Multiple leading spaces
+    with pytest.raises(ValueError) as exc_info:
+        cmd.format(value="  test")
+
+    error_msg = str(exc_info.value)
+    assert "invalid characters" in error_msg.lower()
 
 
 def test_safe_cmd_string_empty_value():
@@ -104,7 +201,8 @@ def test_safe_cmd_string_blocks_dangerous_characters(blocked_char, test_value):
         f"Allowed patterns:\n"
         f"  - Absolute paths: /path/to/file or /path/to/file.ext\n"
         f"    (letters, digits, dashes, underscores; ONE dot in filename only)\n"
-        f"  - Generic identifiers: letters, digits, spaces only (e.g., 'eth0', 'hello world')\n"
+        f"  - Identifiers: alphanumeric start, then letters/digits/dots/dashes/spaces\n"
+        f"    (e.g., 'eth0', 'br-ex', 'bond0.110', 'ovn-k8s-mp0')\n"
         f"  - Etcd URLs: https://etcd-N.etcd.openshift-etcd.svc:2379/path\n"
         f"  - PCI addresses: 01:00.0 or 0000:01:00.0\n"
         f"Got: {test_value!r}"
@@ -124,9 +222,7 @@ def test_safe_cmd_string_blocks_dangerous_characters(blocked_char, test_value):
         ("\n", "test\nvalue"),
         ("#", "test#comment"),
         ("=", "test=value"),
-        (".", "test.txt"),
-        ("-", "test-file"),
-        ("_", "test_file"),
+        ("_", "test_file"),  # Underscore not allowed (not used in actual code)
         (":", "test:value"),
         ("@", "test@host"),
         ("*", "test*.log"),
@@ -136,7 +232,7 @@ def test_safe_cmd_string_blocks_dangerous_characters(blocked_char, test_value):
     ],
 )
 def test_safe_cmd_string_blocks_invalid_characters(special_char, test_value):
-    """Test that invalid characters (not letters/numbers/space/slash) are blocked."""
+    """Test that invalid characters (not letters/numbers/dots/dashes/spaces/slash) are blocked."""
     cmd = SafeCmdString("echo {value}")
 
     with pytest.raises(ValueError) as exc_info:
@@ -148,7 +244,8 @@ def test_safe_cmd_string_blocks_invalid_characters(special_char, test_value):
         f"Allowed patterns:\n"
         f"  - Absolute paths: /path/to/file or /path/to/file.ext\n"
         f"    (letters, digits, dashes, underscores; ONE dot in filename only)\n"
-        f"  - Generic identifiers: letters, digits, spaces only (e.g., 'eth0', 'hello world')\n"
+        f"  - Identifiers: alphanumeric start, then letters/digits/dots/dashes/spaces\n"
+        f"    (e.g., 'eth0', 'br-ex', 'bond0.110', 'ovn-k8s-mp0')\n"
         f"  - Etcd URLs: https://etcd-N.etcd.openshift-etcd.svc:2379/path\n"
         f"  - PCI addresses: 01:00.0 or 0000:01:00.0\n"
         f"Got: {test_value!r}"
@@ -332,9 +429,7 @@ def test_safe_cmd_string_positional_blocks_dangerous_characters(blocked_char, te
         ("\n", "test\nvalue"),
         ("#", "test#comment"),
         ("=", "test=value"),
-        (".", "test.txt"),
-        ("-", "test-file"),
-        ("_", "test_file"),
+        ("_", "test_file"),  # Underscore not allowed
         ("*", "test*.log"),
     ],
 )
@@ -410,30 +505,27 @@ def test_safe_cmd_string_mixed_blocked_char_in_named():
     assert ";" in error_msg
 
 
-def test_safe_cmd_string_mixed_quoted_char_in_positional():
-    """Test that special chars are quoted in mixed mode (positional arg)."""
+def test_safe_cmd_string_mixed_interface_names():
+    """Test that interface names work in mixed mode."""
     cmd = SafeCmdString("{} {name}")
 
-    result = cmd.format("test value", name="safe")
+    result = cmd.format("ip", name="br-ex")
 
     result_str = str(result)
-    # Positional arg with space should be quoted
-    assert "'test value'" in result_str
-    assert "safe" in result_str
+    assert "ip" in result_str
+    assert "br-ex" in result_str
     assert isinstance(result, SafeCmdString)
 
 
-def test_safe_cmd_string_mixed_quoted_char_in_named():
-    """Test that special chars are quoted in mixed mode (named arg)."""
+def test_safe_cmd_string_mixed_leading_dash_blocked():
+    """Test that leading dashes are blocked in mixed mode."""
     cmd = SafeCmdString("{} {name}")
 
-    result = cmd.format("safe", name="test value")
+    with pytest.raises(ValueError) as exc_info:
+        cmd.format("safe", name="-rf")
 
-    result_str = str(result)
-    # Named arg with space should be quoted
-    assert "'test value'" in result_str
-    assert "safe" in result_str
-    assert isinstance(result, SafeCmdString)
+    error_msg = str(exc_info.value)
+    assert "invalid characters" in error_msg.lower()
 
 
 def test_safe_cmd_string_mixed_composition():

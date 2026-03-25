@@ -28,6 +28,7 @@ Use an existing domain folder or create a new one with an `__init__.py`.
 from in_cluster_checks.core.rule import Rule
 from in_cluster_checks.core.rule_result import RuleResult, PrerequisiteResult
 from in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 class MyRuleName(Rule):
     """Rule description - what this rule verifies."""
@@ -119,10 +120,7 @@ import pytest
 
 from in_cluster_checks.rules.<domain>.<file> import MyRuleName
 from tests.pytest_tools.test_operator_base import CmdOutput
-from tests.pytest_tools.test_rule_base import (
-    RuleTestBase,
-    RuleScenarioParams,
-)
+from tests.pytest_tools.test_rule_base import RuleTestBase, RuleScenarioParams
 
 
 class TestMyRuleName(RuleTestBase):
@@ -216,10 +214,10 @@ self.run_rsh_cmd(namespace, pod, cmd2)
 ```
 
 **Allowed patterns in format() variables:**
-- Absolute paths
-- Generic identifiers: `[a-zA-Z0-9 ]+`
-- Etcd URLs
-- PCI addresses
+- Absolute paths: `/path/to/file` or `/path/to/file.ext` (one dot max for extension)
+- Generic identifiers: `[a-zA-Z0-9][a-zA-Z0-9.- ]*` (alphanumeric start, then letters/digits/dots/dashes/spaces)
+- Etcd URLs: `https://etcd-N.etcd.openshift-etcd.svc:2379/path`
+- PCI addresses: `01:00.0` or `0000:01:00.0`
 
 **Pre-commit linter enforces:**
 - Template must be string literal (not variable/f-string/expression)

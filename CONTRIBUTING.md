@@ -176,7 +176,7 @@ self.run_rsh_cmd(namespace, pod, cmd2)
 
 **Allowed patterns in format() variables:**
 - Absolute paths: `/var/log/messages`, `/etc/file.conf` (one dot max for extension)
-- Generic identifiers: `[a-zA-Z0-9 ]+` (letters, digits, spaces only - no leading dashes)
+- Generic identifiers: `[a-zA-Z0-9][a-zA-Z0-9.- ]*` (alphanumeric start, then letters/digits/dots/dashes/spaces)
 - Etcd URLs: `https://etcd-N.etcd.openshift-etcd.svc:2379/path`
 - PCI addresses: `01:00.0`, `0000:01:00.0`
 

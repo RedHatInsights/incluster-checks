@@ -16,7 +16,8 @@ class SafeCmdString:
         SafeCmdString("find {path}").format(path="/tmp")        # Named placeholder
         SafeCmdString("sudo ethtool {}").format("eth0")         # Positional placeholder
         SafeCmdString("{} {}").format("cmd", "arg")             # Multiple positional
-        SafeCmdString("echo {msg}").format(msg="hello world")   # Auto-quoted for spaces
+        SafeCmdString("ip link show {iface}").format(iface="br-ex")     # Interface with dash
+        SafeCmdString("nmcli conn show {bond}").format(bond="bond0.110") # Interface with dot
         SafeCmdString("cat {path}").format(path="/var/log")     # Paths with / are allowed
         SafeCmdString("cmd1") + SafeCmdString("cmd2")           # Concatenation with + operator
 
@@ -48,9 +49,10 @@ class SafeCmdString:
              * Examples: /var/log/messages, /etc/file-name.txt, /tmp/test_file.log
              * Blocked: dots in directory names, multiple dots in filename, relative paths
 
-           - Generic identifiers: letters (a-z, A-Z), numbers (0-9), and spaces only
-             * Examples: eth0, bond0, "hello world"
-             * Blocked: dashes, dots, underscores (prevents leading dash issue)
+           - Identifiers: alphanumeric start, then letters/digits/dots/dashes/spaces
+             * Must start with letter or digit (prevents leading dash/dot security issue)
+             * Examples: eth0, bond0, br-ex, bond0.110, ovn-k8s-mp0, hello world
+             * Blocked: -rf, --help, .hidden (leading dash/dot)
 
            - Etcd URLs: https://etcd-N.etcd.openshift-etcd.svc:2379/path (validated pattern)
            - Etcd IP URLs: https://IP:2379/path (pattern validated, invalid IPs fail naturally in curl)
@@ -81,8 +83,8 @@ class SafeCmdString:
         # - Directories: letters, digits, dashes, underscores (no dots)
         # - Filename: letters, digits, dashes, underscores + optional .extension
         r"/([a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]+(\.[a-zA-Z0-9]+)?|"
-        # Generic identifiers: letters, digits, spaces only (blocks leading dashes)
-        r"[a-zA-Z0-9 ]+"
+        # Identifiers: letters/digits/dots/dashes/spaces (no leading dash/dot for security)
+        r"[a-zA-Z0-9][a-zA-Z0-9.\- ]*"
         r")$"
     )
 
@@ -138,7 +140,7 @@ class SafeCmdString:
         if isinstance(value, SafeCmdString):
             return str(value)
 
-        value_str = str(value).strip() if value is not None else ""
+        value_str = str(value) if value is not None else ""
 
         # Empty string - no quoting needed
         if not value_str:
@@ -151,7 +153,8 @@ class SafeCmdString:
                 f"Allowed patterns:\n"
                 f"  - Absolute paths: /path/to/file or /path/to/file.ext\n"
                 f"    (letters, digits, dashes, underscores; ONE dot in filename only)\n"
-                f"  - Generic identifiers: letters, digits, spaces only (e.g., 'eth0', 'hello world')\n"
+                f"  - Identifiers: alphanumeric start, then letters/digits/dots/dashes/spaces\n"
+                f"    (e.g., 'eth0', 'br-ex', 'bond0.110', 'ovn-k8s-mp0')\n"
                 f"  - Etcd URLs: https://etcd-N.etcd.openshift-etcd.svc:2379/path\n"
                 f"  - PCI addresses: 01:00.0 or 0000:01:00.0\n"
                 f"Got: {value_str!r}"
@@ -166,7 +169,8 @@ class SafeCmdString:
         Allows safe patterns in values:
         - Absolute paths: /path/to/file or /path/to/file.ext
           (letters, digits, dashes, underscores; ONE dot in filename only)
-        - Generic identifiers: letters, digits, spaces only (e.g., 'eth0', 'hello world')
+        - Identifiers: alphanumeric start, then letters/digits/dots/dashes/spaces
+          (e.g., 'eth0', 'br-ex', 'bond0.110', 'ovn-k8s-mp0')
         - Etcd URLs: https://etcd-N.etcd.openshift-etcd.svc:2379/path
         - Etcd IP URLs: https://IP:2379/path (with IP validation)
         - PCI addresses: 01:00.0 or 0000:01:00.0 (hex format)

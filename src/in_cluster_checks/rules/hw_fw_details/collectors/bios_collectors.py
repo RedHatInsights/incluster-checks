@@ -9,6 +9,7 @@ from typing import Dict, List
 
 from in_cluster_checks.rules.hw_fw_details.hw_fw_base import HwFwDataCollector
 from in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 class BIOS(HwFwDataCollector):
@@ -49,7 +50,7 @@ class BIOSVersion(BIOS):
             Dictionary of {bios_id: version}
             Example: {"1": "2.8.0"}
         """
-        cmd = "sudo dmidecode -s bios-version"
+        cmd = SafeCmdString("sudo dmidecode -s bios-version")
         bios_version = self._run_cached_command(cmd, timeout=30).strip()
 
         return {bios_id: bios_version for bios_id in self.get_component_ids()}
@@ -76,7 +77,7 @@ class BIOSFirmware(BIOS):
             Dictionary of {bios_id: firmware}
             Example: {"1": "1.68"}
         """
-        cmd = "sudo dmidecode --type bios | grep 'Firmware Revision'"
+        cmd = SafeCmdString("sudo dmidecode --type bios | grep 'Firmware Revision'")
         out = self._run_cached_command(cmd, timeout=30).strip()
 
         # Parse firmware from output (format: "Firmware Revision: 1.68")
@@ -110,7 +111,7 @@ class BIOSRevision(BIOS):
             Dictionary of {bios_id: revision}
             Example: {"1": "2.50"}
         """
-        cmd = "sudo dmidecode --type bios | grep -i 'BIOS Revision'"
+        cmd = SafeCmdString("sudo dmidecode --type bios | grep -i 'BIOS Revision'")
         out = self._run_cached_command(cmd, timeout=30).strip()
 
         # Parse revision from output (format: "BIOS Revision: 2.50")
@@ -144,7 +145,7 @@ class BIOSReleaseDate(BIOS):
             Dictionary of {bios_id: release_date}
             Example: {"1": "12/15/2023"}
         """
-        cmd = "sudo dmidecode -s bios-release-date"
+        cmd = SafeCmdString("sudo dmidecode -s bios-release-date")
         bios_release_date = self._run_cached_command(cmd, timeout=30).strip()
 
         return {bios_id: bios_release_date for bios_id in self.get_component_ids()}

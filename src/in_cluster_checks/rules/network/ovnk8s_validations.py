@@ -9,6 +9,7 @@ from typing import Dict, List, Optional, Tuple
 
 from in_cluster_checks.core.rule import OrchestratorRule, PrerequisiteResult, RuleResult
 from in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 class OVNKubernetesBase(OrchestratorRule):
@@ -134,7 +135,7 @@ class LogicalSwitchNodeValidator(OVNKubernetesBase):
             rc, out, err = self.run_rsh_cmd(
                 namespace="openshift-ovn-kubernetes",
                 pod=ovnkube_pod,
-                command="ovn-nbctl ls-list",
+                command=SafeCmdString("ovn-nbctl ls-list"),
             )
 
             if rc != 0:
@@ -185,7 +186,7 @@ class MTUOverlayInterfaces(OVNKubernetesBase):
             rc, out, err = self.run_rsh_cmd(
                 namespace="openshift-ovn-kubernetes",
                 pod=ovnkube_pod,
-                command="ip link show",
+                command=SafeCmdString("ip link show"),
             )
 
             if rc != 0:

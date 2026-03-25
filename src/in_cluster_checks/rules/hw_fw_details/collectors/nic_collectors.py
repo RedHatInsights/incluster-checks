@@ -10,6 +10,7 @@ from typing import Dict, List
 
 from in_cluster_checks.rules.hw_fw_details.hw_fw_base import HwFwDataCollector
 from in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 class NICDataCollector(HwFwDataCollector):
@@ -41,7 +42,7 @@ class NICDataCollector(HwFwDataCollector):
             Dict of {nic_id: [port_id1, port_id2, ...]}
             Example: {"01:00": ["01:00.0", "01:00.1"]}
         """
-        cmd = "sudo lspci | grep -i 'ethernet\\|infiniband' | grep -vi 'virtual'"
+        cmd = SafeCmdString("sudo lspci | grep -i 'ethernet\\|infiniband' | grep -vi 'virtual'")
         output = self._run_cached_command(cmd, timeout=30)
 
         nic_ports_ids = {}
@@ -94,7 +95,7 @@ class NICDataCollector(HwFwDataCollector):
         """
         # Get all physical interfaces by listing directories with device symlink
         # Use ls -d to list directories, not their contents
-        cmd = "ls -d /sys/class/net/*/device 2>/dev/null | cut -d'/' -f5"
+        cmd = SafeCmdString("ls -d /sys/class/net/*/device 2>/dev/null | cut -d'/' -f5")
         output = self._run_cached_command(cmd, timeout=30)
 
         # Check each physical interface
@@ -103,7 +104,7 @@ class NICDataCollector(HwFwDataCollector):
                 continue
 
             # Get PCI address via readlink
-            pci_cmd = f"readlink /sys/class/net/{iface}/device 2>/dev/null"
+            pci_cmd = SafeCmdString("readlink /sys/class/net/{iface}/device 2>/dev/null").format(iface=iface)
             pci_output = self._run_cached_command(pci_cmd, timeout=30).strip()
 
             # readlink returns something like "../../../0000:12:00.0"
@@ -145,7 +146,7 @@ class NICDataCollector(HwFwDataCollector):
             first_port = port_ids[0]
 
             # Get detailed info for this PCI device
-            cmd = f"sudo lspci -vmm -s {first_port}"
+            cmd = SafeCmdString("sudo lspci -vmm -s {first_port}").format(first_port=first_port)
             output = self._run_cached_command(cmd, timeout=30)
 
             # Parse lspci -vmm output (key-value pairs)
@@ -273,7 +274,7 @@ class NICSpeed(NICDataCollector):
 
         Returns speed in Mb/s (e.g., 1000, 10000, 25000)
         """
-        cmd = f"sudo ethtool {port_name}"
+        cmd = SafeCmdString("sudo ethtool {port_name}").format(port_name=port_name)
         output = self._run_cached_command(cmd, timeout=30)
 
         # Look for "Supported link modes:" section
@@ -409,7 +410,7 @@ class NICVersion(NICDataCollector):
 
             # Use first port (all ports on same NIC have same values)
             first_port = port_names[0]
-            cmd = f"sudo ethtool -i {first_port}"
+            cmd = SafeCmdString("sudo ethtool -i {first_port}").format(first_port=first_port)
             output = self._run_cached_command(cmd, timeout=30)
 
             # Parse ethtool -i output for the field
@@ -461,7 +462,7 @@ class NICFirmware(NICDataCollector):
                 continue
 
             first_port = port_names[0]
-            cmd = f"sudo ethtool -i {first_port}"
+            cmd = SafeCmdString("sudo ethtool -i {first_port}").format(first_port=first_port)
             output = self._run_cached_command(cmd, timeout=30)
 
             # Parse for firmware-version field
@@ -513,7 +514,7 @@ class NICDriver(NICDataCollector):
                 continue
 
             first_port = port_names[0]
-            cmd = f"sudo ethtool -i {first_port}"
+            cmd = SafeCmdString("sudo ethtool -i {first_port}").format(first_port=first_port)
             output = self._run_cached_command(cmd, timeout=30)
 
             # Parse for driver field

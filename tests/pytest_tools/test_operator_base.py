@@ -14,6 +14,7 @@ from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.rule import OrchestratorRule
 from in_cluster_checks.core.operations import DataCollector
 from in_cluster_checks.core.executor import _add_bash_timeout
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 class CmdOutput:
@@ -202,17 +203,26 @@ class OperatorTestBase:
         Returns:
             Tuple of (return_code, stdout, stderr)
         """
+        # Enforce SafeCmdString type to match production execute_cmd() behavior
+        if not isinstance(cmd, SafeCmdString):
+            raise TypeError(
+                f"run_cmd() requires SafeCmdString, got {type(cmd).__name__}.\n"
+                f"Use: SafeCmdString('your command') or SafeCmdString('cmd {{var}}').format(var=value)"
+            )
+
+        # Convert SafeCmdString to str first
+        cmd_str = str(cmd)
+
         # Apply bash timeout wrapper if requested
         if add_bash_timeout:
-            # No need for Runner class
-            cmd = _add_bash_timeout(cmd, timeout)
+            cmd_str = _add_bash_timeout(cmd_str, timeout)
 
-        assert cmd in self.cmd_to_output_dict, (
-            f"Command '{cmd}' not mocked. "
+        assert cmd_str in self.cmd_to_output_dict, (
+            f"Command '{cmd_str}' not mocked. "
             f"Please add it to cmd_input_output_dict in test scenario."
         )
 
-        res = self.cmd_to_output_dict[cmd]
+        res = self.cmd_to_output_dict[cmd_str]
         return res.return_code, res.out, res.err
 
     def _run_rsh_cmd_side_effects(self, namespace: str, pod: str, command: str, timeout: int = 120):
@@ -228,7 +238,14 @@ class OperatorTestBase:
         Returns:
             Tuple of (return_code, stdout, stderr)
         """
-        key = (namespace, pod, command)
+        if not isinstance(command, SafeCmdString):
+            raise TypeError(
+                f"run_rsh_cmd() requires SafeCmdString, got {type(command).__name__}.\n"
+                f"Use: SafeCmdString('your command') or SafeCmdString('cmd {{var}}').format(var=value)"
+            )
+        # Convert SafeCmdString to str for dictionary lookup
+        command_str = str(command)
+        key = (namespace, pod, command_str)
 
         assert key in self.rsh_cmd_to_output_dict, (
             f"RSH command {key} not mocked. "
@@ -291,6 +308,13 @@ class OperatorTestBase:
         Raises:
             Exception: If command returns non-zero
         """
+        # Enforce SafeCmdString type to match production execute_cmd() behavior
+        if not isinstance(cmd, SafeCmdString):
+            raise TypeError(
+                f"get_output_from_run_cmd() requires SafeCmdString, got {type(cmd).__name__}.\n"
+                f"Use: SafeCmdString('your command') or SafeCmdString('cmd {{var}}').format(var=value)"
+            )
+
         return_code, out, err = self._run_cmd_side_effects(cmd, timeout)
 
         if return_code == 0:

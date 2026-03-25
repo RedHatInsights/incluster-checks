@@ -10,6 +10,7 @@ from typing import Dict, List
 
 from in_cluster_checks.rules.hw_fw_details.hw_fw_base import HwFwDataCollector
 from in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 class Memory(HwFwDataCollector):
@@ -43,7 +44,7 @@ class Memory(HwFwDataCollector):
         Returns:
             List of memory device dicts (only populated slots)
         """
-        dmidecode_output = self._run_cached_command("sudo dmidecode -t memory", timeout=30)
+        dmidecode_output = self._run_cached_command(SafeCmdString("sudo dmidecode -t memory"), timeout=30)
         dmidecode_json = self._parse_dmidecode_memory_blocks(dmidecode_output)
 
         res = []

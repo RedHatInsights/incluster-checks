@@ -6,6 +6,7 @@ Only includes functions needed by in-cluster validation framework.
 """
 
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 class FileUtils:
@@ -33,11 +34,11 @@ class FileUtils:
         Raises:
             UnExpectedSystemOutput: If file cannot be read
         """
-        cmd = f"cat {path}"
+        cmd = SafeCmdString("cat {path}").format(path=path)
         return_code, out, err = self.operator.run_cmd(cmd)
         if return_code != 0:
             error = f"Problem reading the file {path}:\n{err}"
-            raise UnExpectedSystemOutput(self.operator.get_host_ip(), cmd, error)
+            raise UnExpectedSystemOutput(self.operator.get_host_ip(), str(cmd), error)
         return out
 
     def is_file_exist(self, file_path):
@@ -50,7 +51,8 @@ class FileUtils:
         Returns:
             bool: True if file exists, False otherwise
         """
-        return_code, _, _ = self.operator.run_cmd(f"ls {file_path}")
+        cmd = SafeCmdString("ls {file_path}").format(file_path=file_path)
+        return_code, _, _ = self.operator.run_cmd(cmd)
         return return_code == 0
 
     def get_lines_in_file(self, file_path):
@@ -63,7 +65,8 @@ class FileUtils:
         Returns:
             list: List of lines, or None if file cannot be read
         """
-        return_code, out, err = self.operator.run_cmd(f"cat {file_path}")
+        cmd = SafeCmdString("cat {file_path}").format(file_path=file_path)
+        return_code, out, err = self.operator.run_cmd(cmd)
         if return_code != 0:
             return None
         return out.splitlines()
@@ -78,7 +81,24 @@ class FileUtils:
         Returns:
             list: List of matching file paths, or None if command fails
         """
-        return_code, out, err = self.operator.run_cmd(f"ls {pattern}")
+        cmd = SafeCmdString("ls {pattern}").format(pattern=pattern)
+        return_code, out, err = self.operator.run_cmd(cmd)
+        if return_code != 0:
+            return None
+        return out.strip().split("\n") if out.strip() else []
+
+    def list_dirs(self, pattern):
+        """
+        List directories matching a pattern.
+
+        Args:
+            pattern: Directory path pattern (can include wildcards)
+
+        Returns:
+            list: List of matching directory paths, or None if command fails
+        """
+        cmd = SafeCmdString("ls -d {pattern}").format(pattern=pattern)
+        return_code, out, err = self.operator.run_cmd(cmd)
         if return_code != 0:
             return None
         return out.strip().split("\n") if out.strip() else []
@@ -93,5 +113,6 @@ class FileUtils:
         Returns:
             bool: True if directory exists, False otherwise
         """
-        return_code, _, _ = self.operator.run_cmd(f"test -d {dir_path}")
+        cmd = SafeCmdString("test -d {dir_path}").format(dir_path=dir_path)
+        return_code, _, _ = self.operator.run_cmd(cmd)
         return return_code == 0

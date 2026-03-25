@@ -8,13 +8,12 @@ Only validators with Deployment_type.OPENSHIFT support are included.
 import re
 from datetime import timedelta
 
-import dateutil.parser
-
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.rule import Rule
 from in_cluster_checks.core.rule_result import PrerequisiteResult, RuleResult
 from in_cluster_checks.utils.enums import Objectives
-from in_cluster_checks.utils.parsing_utils import parse_int
+from in_cluster_checks.utils.parsing_utils import parse_datetime, parse_int
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 class CheckDiskUsage(Rule):
@@ -30,7 +29,7 @@ class CheckDiskUsage(Rule):
         # Exclude pseudo-filesystems that don't represent real disk usage
         # This is more maintainable than inclusion-based filtering and future-proof for new filesystem types
         return_code, out, err = self.run_cmd(
-            "df -hT -x tmpfs -x devtmpfs -x overlay -x composefs -x efivarfs -x squashfs -x iso9660"
+            SafeCmdString("df -hT -x tmpfs -x devtmpfs -x overlay -x composefs -x efivarfs -x squashfs -x iso9660")
         )
         disk_space_usage = re.findall(r"(\S+).*\s+([0-9]+)%\s+(.*)", out)
 
@@ -71,8 +70,8 @@ class BasicFreeMemoryValidation(Rule):
     HIGH_PAGE_THRESHOLD_RATIO = 0.01
 
     def run_rule(self):
-        mem_total_cmd = "cat /proc/meminfo |grep MemTotal"
-        mem_avi_cmd = "cat /proc/meminfo |grep MemAvailable"
+        mem_total_cmd = SafeCmdString("cat /proc/meminfo |grep MemTotal")
+        mem_avi_cmd = SafeCmdString("cat /proc/meminfo |grep MemAvailable")
 
         # Get the 2nd field from output
         mem_total_out = self.get_output_from_run_cmd(mem_total_cmd)
@@ -83,13 +82,13 @@ class BasicFreeMemoryValidation(Rule):
 
         ratio = mem_avi / mem_total
 
-        huge_pages_total_cmd = "cat /proc/meminfo |grep HugePages_Total"
+        huge_pages_total_cmd = SafeCmdString("cat /proc/meminfo |grep HugePages_Total")
         huge_pages_total_out = self.get_output_from_run_cmd(huge_pages_total_cmd)
         huge_pages_total = float(huge_pages_total_out.split()[1])
 
         if ratio < self.THRESHOLD_RATIO:
             # test if it is due to HugePages
-            huge_pages_free_cmd = "cat /proc/meminfo |grep HugePages_Free"
+            huge_pages_free_cmd = SafeCmdString("cat /proc/meminfo |grep HugePages_Free")
             huge_pages_free_out = self.get_output_from_run_cmd(huge_pages_free_cmd)
             huge_pages_free = float(huge_pages_free_out.split()[1])
 
@@ -117,22 +116,20 @@ class CPUfreqScalingGovernorValidation(Rule):
 
     def is_prerequisite_fulfilled(self):
         """Check if scaling_governor files exist (not available on VMs)."""
-        return_code, _, _ = self.run_cmd("test -f /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor")
+        return_code, _, _ = self.run_cmd(SafeCmdString("test -f /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"))
         if return_code != 0:
             return PrerequisiteResult.not_met("CPU frequency scaling governor files not available (likely a VM)")
         return PrerequisiteResult.met()
 
     def run_rule(self):
-        lscpu_cmd = "sudo /bin/lscpu|grep '^CPU(s):'"
+        lscpu_cmd = SafeCmdString("sudo /bin/lscpu|grep '^CPU(s):'")
         lscpu = self.get_output_from_run_cmd(lscpu_cmd).strip()
         total_cpus = lscpu.split(":")[1].strip()
         total_cpus_int = parse_int(total_cpus, lscpu_cmd, self.get_host_ip())
         i = 0
         error_cpus = []
         for i in range(0, total_cpus_int):
-            cmd1 = "sudo cat /sys/devices/system/cpu/cpu"
-            cmd2 = "/cpufreq/scaling_governor"
-            cmd = cmd1 + str(i) + cmd2
+            cmd = SafeCmdString("sudo cat /sys/devices/system/cpu/cpu{i}/cpufreq/scaling_governor").format(i=str(i))
             return_code, cpu_governor_output, err = self.run_cmd(cmd)
             if return_code == 0:
                 if (cpu_governor_output.strip().upper()) == "PERFORMANCE":
@@ -157,13 +154,13 @@ class TemperatureValidation(Rule):
 
     def is_prerequisite_fulfilled(self):
         """Check if thermal zone directory exists."""
-        thermal_zones = self.file_utils.list_files("-d /sys/class/thermal/thermal_zone*")
+        thermal_zones = self.file_utils.list_dirs(SafeCmdString("/sys/class/thermal/thermal_zone*"))
         if not thermal_zones:
             return PrerequisiteResult.not_met("Thermal zones not available on this system")
         return PrerequisiteResult.met()
 
     def run_rule(self):
-        thermal_zone_files = self.file_utils.list_files("/sys/class/thermal/thermal_zone*/temp")
+        thermal_zone_files = self.file_utils.list_files(SafeCmdString("/sys/class/thermal/thermal_zone*/temp"))
         if not thermal_zone_files:
             return RuleResult.skip("No thermal zone temperature files found")
 
@@ -220,13 +217,13 @@ class CpuSpeedValidation(Rule):
 
     def is_prerequisite_fulfilled(self):
         """Check if cpufreq files exist (not available on VMs)."""
-        return_code, _, _ = self.run_cmd("test -f /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq")
+        return_code, _, _ = self.run_cmd(SafeCmdString("test -f /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq"))
         if return_code != 0:
             return PrerequisiteResult.not_met("CPU frequency files not available (likely a VM)")
         return PrerequisiteResult.met()
 
     def _get_max_speed(self, cpu_id):
-        cmd = f"cat /sys/devices/system/cpu/cpu{cpu_id}/cpufreq/cpuinfo_max_freq"
+        cmd = SafeCmdString("cat /sys/devices/system/cpu/cpu{cpu_id}/cpufreq/cpuinfo_max_freq").format(cpu_id=cpu_id)
         ret, out, _ = self.run_cmd(cmd)
 
         if ret != 0:
@@ -239,7 +236,7 @@ class CpuSpeedValidation(Rule):
         return float(speed_khz)
 
     def run_rule(self):
-        lscpu_cmd = "sudo /bin/lscpu|grep '^CPU(s):'"
+        lscpu_cmd = SafeCmdString("sudo /bin/lscpu|grep '^CPU(s):'")
         lscpu = self.get_output_from_run_cmd(lscpu_cmd).strip()
         total_cpus = lscpu.split(":")[1].strip()
         total_cpus_int = parse_int(total_cpus, lscpu_cmd, self.get_host_ip())
@@ -252,7 +249,9 @@ class CpuSpeedValidation(Rule):
             if max_cpu_speed is None:
                 continue
 
-            cpu_speed_current_cmd = f"cat /sys/devices/system/cpu/cpu{cpu_id}/cpufreq/scaling_cur_freq"
+            cpu_speed_current_cmd = SafeCmdString(
+                "cat /sys/devices/system/cpu/cpu{cpu_id}/cpufreq/scaling_cur_freq"
+            ).format(cpu_id=cpu_id)
             ret, out, _ = self.run_cmd(cpu_speed_current_cmd)
 
             if ret != 0:
@@ -296,13 +295,13 @@ class HwSysClockCompare(Rule):
     objective_hosts = [Objectives.ALL_NODES]
     unique_name = "hw_sys_clock_compare"
     CRITERIA = timedelta(seconds=3600)
-    HWCLOCK_CMD = "sudo hwclock"
-    SYSCLOCK_CMD = "date +'%Y-%m-%d %H:%M:%S %z'"
+    HWCLOCK_CMD = SafeCmdString("sudo hwclock")
+    SYSCLOCK_CMD = SafeCmdString("date +'%Y-%m-%d %H:%M:%S %z'")
     title = "Compare hwclock with system clock"
 
     def is_prerequisite_fulfilled(self):
         """Check if hwclock command is available."""
-        return_code, _, _ = self.run_cmd("which hwclock")
+        return_code, _, _ = self.run_cmd(SafeCmdString("which hwclock"))
         if return_code != 0:
             return PrerequisiteResult.not_met("hwclock command is not available on this system")
         return PrerequisiteResult.met()
@@ -344,18 +343,6 @@ class HwSysClockCompare(Rule):
 
         return sys_clock_output
 
-    def _convert_str_to_datetime(self, string_datetime, cmd=""):
-        try:
-            datetime_obj = dateutil.parser.parse(string_datetime)
-        except (ValueError, dateutil.parser.ParserError) as e:
-            raise UnExpectedSystemOutput(
-                self.get_host_ip(),
-                cmd=cmd,
-                output=string_datetime,
-                message="Date/time could not be parsed.\n{}".format(str(e)),
-            )
-        return datetime_obj
-
     @staticmethod
     def _get_delta_of_datetime(date1, date2):
         if date1 > date2:
@@ -371,8 +358,8 @@ class HwSysClockCompare(Rule):
         return hw_clock
 
     def run_rule(self):
-        hw_clock = self._convert_str_to_datetime(self._get_hw_clock(), self.HWCLOCK_CMD)
-        sys_clock = self._convert_str_to_datetime(self._get_sys_clock(), self.SYSCLOCK_CMD)
+        hw_clock = parse_datetime(self._get_hw_clock(), self.HWCLOCK_CMD, self.get_host_ip())
+        sys_clock = parse_datetime(self._get_sys_clock(), self.SYSCLOCK_CMD, self.get_host_ip())
         hw_clock = self._fix_tz(hw_clock, sys_clock)
 
         hw_sys_delta = self._get_delta_of_datetime(hw_clock, sys_clock)

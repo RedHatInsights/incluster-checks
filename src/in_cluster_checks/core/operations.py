@@ -13,6 +13,7 @@ from typing import Any
 from in_cluster_checks import global_config
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.utils.file_utils import FileUtils
+from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 class Operator:
@@ -64,12 +65,12 @@ class Operator:
         """Get node role labels (e.g., 'control-plane,worker')."""
         return self._host_executor.node_labels
 
-    def run_cmd(self, cmd: str, timeout: int = 120, add_bash_timeout: bool = False) -> tuple:
+    def run_cmd(self, cmd: SafeCmdString, timeout: int = 120, add_bash_timeout: bool = False) -> tuple:
         """
         Run command on host/container and log it.
 
         Args:
-            cmd: Command to execute
+            cmd: SafeCmdString object with command to execute
             timeout: Timeout in seconds (default: 120)
             add_bash_timeout: If True, wraps command with bash timeout command for guaranteed termination
 
@@ -100,12 +101,12 @@ class Operator:
 
         return return_code, out, err
 
-    def get_output_from_run_cmd(self, cmd: str, timeout: int = 30, message: str = None) -> str:
+    def get_output_from_run_cmd(self, cmd: SafeCmdString, timeout: int = 30, message: str = None) -> str:
         """
         Run command, log it, and return stdout if successful.
 
         Args:
-            cmd: Command to execute
+            cmd: SafeCmdString object with command to execute
             timeout: Timeout in seconds (default: 30)
             message: Optional custom error message
 
@@ -145,7 +146,7 @@ class Operator:
             error_msg += f"\nOutput: {stdout}"
         return error_msg
 
-    def run_cmd_return_is_successful(self, cmd: str, timeout: int = 30) -> bool:
+    def run_cmd_return_is_successful(self, cmd: SafeCmdString, timeout: int = 30) -> bool:
         """
         Run command and return True if successful (exit code 0).
 
@@ -159,7 +160,7 @@ class Operator:
         return_code, _, _ = self.run_cmd(cmd, timeout)
         return return_code == 0
 
-    def run_and_get_the_nth_field(self, cmd: str, n: int, separator: str = None, timeout: int = 30) -> str:
+    def run_and_get_the_nth_field(self, cmd: SafeCmdString, n: int, separator: str = None, timeout: int = 30) -> str:
         """
         Run command and extract the n-th field from output.
 
@@ -207,9 +208,9 @@ class Operator:
         self._rule_log = []
         self._details = ""
 
-    def _add_cmd_to_log(self, cmd: str):
+    def _add_cmd_to_log(self, cmd: str | SafeCmdString):
         """Add command to bash_cmd_lines for tracking."""
-        self._bash_cmd_lines.append(cmd)
+        self._bash_cmd_lines.append(str(cmd))
 
     def _collect_cmd_info(self, cmd: str, out: str, err: str, max_line: int = 50, max_chars_in_line: int = 1000):
         """
@@ -362,10 +363,10 @@ class DataCollector(Operator):
             self.logger = logging.getLogger(__name__)
         self._host_exceptions_dict = {}
 
-    def _add_cmd_to_log(self, cmd: str):
+    def _add_cmd_to_log(self, cmd: str | SafeCmdString):
         """Add command to bash_cmd_lines with node prefix for data collectors."""
         node_name = self.get_host_name()
-        prefixed_cmd = f"[{node_name}] {cmd}"
+        prefixed_cmd = f"[{node_name}] {str(cmd)}"
         self._bash_cmd_lines.append(prefixed_cmd)
 
     def add_to_rule_log(self, log_entry: str):

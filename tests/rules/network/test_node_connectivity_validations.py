@@ -113,7 +113,7 @@ class TestVerifyBondedInterfacesUp(NodeConnectivityTestBase):
         RuleScenarioParams(
             "bonding_directory_not_exists",
             cmd_input_output_dict={
-                "test -d /proc/net/bonding/": CmdOutput("", return_code=1),
+                "test -d /proc/net/bonding": CmdOutput("", return_code=1),
             },
         )
     ]
@@ -122,7 +122,7 @@ class TestVerifyBondedInterfacesUp(NodeConnectivityTestBase):
         RuleScenarioParams(
             "bonding_directory_exists",
             cmd_input_output_dict={
-                "test -d /proc/net/bonding/": CmdOutput("", return_code=0),
+                "test -d /proc/net/bonding": CmdOutput("", return_code=0),
             },
         )
     ]
@@ -131,7 +131,7 @@ class TestVerifyBondedInterfacesUp(NodeConnectivityTestBase):
         RuleScenarioParams(
             scenario_title="all_bonded_interfaces_up",
             cmd_input_output_dict={
-                "ls /proc/net/bonding/": CmdOutput("bond0  bond1"),
+                "ls /proc/net/bonding": CmdOutput("bond0  bond1"),
                 "cat /proc/net/bonding/bond0 | grep 'MII Status'": CmdOutput(
                     "MII Status: up\nMII Status: up\nMII Status: up"
                 ),
@@ -152,7 +152,7 @@ class TestVerifyBondedInterfacesUp(NodeConnectivityTestBase):
         RuleScenarioParams(
             scenario_title="bond0_master_down",
             cmd_input_output_dict={
-                "ls /proc/net/bonding/": CmdOutput("bond0  bond1"),
+                "ls /proc/net/bonding": CmdOutput("bond0  bond1"),
                 "cat /proc/net/bonding/bond0 | grep 'MII Status'": CmdOutput(
                     "MII Status: down\nMII Status: up\nMII Status: up"
                 ),
@@ -171,7 +171,7 @@ class TestVerifyBondedInterfacesUp(NodeConnectivityTestBase):
         RuleScenarioParams(
             scenario_title="bond0_first_slave_down",
             cmd_input_output_dict={
-                "ls /proc/net/bonding/": CmdOutput("bond0  bond1"),
+                "ls /proc/net/bonding": CmdOutput("bond0  bond1"),
                 "cat /proc/net/bonding/bond0 | grep 'MII Status'": CmdOutput(
                     "MII Status: up\nMII Status: down\nMII Status: up"
                 ),
@@ -190,7 +190,7 @@ class TestVerifyBondedInterfacesUp(NodeConnectivityTestBase):
         RuleScenarioParams(
             scenario_title="bond0_all_interfaces_down",
             cmd_input_output_dict={
-                "ls /proc/net/bonding/": CmdOutput("bond0  bond1"),
+                "ls /proc/net/bonding": CmdOutput("bond0  bond1"),
                 "cat /proc/net/bonding/bond0 | grep 'MII Status'": CmdOutput(
                     "MII Status: down\nMII Status: down\nMII Status: down"
                 ),
@@ -209,7 +209,7 @@ class TestVerifyBondedInterfacesUp(NodeConnectivityTestBase):
         RuleScenarioParams(
             scenario_title="multiple_bonds_with_issues",
             cmd_input_output_dict={
-                "ls /proc/net/bonding/": CmdOutput("bond0  bond1"),
+                "ls /proc/net/bonding": CmdOutput("bond0  bond1"),
                 "cat /proc/net/bonding/bond0 | grep 'MII Status'": CmdOutput(
                     "MII Status: down\nMII Status: up\nMII Status: down"
                 ),

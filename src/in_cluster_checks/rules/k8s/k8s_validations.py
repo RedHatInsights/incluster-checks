@@ -8,7 +8,7 @@ import json
 
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.rule import OrchestratorRule
-from in_cluster_checks.core.rule_result import RuleResult
+from in_cluster_checks.core.rule_result import PrerequisiteResult, RuleResult
 from in_cluster_checks.utils.enums import Objectives, Status
 
 
@@ -631,13 +631,7 @@ class ValidateAllPoliciesCompliant(OrchestratorRule):
     title = "Verify all policies are in compliant state"
 
     def run_rule(self):
-        """
-        Check if all OCM policies are in Compliant state.
-
-        Returns:
-            RuleResult.passed() if all policies are compliant,
-            RuleResult.failed() if any policies are non-compliant.
-        """
+        """Check if all OCM policies are in Compliant state"""
         try:
             # Run the oc command to get all policies from all namespaces
             _, policies_output, _ = self.run_oc_command(
@@ -645,7 +639,7 @@ class ValidateAllPoliciesCompliant(OrchestratorRule):
             )
         except UnExpectedSystemOutput:
             return RuleResult.failed("Failed to get policies from cluster")
-        # Parse the JSON output
+
         try:
             policies_data = json.loads(policies_output)
         except json.JSONDecodeError as e:
@@ -682,18 +676,19 @@ class ValidateAllPoliciesCompliant(OrchestratorRule):
 
 # Rule to verify OpenShift internal image registry is configured and available
 class VerifyInternalRegistry(OrchestratorRule):
-    """Verify OpenShift internal image registry is configured and available."""
+    """Verify OpenShift internal image registry is configured and available"""
 
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "verify_internal_registry"
     title = "Verify internal image registry is configured and available"
 
-    def run_rule(self):
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
         """
-        Check if OpenShift internal image registry is properly configured and running.
+        Check if image registry management state is configured.
 
+        Returns:
+            PrerequisiteResult indicating if registry should be validated
         """
-        # Check image registry configuration
         try:
             _, registry_config_output, _ = self.run_oc_command(
                 "get",
@@ -701,27 +696,27 @@ class VerifyInternalRegistry(OrchestratorRule):
                 timeout=45,
             )
         except UnExpectedSystemOutput:
-            return RuleResult.failed("Failed to get image registry configuration")
+            return PrerequisiteResult.not_met("Failed to get image registry configuration")
 
         try:
             registry_config = json.loads(registry_config_output)
         except json.JSONDecodeError as e:
-            raise UnExpectedSystemOutput(
-                ip=self.get_host_ip(),
-                cmd="oc get config.imageregistry.operator.openshift.io cluster -o json",
-                output=registry_config_output,
-                message=f"Failed to parse JSON: {e}",
-            )
+            return PrerequisiteResult.not_met(f"Failed to parse image registry configuration: {e}")
 
-        # Check management state
         spec = registry_config.get("spec", {})
         management_state = spec.get("managementState", "Unknown")
 
-        # If not Managed, just report the state and pass
         if management_state != "Managed":
-            return RuleResult.passed(f"Image registry management state: {management_state}")
+            return PrerequisiteResult.not_met(f"Image registry management state is '{management_state}', not 'Managed'")
 
-        # Only check pods if management state is Managed
+        return PrerequisiteResult.met()
+
+    def run_rule(self):
+        """
+        Check if OpenShift internal image registry is properly configured and running.
+
+        """
+        # Only check pods if management state is Managed (verified by prerequisite)
         pod_objects = self.get_all_pods(namespace="openshift-image-registry")
         # Check if there are any pods
         if not pod_objects:
@@ -729,58 +724,19 @@ class VerifyInternalRegistry(OrchestratorRule):
                 "Image registry is Managed but no registry pods found in openshift-image-registry namespace.\n"
             )
 
-        # Check if at least one pod is running with all containers ready
-        running_pods = []
+        # Check pod readiness
         not_ready_pods = []
 
         for pod in pod_objects:
-            pod_status = self._get_pod_status(pod)
+            pod_status = self.get_pod_status(pod)
             if pod_status is None:
                 continue
-            if pod_status["all_containers_ready"]:
-                running_pods.append(pod_status["name"])
-            else:
+            if not pod_status["all_containers_ready"]:
                 not_ready_pods.append(pod_status["status_message"])
 
-        if not running_pods:
-            message = "Image registry is Managed but no pods are running with all containers ready.\n"
-            if not_ready_pods:
-                message += "Pod status:\n  " + "\n  ".join(not_ready_pods)
-            return RuleResult.failed(message)
-
-        # Some pods are ready while others are not
         if not_ready_pods:
-            message = "Image registry is Managed but some pods are not ready.\n"
-            message += "Pod status:\n  " + "\n  ".join(not_ready_pods)
+            message = "Image registry is Managed but following pods are not ready:\n  "
+            message += "\n  ".join(not_ready_pods)
             return RuleResult.failed(message)
 
         return RuleResult.passed()
-
-    def _get_pod_status(self, pod):
-        pod_data = pod.as_dict()
-        pod_name = pod_data["metadata"]["name"]
-        status_dict = pod_data.get("status", {})
-        phase = status_dict.get("phase", "Unknown")
-
-        # Skip completed pods
-        if phase == "Succeeded":
-            return None
-
-        # Check if all containers are ready
-        container_statuses = status_dict.get("containerStatuses", [])
-        all_ready = all(c.get("ready", False) for c in container_statuses)
-
-        # Build status message
-        if phase != "Running":
-            status_message = f"{pod_name} - Phase: {phase}"
-        elif not all_ready:
-            status_message = f"{pod_name} - Not all containers ready"
-        else:
-            status_message = f"{pod_name} - Ready"
-
-        return {
-            "name": pod_name,
-            "phase": phase,
-            "all_containers_ready": phase == "Running" and all_ready,
-            "status_message": status_message,
-        }

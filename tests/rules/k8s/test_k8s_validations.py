@@ -1210,6 +1210,9 @@ class TestVerifyInternalRegistry(RuleTestBase):
                 ),
             },
         ),
+    ]
+
+    scenario_prerequisite_not_fulfilled = [
         RuleScenarioParams(
             "registry is not in Managed state (Removed)",
             tested_object_mock_dict={
@@ -1243,8 +1246,7 @@ class TestVerifyInternalRegistry(RuleTestBase):
                     ]
                 ),
             },
-            failed_msg="Image registry is Managed but no pods are running with all containers ready.\n"
-            "Pod status:\n"
+            failed_msg="Image registry is Managed but following pods are not ready:\n"
             "  image-registry-1 - Phase: Pending",
         ),
         RuleScenarioParams(
@@ -1257,11 +1259,14 @@ class TestVerifyInternalRegistry(RuleTestBase):
                     ]
                 ),
             },
-            failed_msg="Image registry is Managed but no pods are running with all containers ready.\n"
-            "Pod status:\n"
-            "  image-registry-1 - Not all containers ready",
+            failed_msg="Image registry is Managed but following pods are not ready:\n"
+            "  image-registry-1 - Running, Not all containers ready",
         ),
     ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
+    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
 
     @pytest.mark.parametrize("scenario_params", scenario_passed)
     def test_scenario_passed(self, scenario_params, tested_object):

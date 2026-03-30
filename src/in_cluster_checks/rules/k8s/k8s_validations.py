@@ -8,7 +8,7 @@ import json
 
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.rule import OrchestratorRule
-from in_cluster_checks.core.rule_result import RuleResult
+from in_cluster_checks.core.rule_result import PrerequisiteResult, RuleResult
 from in_cluster_checks.utils.enums import Objectives, Status
 
 
@@ -620,3 +620,123 @@ class OpenshiftOperatorStatus(OrchestratorRule):
             table_headers=headers,
             table_data=table_data,
         )
+
+
+# Rule to validate all policies are compliant
+class ValidateAllPoliciesCompliant(OrchestratorRule):
+    """Validate all Open Cluster Management policies are compliant."""
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "validate_all_policies_compliant"
+    title = "Verify all policies are in compliant state"
+
+    def run_rule(self):
+        """Check if all OCM policies are in Compliant state"""
+        try:
+            # Run the oc command to get all policies from all namespaces
+            _, policies_output, _ = self.run_oc_command(
+                "get", ["policies.policy.open-cluster-management.io", "--all-namespaces", "-o", "json"], timeout=45
+            )
+        except UnExpectedSystemOutput:
+            return RuleResult.failed("Failed to get policies from cluster")
+
+        try:
+            policies_data = json.loads(policies_output)
+        except json.JSONDecodeError as e:
+            raise UnExpectedSystemOutput(
+                ip=self.get_host_ip(),
+                cmd="oc get policies.policy.open-cluster-management.io --all-namespaces -o json",
+                output=policies_output,
+                message=f"Failed to parse JSON: {e}",
+            )
+
+        items = policies_data.get("items", [])
+        # Check if there are any policies
+        if not items:
+            return RuleResult.warning("No policies found in cluster")
+
+        non_compliant_policies = []
+
+        for policy in items:
+            metadata = policy.get("metadata", {})
+            name = metadata.get("name", "unknown")
+            namespace = metadata.get("namespace", "unknown")
+            status = policy.get("status", {})
+            compliance_state = status.get("compliant", "Unknown")
+            if compliance_state != "Compliant":
+                non_compliant_policies.append(f"{namespace}/{name} - {compliance_state}")
+
+        if non_compliant_policies:
+            message = f"There are {len(non_compliant_policies)} non-compliant policies:\n  "
+            message += "\n  ".join(non_compliant_policies)
+            return RuleResult.failed(message)
+
+        return RuleResult.passed()
+
+
+# Rule to verify OpenShift internal image registry is configured and available
+class VerifyInternalRegistry(OrchestratorRule):
+    """Verify OpenShift internal image registry is configured and available"""
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_internal_registry"
+    title = "Verify internal image registry is configured and available"
+
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        """
+        Check if image registry management state is configured.
+
+        Returns:
+            PrerequisiteResult indicating if registry should be validated
+        """
+        try:
+            _, registry_config_output, _ = self.run_oc_command(
+                "get",
+                ["config.imageregistry.operator.openshift.io", "cluster", "-o", "json"],
+                timeout=45,
+            )
+        except UnExpectedSystemOutput:
+            return PrerequisiteResult.not_met("Failed to get image registry configuration")
+
+        try:
+            registry_config = json.loads(registry_config_output)
+        except json.JSONDecodeError as e:
+            return PrerequisiteResult.not_met(f"Failed to parse image registry configuration: {e}")
+
+        spec = registry_config.get("spec", {})
+        management_state = spec.get("managementState", "Unknown")
+
+        if management_state != "Managed":
+            return PrerequisiteResult.not_met(f"Image registry management state is '{management_state}', not 'Managed'")
+
+        return PrerequisiteResult.met()
+
+    def run_rule(self):
+        """
+        Check if OpenShift internal image registry is properly configured and running.
+
+        """
+        # Only check pods if management state is Managed (verified by prerequisite)
+        pod_objects = self.get_all_pods(namespace="openshift-image-registry")
+        # Check if there are any pods
+        if not pod_objects:
+            return RuleResult.failed(
+                "Image registry is Managed but no registry pods found in openshift-image-registry namespace.\n"
+            )
+
+        # Check pod readiness
+        not_ready_pods = []
+
+        for pod in pod_objects:
+            pod_status = self.get_pod_status(pod)
+            if pod_status is None:
+                continue
+            if not pod_status["all_containers_ready"]:
+                not_ready_pods.append(pod_status["status_message"])
+
+        if not_ready_pods:
+            message = "Image registry is Managed but following pods are not ready:\n  "
+            message += "\n  ".join(not_ready_pods)
+            return RuleResult.failed(message)
+
+        return RuleResult.passed()

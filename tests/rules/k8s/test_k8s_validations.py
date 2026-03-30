@@ -18,7 +18,9 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     NodesCpuAndMemoryStatus,
     OpenshiftOperatorStatus,
     ValidateAllDaemonsetsScheduled,
+    ValidateAllPoliciesCompliant,
     ValidateNamespaceStatus,
+    VerifyInternalRegistry,
 )
 from in_cluster_checks.utils.enums import Status
 from tests.pytest_tools.test_rule_base import RuleScenarioParams, RuleTestBase
@@ -1051,3 +1053,225 @@ class TestAllStatefulsetsReady(RuleTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_warning)
     def test_scenario_warning(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_warning(self, scenario_params, tested_object)
+
+
+class TestValidateAllPoliciesCompliant(RuleTestBase):
+    """Test ValidateAllPoliciesCompliant rule."""
+
+    tested_type = ValidateAllPoliciesCompliant
+
+    # Sample policy data - all compliant
+    all_compliant_policies = {
+        "items": [
+            {
+                "metadata": {"name": "policy1", "namespace": "open-cluster-management"},
+                "status": {"compliant": "Compliant"},
+            },
+            {
+                "metadata": {"name": "policy2", "namespace": "open-cluster-management"},
+                "status": {"compliant": "Compliant"},
+            },
+        ]
+    }
+
+    # Sample policy data - some non-compliant
+    some_non_compliant_policies = {
+        "items": [
+            {
+                "metadata": {"name": "policy1", "namespace": "open-cluster-management"},
+                "status": {"compliant": "Compliant"},
+            },
+            {
+                "metadata": {"name": "policy2", "namespace": "open-cluster-management"},
+                "status": {"compliant": "NonCompliant"},
+            },
+            {
+                "metadata": {"name": "policy3", "namespace": "policies"},
+                "status": {"compliant": "Pending"},
+            },
+        ]
+    }
+
+    # No policies found
+    no_policies = {"items": []}
+
+    # Scenario where all policies are compliant
+    scenario_passed = [
+        RuleScenarioParams(
+            "all policies are compliant",
+            tested_object_mock_dict={
+                "run_oc_command": Mock(return_value=(0, json.dumps(all_compliant_policies), ""))
+            },
+        ),
+    ]
+    # Scenario where some policies are non-compliant
+    scenario_failed = [
+        RuleScenarioParams(
+            "some policies are non-compliant",
+            tested_object_mock_dict={
+                "run_oc_command": Mock(return_value=(0, json.dumps(some_non_compliant_policies), ""))
+            },
+            failed_msg="There are 2 non-compliant policies:\n"
+            "  open-cluster-management/policy2 - NonCompliant\n"
+            "  policies/policy3 - Pending",
+        ),
+    ]
+
+    # Scenario where no policies are found
+    scenario_warning = [
+        RuleScenarioParams(
+            "no policies found in cluster",
+            tested_object_mock_dict={"run_oc_command": Mock(return_value=(0, json.dumps(no_policies), ""))},
+            failed_msg="No policies found in cluster",
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_warning)
+    def test_scenario_warning(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_warning(self, scenario_params, tested_object)
+
+
+def create_mock_registry_pod(name, namespace, phase, all_containers_ready=True):
+    """Create a mock registry pod object."""
+    mock_pod = Mock()
+    container_statuses = [
+        {"ready": all_containers_ready},
+        {"ready": all_containers_ready},
+    ]
+    mock_pod.as_dict.return_value = {
+        "metadata": {"namespace": namespace, "name": name},
+        "status": {
+            "phase": phase,
+            "containerStatuses": container_statuses,
+        },
+    }
+    return mock_pod
+
+
+class TestVerifyInternalRegistry(RuleTestBase):
+    """Test VerifyInternalRegistry rule."""
+
+    tested_type = VerifyInternalRegistry
+
+    # Registry config - Managed state
+    registry_config_managed = {
+        "spec": {
+            "managementState": "Managed",
+            "storage": {"emptyDir": {}},
+        },
+        "status": {},
+    }
+
+    # Registry config - Removed state
+    registry_config_removed = {
+        "spec": {
+            "managementState": "Removed",
+        },
+        "status": {},
+    }
+
+    # Registry config - Unmanaged state
+    registry_config_unmanaged = {
+        "spec": {
+            "managementState": "Unmanaged",
+        },
+        "status": {},
+    }
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "registry is managed and pods are running",
+            tested_object_mock_dict={
+                "run_oc_command": Mock(return_value=(0, json.dumps(registry_config_managed), "")),
+                "get_all_pods": Mock(
+                    return_value=[
+                        create_mock_registry_pod("image-registry-1", "openshift-image-registry", "Running", True),
+                        create_mock_registry_pod("image-registry-2", "openshift-image-registry", "Running", True),
+                    ]
+                ),
+            },
+        ),
+        RuleScenarioParams(
+            "registry is managed with one running pod",
+            tested_object_mock_dict={
+                "run_oc_command": Mock(return_value=(0, json.dumps(registry_config_managed), "")),
+                "get_all_pods": Mock(
+                    return_value=[
+                        create_mock_registry_pod("image-registry-1", "openshift-image-registry", "Running", True),
+                    ]
+                ),
+            },
+        ),
+    ]
+
+    scenario_prerequisite_not_fulfilled = [
+        RuleScenarioParams(
+            "registry is not in Managed state (Removed)",
+            tested_object_mock_dict={
+                "run_oc_command": Mock(return_value=(0, json.dumps(registry_config_removed), "")),
+            },
+        ),
+        RuleScenarioParams(
+            "registry is not in Managed state (Unmanaged)",
+            tested_object_mock_dict={
+                "run_oc_command": Mock(return_value=(0, json.dumps(registry_config_unmanaged), "")),
+            },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "registry is managed but no pods found",
+            tested_object_mock_dict={
+                "run_oc_command": Mock(return_value=(0, json.dumps(registry_config_managed), "")),
+                "get_all_pods": Mock(return_value=[]),
+            },
+            failed_msg="Image registry is Managed but no registry pods found in openshift-image-registry namespace.\n",            
+        ),
+        RuleScenarioParams(
+            "registry is managed but pods are not running",
+            tested_object_mock_dict={
+                "run_oc_command": Mock(return_value=(0, json.dumps(registry_config_managed), "")),
+                "get_all_pods": Mock(
+                    return_value=[
+                        create_mock_registry_pod("image-registry-1", "openshift-image-registry", "Pending", True),
+                    ]
+                ),
+            },
+            failed_msg="Image registry is Managed but following pods are not ready:\n"
+            "  image-registry-1 - Phase: Pending",
+        ),
+        RuleScenarioParams(
+            "registry is managed but pods running with containers not ready",
+            tested_object_mock_dict={
+                "run_oc_command": Mock(return_value=(0, json.dumps(registry_config_managed), "")),
+                "get_all_pods": Mock(
+                    return_value=[
+                        create_mock_registry_pod("image-registry-1", "openshift-image-registry", "Running", False),
+                    ]
+                ),
+            },
+            failed_msg="Image registry is Managed but following pods are not ready:\n"
+            "  image-registry-1 - Running, Not all containers ready",
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
+    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)

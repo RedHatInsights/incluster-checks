@@ -17,7 +17,9 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     NodesCpuAndMemoryStatus,
     OpenshiftOperatorStatus,
     ValidateAllDaemonsetsScheduled,
+    ValidateAllPoliciesCompliant,
     ValidateNamespaceStatus,
+    VerifyInternalRegistry,
 )
 
 
@@ -49,4 +51,6 @@ class K8sValidationDomain(RuleDomain):
             CheckDeploymentsReplicaStatus,
             AllStatefulsetsReady,
             OpenshiftOperatorStatus,
+            ValidateAllPoliciesCompliant,
+            VerifyInternalRegistry,
         ]

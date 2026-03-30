@@ -599,3 +599,46 @@ class OrchestratorRule(Rule):
             except Exception as e:
                 self.logger.error(f"Failed to get statefulsets: {e}")
                 return []
+
+    def get_pod_status(self, pod):
+        """
+        Get pod status information for validation.
+
+        Args:
+            pod: Pod object from openshift_client
+
+        Returns:
+            Dictionary with pod status information, or None if pod should be skipped (e.g., completed jobs).
+            Dictionary contains:
+                - name: Pod name
+                - phase: Pod phase (Running, Pending, Failed, etc.)
+                - all_containers_ready: True if all containers are ready
+                - status_message: Human-readable status message
+        """
+        pod_data = pod.as_dict()
+        pod_name = pod_data["metadata"]["name"]
+        status_dict = pod_data.get("status", {})
+        phase = status_dict.get("phase", "Unknown")
+
+        # Skip completed jobs as their phase is "Succeeded" and they are not expected to be running
+        if phase == "Succeeded":
+            return None
+
+        # Check if all containers are ready
+        container_statuses = status_dict.get("containerStatuses", [])
+        all_ready = all(c.get("ready", False) for c in container_statuses)
+
+        # Build status message
+        if phase != "Running":
+            status_message = f"{pod_name} - Phase: {phase}"
+        elif not all_ready:
+            status_message = f"{pod_name} - {phase}, Not all containers ready"
+        else:
+            status_message = f"{pod_name} - Ready"
+
+        return {
+            "name": pod_name,
+            "phase": phase,
+            "all_containers_ready": phase == "Running" and all_ready,
+            "status_message": status_message,
+        }

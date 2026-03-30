@@ -8,6 +8,8 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     OpenshiftOperatorStatus,
     ValidateAllDaemonsetsScheduled,
     ValidateNamespaceStatus,
+    ValidateAllPoliciesCompliant,
+    VerifyInternalRegistry,
 )
 
 
@@ -22,10 +24,12 @@ def test_k8s_domain_rules():
     domain = K8sValidationDomain()
     rules = domain.get_rule_classes()
 
-    assert len(rules) == 9
+    assert len(rules) == 11
     assert AllPodsReadyAndRunning in rules
     assert NodesAreReady in rules
     assert NodesCpuAndMemoryStatus in rules
     assert ValidateNamespaceStatus in rules
     assert ValidateAllDaemonsetsScheduled in rules
     assert OpenshiftOperatorStatus in rules
+    assert ValidateAllPoliciesCompliant in rules
+    assert VerifyInternalRegistry in rules

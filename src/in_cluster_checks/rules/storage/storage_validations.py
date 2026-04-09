@@ -29,6 +29,28 @@ class CephRule(OrchestratorRule):
 
     NAMESPACE = "openshift-storage"
 
+    def _is_external_ceph_mode(self) -> bool:
+        """
+        Detect if Ceph is running in external mode.
+
+        External mode is identified by the absence of OSD pods in the cluster.
+        In external mode, the Ceph cluster runs outside OpenShift (OSDs are external),
+        and only CSI drivers and operators run in-cluster.
+
+        In internal mode, OSD pods run in the openshift-storage namespace.
+
+        Returns:
+            True if external Ceph mode is detected (no OSD pods), False otherwise
+        """
+        try:
+            # Check for OSD pods - internal mode has them, external mode doesn't
+            osd_pod = self._get_pod_name(self.NAMESPACE, {"app": "rook-ceph-osd"}, log_errors=False)
+            # If no OSD pods found, it's external mode
+            return not bool(osd_pod)
+        except Exception:
+            # If we can't determine, assume internal mode (safer default)
+            return False
+
     def _run_ceph_cmd(self, cmd: SafeCmdString, timeout: int = 30) -> tuple[int, str, str]:
         """
         Execute a ceph command inside the appropriate pod.
@@ -60,14 +82,15 @@ class CephRule(OrchestratorRule):
 
     def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
         """
-        Check if Ceph is being used in the cluster.
+        Check if Ceph is being used in the cluster and if health checks can run.
 
         Verifies:
         1. openshift-storage namespace exists
-        2. rook-ceph-operator pod exists (tools pod is optional)
+        2. rook-ceph-operator pod exists
+        3. For external Ceph mode: rook-ceph-tools pod must exist
 
         Returns:
-            PrerequisiteResult indicating if Ceph storage is present
+            PrerequisiteResult indicating if Ceph storage is present and accessible
         """
 
         try:
@@ -82,13 +105,23 @@ class CephRule(OrchestratorRule):
                 "OpenShift Storage namespace not found. Ceph is not deployed in this cluster."
             )
 
-        # Check for operator pod (required - tools pod is optional)
-        operator_pod = self._get_pod_name(self.NAMESPACE, {"app": "rook-ceph-operator"})
+        # Check for operator pod (required)
+        operator_pod = self._get_pod_name(self.NAMESPACE, {"app": "rook-ceph-operator"}, log_errors=False)
 
         if not operator_pod:
             return PrerequisiteResult.not_met(
                 "No rook-ceph-operator pod found in openshift-storage namespace. Ceph operator is not running."
             )
+
+        # For external Ceph mode, require rook-ceph-tools pod
+        if self._is_external_ceph_mode():
+            tools_pod = self._get_pod_name(self.NAMESPACE, {"app": "rook-ceph-tools"}, log_errors=False)
+
+            if not tools_pod:
+                return PrerequisiteResult.not_met(
+                    "External Ceph detected. To run Ceph health checks, consider enabling the Ceph toolbox "
+                    "(set spec.enableCephTools=true in the StorageCluster resource)."
+                )
 
         return PrerequisiteResult.met()
 

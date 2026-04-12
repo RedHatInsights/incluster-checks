@@ -21,8 +21,8 @@ class TestNodeCertificateExpiry(RuleTestBase):
 
     tested_type = NodeCertificateExpiry
 
-    # Common certificate path for testing
-    cert_path = "/var/lib/kubelet/pki/kubelet-client-current.pem"
+    # etcd certificate path for testing
+    cert_path = "/etc/kubernetes/static-pod-resources/etcd-certs/secrets/etcd-all-certs/etcd-serving-master-0.crt"
 
     # Generate dates for testing
     now = datetime.now()
@@ -35,27 +35,22 @@ class TestNodeCertificateExpiry(RuleTestBase):
 
     # Mock all glob expansion commands for CERT_PATHS
     glob_expansion_commands = {
-        "ls /var/lib/kubelet/pki/kubelet-client-current.pem 2>/dev/null": CmdOutput(
-            out="/var/lib/kubelet/pki/kubelet-client-current.pem", return_code=0
+        "ls /etc/kubernetes/static-pod-resources/etcd-certs/secrets/etcd-all-certs/etcd-serving-*.crt 2>/dev/null": CmdOutput(
+            out="/etc/kubernetes/static-pod-resources/etcd-certs/secrets/etcd-all-certs/etcd-serving-master-0.crt",
+            return_code=0,
         ),
-        "ls /var/lib/kubelet/pki/kubelet-server-current.pem 2>/dev/null": CmdOutput(
-            out="", return_code=1
-        ),  # Not found
-        "ls /etc/kubernetes/static-pod-certs/secrets/etcd-all-certs/etcd-serving-*.crt 2>/dev/null": CmdOutput(
-            out="", return_code=1
-        ),  # Not found
-        "ls /etc/kubernetes/static-pod-certs/secrets/etcd-all-certs/etcd-peer-*.crt 2>/dev/null": CmdOutput(
+        "ls /etc/kubernetes/static-pod-resources/etcd-certs/secrets/etcd-all-certs/etcd-peer-*.crt 2>/dev/null": CmdOutput(
             out="", return_code=1
         ),  # Not found
     }
 
     # Mock file existence checks (used by file_utils.is_file_exist)
-    # Only kubelet-client-current.pem exists in our test scenario
+    # Only etcd-serving certificate exists in our test scenario
     file_existence_commands = {
-        "ls /var/lib/kubelet/pki/kubelet-client-current.pem": CmdOutput(
-            out="/var/lib/kubelet/pki/kubelet-client-current.pem", return_code=0
+        "ls /etc/kubernetes/static-pod-resources/etcd-certs/secrets/etcd-all-certs/etcd-serving-master-0.crt": CmdOutput(
+            out="/etc/kubernetes/static-pod-resources/etcd-certs/secrets/etcd-all-certs/etcd-serving-master-0.crt",
+            return_code=0,
         ),
-        "ls /var/lib/kubelet/pki/kubelet-server-current.pem": CmdOutput(out="", return_code=1),
     }
 
     prerequisite_commands = {

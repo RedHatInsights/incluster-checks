@@ -14,10 +14,11 @@ from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 class NodeCertificateExpiry(Rule):
     """
-    Check certificate expiry dates on OpenShift nodes.
+    Check etcd certificate expiry dates on OpenShift nodes.
 
-    Validates that certificates in common paths are not expiring soon.
-    Warns if certificates will expire within 30 days.
+    Monitors etcd serving and peer certificates which have 3-year validity
+    and only rotate during cluster upgrades. Warns if certificates will
+    expire within 30 days.
     """
 
     objective_hosts = [Objectives.ALL_NODES]
@@ -30,12 +31,11 @@ class NodeCertificateExpiry(Rule):
     # Days before expiry to start warning
     WARNING_DAYS = 30
 
-    # Common certificate paths on OpenShift nodes
+    # etcd certificate paths on OpenShift nodes
+    # etcd certificates have 3-year validity and are not rotated automatically
     CERT_PATHS = [
-        SafeCmdString("/var/lib/kubelet/pki/kubelet-client-current.pem"),
-        SafeCmdString("/var/lib/kubelet/pki/kubelet-server-current.pem"),
-        SafeCmdString("/etc/kubernetes/static-pod-certs/secrets/etcd-all-certs/etcd-serving-*.crt"),
-        SafeCmdString("/etc/kubernetes/static-pod-certs/secrets/etcd-all-certs/etcd-peer-*.crt"),
+        SafeCmdString("/etc/kubernetes/static-pod-resources/etcd-certs/secrets/etcd-all-certs/etcd-serving-*.crt"),
+        SafeCmdString("/etc/kubernetes/static-pod-resources/etcd-certs/secrets/etcd-all-certs/etcd-peer-*.crt"),
     ]
 
     def is_prerequisite_fulfilled(self):

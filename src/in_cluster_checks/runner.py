@@ -36,6 +36,7 @@ class InClusterCheckRunner:
         active_profile: str = "general",
         debug_rule_flag: bool = False,
         debug_rule_name: str = "",
+        namespace: str = "default",
         max_workers: int = 50,
         domain_package: str = "in_cluster_checks.domains",
     ):
@@ -46,6 +47,7 @@ class InClusterCheckRunner:
             active_profile: Active profile name (default: 'general'). Examples: 'general', 'nvidia', 'telco'
             debug_rule_flag: Enable debug mode for detailed output
             debug_rule_name: Name of specific rule to run in debug mode
+            namespace: Namespace for debug pods (default: "default")
             max_workers: Maximum number of concurrent workers for parallel execution
             domain_package: Python package path for domain discovery
         """
@@ -59,6 +61,7 @@ class InClusterCheckRunner:
             active_profile_val=active_profile,
             debug_rule_flag_val=debug_rule_flag,
             debug_rule_name_val=debug_rule_name,
+            namespace_val=namespace,
             max_workers_val=max_workers,
         )
 
@@ -168,19 +171,21 @@ class InClusterCheckRunner:
         self.node_executors = self.factory.build_host_executors()
         self.logger.info(f"Built {len(self.node_executors)} node executor(s)")
 
-        # 2. Connect to all nodes
-        self.factory.connect_all()
+        # 2. Validate namespace permissions before attempting connections
+        self.factory.validate_namespace_permissions()
 
         try:
-            # 3. Discover and instantiate domains
+            # 3. Connect to all nodes
+            self.factory.connect_all()
+            # 4. Discover and instantiate domains
             available_domain_classes = self.discover_domains()
             domains = {name: domain_class() for name, domain_class in available_domain_classes.items()}
             self.logger.info(f"Running {len(domains)} in-cluster domain(s): {', '.join(domains.keys())}")
 
-            # 4. Build component map for all rules
+            # 5. Build component map for all rules
             rule_component_map = self.build_component_map(domains)
 
-            # 5. Run in-cluster RuleDomains
+            # 6. Run in-cluster RuleDomains
             results = []
             for domain_name, domain in domains.items():
                 self.logger.info(f"Running in-cluster domain: {domain_name}")
@@ -190,17 +195,17 @@ class InClusterCheckRunner:
             # Clear data collector cache after all domains complete
             DataCollectorRunner.clear_data_collector_cache()
 
-            # 6. Aggregate and format results
+            # 7. Aggregate and format results
             reports = StructedPrinter.format_results(results, rule_component_map)
 
-            # 7. Generate JSON output (skip in debug mode)
+            # 8. Generate JSON output (skip in debug mode)
             if not global_config.debug_rule_flag:
                 StructedPrinter.print_to_json(reports, str(output_path))
                 self.logger.info(f"In-cluster check results saved to: {output_path}")
             else:
                 self.logger.info("Debug mode: JSON output disabled")
 
-            # 8. Log summary
+            # 9. Log summary
             self.log_summary(reports)
 
             return str(output_path)

@@ -192,6 +192,14 @@ def main() -> None:
         help="Active profile used to filter rules according to solution or use case (default: general)",
     )
 
+    parser.add_argument(
+        "--namespace",
+        type=str,
+        default="default",
+        help="Namespace for debug pods (default: default). "
+        "Note: User must have permissions to create debug pods in the specified namespace.",
+    )
+
     args = parser.parse_args()
 
     # Setup logging
@@ -213,6 +221,7 @@ def main() -> None:
             active_profile=args.profile,
             debug_rule_flag=(args.debug_rule != ""),
             debug_rule_name=args.debug_rule,
+            namespace=args.namespace,
             max_workers=50,
         )
 

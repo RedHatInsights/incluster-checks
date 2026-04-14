@@ -29,6 +29,15 @@ class TestNodeExecutor:
         assert executor.is_connected is False
         assert executor._pod_id is None
 
+    @patch('in_cluster_checks.core.executor.oc')
+    def test_init_custom_namespace(self, mock_oc):
+        """Test NodeExecutor initialization with custom namespace."""
+        executor = NodeExecutor("test-node", "192.168.1.10", namespace="openshift-test")
+
+        assert executor.node_name == "test-node"
+        assert executor.ip == "192.168.1.10"
+        assert executor.namespace == "openshift-test"
+
     def test_init_without_openshift_client(self):
         """Test NodeExecutor initialization without openshift_client library."""
         with patch('in_cluster_checks.core.executor.oc', None):

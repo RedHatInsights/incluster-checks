@@ -3,6 +3,7 @@
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 
+from in_cluster_checks import global_config
 from in_cluster_checks.core.executor_factory import NodeExecutorFactory
 from in_cluster_checks.utils.enums import Objectives
 
@@ -276,3 +277,87 @@ class TestNodeExecutorFactory:
         worker1.add_role.assert_called_once_with(Objectives.ONE_WORKER)
 
         # But since there are no masters, the loop for MASTERS->ONE_MASTER should just skip
+
+    @patch("in_cluster_checks.core.executor_factory.NodeExecutor")
+    @patch("in_cluster_checks.core.executor_factory.oc")
+    def test_factory_uses_global_namespace(self, mock_oc, mock_executor_class):
+        """Test that factory passes global_config.namespace to executors."""
+        # Set custom namespace in global config
+        global_config.namespace = "custom-namespace"
+
+        factory = NodeExecutorFactory()
+
+        # Call _add_host_executor
+        factory._add_host_executor(
+            node_name="test-node",
+            node_ip="192.168.1.10",
+            roles=[Objectives.WORKERS, Objectives.ALL_NODES],
+            node_labels="worker"
+        )
+
+        # Verify NodeExecutor was created with the namespace from global_config
+        mock_executor_class.assert_called_once_with(
+            "test-node",
+            "192.168.1.10",
+            roles=[Objectives.WORKERS, Objectives.ALL_NODES],
+            node_labels="worker",
+            namespace="custom-namespace"
+        )
+
+        # Reset global config
+        global_config.namespace = "default"
+
+    @patch("in_cluster_checks.core.executor_factory.oc")
+    def test_validate_namespace_permissions_success(self, mock_oc):
+        """Test namespace permission validation when user has permissions."""
+        global_config.namespace = "test-namespace"
+        factory = NodeExecutorFactory()
+
+        # Mock successful permission check
+        mock_result = Mock()
+        mock_result.out.return_value = "yes"
+        mock_oc.invoke.return_value = mock_result
+
+        # Should not raise
+        result = factory.validate_namespace_permissions()
+        assert result is True
+
+        # Verify oc auth can-i was called correctly
+        mock_oc.invoke.assert_called_once_with("auth", ["can-i", "create", "pods", "--namespace=test-namespace"])
+
+        # Reset global config
+        global_config.namespace = "default"
+
+    @patch("in_cluster_checks.core.executor_factory.oc")
+    def test_validate_namespace_permissions_denied(self, mock_oc):
+        """Test namespace permission validation when user lacks permissions."""
+        global_config.namespace = "restricted-namespace"
+        factory = NodeExecutorFactory()
+
+        # Mock permission denied
+        mock_result = Mock()
+        mock_result.out.return_value = "no"
+        mock_oc.invoke.return_value = mock_result
+
+        # Should raise RuntimeError with clear message
+        with pytest.raises(RuntimeError, match="Insufficient permissions to create pods"):
+            factory.validate_namespace_permissions()
+
+        # Reset global config
+        global_config.namespace = "default"
+
+    @patch("in_cluster_checks.core.executor_factory.oc")
+    def test_validate_namespace_permissions_error(self, mock_oc):
+        """Test namespace permission validation when check fails."""
+        global_config.namespace = "nonexistent-namespace"
+        factory = NodeExecutorFactory()
+
+        # Mock command failure (e.g., namespace not found, connection issue)
+        mock_oc.invoke.side_effect = Exception("namespace not found")
+
+        # Should raise the original exception
+        with pytest.raises(Exception, match="namespace not found"):
+            factory.validate_namespace_permissions()
+
+        # Reset global config
+        global_config.namespace = "default"

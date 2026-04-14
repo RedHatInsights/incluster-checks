@@ -166,9 +166,14 @@ class NodeExecutorFactory:
             roles: List of Objectives (roles) for this node
             node_labels: Comma-separated string of node role labels (e.g., "control-plane,worker")
         """
-        executor = NodeExecutor(node_name, node_ip, roles=roles, node_labels=node_labels)
+        executor = NodeExecutor(
+            node_name, node_ip, roles=roles, node_labels=node_labels, namespace=global_config.namespace
+        )
         self._host_executors_dict[node_name] = executor
-        self.logger.debug(f"Added executor for {node_name} ({node_ip}) with roles: {roles}, labels: {node_labels}")
+        self.logger.debug(
+            f"Added executor for {node_name} ({node_ip}) with roles: {roles}, "
+            f"labels: {node_labels}, namespace: {global_config.namespace}"
+        )
 
     def _add_single_roles(self):
         """
@@ -205,6 +210,38 @@ class NodeExecutorFactory:
             Dictionary of {node_name: NodeExecutor}
         """
         return self._host_executors_dict
+
+    def validate_namespace_permissions(self) -> bool:
+        """
+        Validate that user has permissions to create pods in the configured namespace.
+
+        This performs a dry-run check to verify permissions before attempting to create
+        debug pods, providing a clear error message if permissions are insufficient.
+
+        Returns:
+            True if user has permissions
+
+        Raises:
+            RuntimeError: If user lacks permissions to create pods in the namespace
+        """
+        namespace = global_config.namespace
+        self.logger.info(f"Validating permissions for namespace '{namespace}'...")
+
+        with oc.timeout(30):
+            result = oc.invoke("auth", ["can-i", "create", "pods", f"--namespace={namespace}"])
+            output = result.out().strip()
+
+            if output.lower() == "yes":
+                self.logger.info(f"Permissions validated for namespace '{namespace}'")
+                return True
+
+            # Permission denied
+            error_msg = (
+                f"Insufficient permissions to create pods in namespace '{namespace}'. "
+                f"Please ensure you have the required RBAC permissions or choose a different namespace."
+            )
+            self.logger.error(error_msg)
+            raise RuntimeError(error_msg)
 
     def connect_all(self):
         """Connect to all nodes (create debug pods) in parallel."""

@@ -95,6 +95,9 @@ in-cluster-checks --debug-rule "check_disk_usage"
 
 # Run with debug logging
 in-cluster-checks --log-level DEBUG
+
+# Specify namespace for debug pods (default: default)
+in-cluster-checks --namespace openshift-debug
 ```
 
 To see all available options, run:
@@ -103,7 +106,9 @@ in-cluster-checks --help
 ```
 
 
-**Note:** To control execution performance, use `--max-workers` to set the maximum number of parallel workers (default: 50).
+**Notes:** 
+- To control execution performance, use `--max-workers` to set the maximum number of parallel workers (default: 50).
+- When using `--namespace`, ensure you have permissions to create debug pods in the specified namespace.
 
 
 

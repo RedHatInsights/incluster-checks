@@ -8,7 +8,8 @@ Based on support/HealthChecks/flows/Security/Certificate/allcertificate_expiry_d
 from typing import List
 
 from in_cluster_checks.core.domain import RuleDomain
-from in_cluster_checks.rules.security.certificate_expiry import NodeCertificateExpiry
+from in_cluster_checks.rules.security.ca_certificate_expiry import KubeletCaExpiryCheck
+from in_cluster_checks.rules.security.node_certificate_expiry import NodeCertificateExpiry
 from in_cluster_checks.rules.security.tls_certificate_expiry import TlsCertificateExpiry
 
 
@@ -33,4 +34,5 @@ class SecurityValidationDomain(RuleDomain):
         return [
             NodeCertificateExpiry,
             TlsCertificateExpiry,
+            KubeletCaExpiryCheck,
         ]

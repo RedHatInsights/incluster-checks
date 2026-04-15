@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from in_cluster_checks.rules.security.certificate_expiry import NodeCertificateExpiry
+from in_cluster_checks.rules.security.node_certificate_expiry import NodeCertificateExpiry
 from tests.pytest_tools.test_operator_base import CmdOutput
 from tests.pytest_tools.test_rule_base import (
     RuleScenarioParams,

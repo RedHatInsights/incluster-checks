@@ -63,6 +63,34 @@ All rules use the `Status` enum (`utils/enums.py`):
 **Logging:**
 - NEVER use `self.logger` in rules. Return error messages via `RuleResult.failed()` or `RuleResult.warning()` instead. The framework handles logging automatically.
 
+**Documentation:**
+- **REQUIRED**: Every new rule MUST have a corresponding wiki page in the GitHub wiki
+- When implementing a new rule:
+  1. Add wiki link to the rule's `links` field pointing to where the page will be: `links = ["https://github.com/sprizend-rh/in-cluster-checks/wiki/{Domain}-‐-{Rule-Title}"]`
+  2. Create wiki page content in markdown format for the user to copy-paste into GitHub wiki
+- Wiki page naming: Use the rule's `title` field with spaces replaced by dashes (e.g., "Check kubelet CA certificate expiry" → `Security-‐-Check-kubelet-CA-certificate-expiry`)
+- **Note**: Use `‐` (not `-`) in wiki URLs due to GitHub wiki URL encoding
+
+**Creating Wiki Page Content:**
+- GitHub wikis are NOT accessible via the GitHub MCP (REST API returns 404)
+- **Workflow**: 
+  1. Use WebFetch to read existing wiki pages as templates: `WebFetch(url="https://github.com/sprizend-rh/in-cluster-checks/wiki/Security-‐-TLS-certificate-expiry")`
+  2. Create the new wiki page content in **markdown format** following the standard structure
+  3. Present the markdown content in a code block for easy copy-paste by the user
+
+**Wiki Page Structure:**
+All wiki pages should follow this standard structure (in markdown format):
+  - **Description**: What the rule checks, why it's important, severity level, and failure thresholds
+  - **Prerequisites**: Required access, tools, or conditions needed to run the check
+  - **Impact**: What happens if the condition fails (specific failure scenarios and consequences)
+  - **Root Cause**: Common reasons why this condition occurs
+  - **Diagnostics**: Commands and procedures to investigate the issue manually
+  - **Solution**: Step-by-step remediation instructions with code examples
+  - **Resources**: Links to official documentation, KCS articles, troubleshooting guides
+
+**Wiki Page Examples:**
+- See existing templates: [Security - TLS certificate expiry](https://github.com/sprizend-rh/in-cluster-checks/wiki/Security-‐-TLS-certificate-expiry), [Security - Node certificate expiry](https://github.com/sprizend-rh/in-cluster-checks/wiki/Security-‐-Node-certificate-expiry)
+
 ## Existing Domains
 
 - **HWValidationDomain** (`domains/hw_domain.py`): Hardware checks (disk usage, CPU, memory, temperature)

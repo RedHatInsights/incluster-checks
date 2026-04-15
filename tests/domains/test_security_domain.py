@@ -1,7 +1,8 @@
 """Tests for Security validation domain."""
 
 from in_cluster_checks.domains.security_domain import SecurityValidationDomain
-from in_cluster_checks.rules.security.certificate_expiry import NodeCertificateExpiry
+from in_cluster_checks.rules.security.ca_certificate_expiry import KubeletCaExpiryCheck
+from in_cluster_checks.rules.security.node_certificate_expiry import NodeCertificateExpiry
 from in_cluster_checks.rules.security.tls_certificate_expiry import TlsCertificateExpiry
 
 
@@ -16,6 +17,7 @@ def test_security_domain_rules():
     domain = SecurityValidationDomain()
     rules = domain.get_rule_classes()
 
-    assert len(rules) == 2
+    assert len(rules) == 3
     assert NodeCertificateExpiry in rules
     assert TlsCertificateExpiry in rules
+    assert KubeletCaExpiryCheck in rules

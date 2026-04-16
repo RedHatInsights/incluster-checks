@@ -397,6 +397,7 @@ class AllDeploymentsAvailable(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "all_deployments_available"
     title = "Verify all deployments are available"
+    links = ["https://github.com/sprizend-rh/in-cluster-checks/wiki/K8s-%E2%80%90-Verify-deployments-availability"]
 
     def run_rule(self):
         """Check if all deployments have Available condition set to True."""
@@ -447,6 +448,7 @@ class CheckDeploymentsReplicaStatus(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "check_deployments_replica_status"
     title = "Verify deployment replica counts"
+    links = ["https://github.com/sprizend-rh/in-cluster-checks/wiki/K8s-%E2%80%90-Check-deployment-replicas-status"]
 
     def run_rule(self):
         """Check if all deployments have desired number of replicas ready."""
@@ -503,6 +505,7 @@ class AllStatefulsetsReady(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "all_statefulsets_ready"
     title = "Verify all statefulsets are ready"
+    links = ["https://github.com/sprizend-rh/in-cluster-checks/wiki/K8s-%E2%80%90-Verify-statefulsets-readiness"]
 
     def run_rule(self):
         """Check if all statefulsets have ready replicas matching desired replicas."""
@@ -627,6 +630,7 @@ class ValidateAllPoliciesCompliant(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "validate_all_policies_compliant"
     title = "Verify all policies are in compliant state"
+    links = ["https://github.com/sprizend-rh/in-cluster-checks/wiki/K8s-Verify-policies-compliance"]
 
     def run_rule(self):
         """Check if all OCM policies are in Compliant state"""
@@ -679,6 +683,7 @@ class VerifyInternalRegistry(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "verify_internal_registry"
     title = "Verify internal image registry is configured and available"
+    links = ["https://github.com/sprizend-rh/in-cluster-checks/wiki/K8s-%E2%80%90-Verify-internal-image-registry"]
 
     def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
         """

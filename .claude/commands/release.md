@@ -81,17 +81,7 @@ git tag -a vX.Y.Z -m "Release version X.Y.Z"
 git push origin main --tags
 ```
 
-## Step 8: Build and Publish to PyPI
-
-```bash
-# Build distribution packages
-python -m build
-
-# Upload to PyPI (requires credentials)
-python -m twine upload dist/*
-```
-
-## Step 9: Create GitHub Release
+## Step 8: Create GitHub Release
 
 1. Go to GitHub repository
 2. Click "Releases" → "Draft a new release"
@@ -108,6 +98,5 @@ python -m twine upload dist/*
 - [ ] Pre-commit checks passing
 - [ ] Version commit created
 - [ ] Git tag created and pushed
-- [ ] Package built and uploaded to PyPI
 - [ ] GitHub release created
 - [ ] Documentation updated if needed

@@ -134,7 +134,7 @@ class KubeletCaExpiryCheck(OrchestratorRule):
             UnExpectedSystemOutput: If secret retrieval or parsing fails
         """
         try:
-            _, out, _ = self.run_oc_command(
+            _, out, _ = self.oc_api.run_oc_command(
                 "get",
                 ["secret", self.SECRET_NAME, "-n", self.SECRET_NAMESPACE, "-o", "json"],
                 timeout=45,

@@ -14,12 +14,21 @@ from pathlib import Path
 class FunctionImportChecker(ast.NodeVisitor):
     """AST visitor to find imports inside function definitions."""
 
-    def __init__(self, filename: str):
+    def __init__(self, filename: str, source_lines: list[str]):
         self.filename = filename
+        self.source_lines = source_lines
         self.errors = []
         self.in_function = False
         self.in_try_except = False
         self.try_except_depth = 0
+
+    def _has_noqa_comment(self, lineno: int) -> bool:
+        """Check if the line has a noqa comment to suppress this check."""
+        if lineno <= 0 or lineno > len(self.source_lines):
+            return False
+        line = self.source_lines[lineno - 1]
+        # Support both general noqa and specific PLC0415 (Pylint code for import-outside-toplevel)
+        return "# noqa" in line and ("PLC0415" in line or "function-import" in line)
 
     def visit_FunctionDef(self, node):
         """Visit function definition - track that we're inside a function."""
@@ -44,8 +53,8 @@ class FunctionImportChecker(ast.NodeVisitor):
 
     def visit_Import(self, node):
         """Check if import is inside a function."""
-        if self.in_function:
-            # Import inside function is not allowed
+        if self.in_function and not self._has_noqa_comment(node.lineno):
+            # Import inside function is not allowed (unless noqa comment present)
             self.errors.append(
                 f"{self.filename}:{node.lineno}: Import inside function/method is not allowed: "
                 f"import {', '.join(alias.name for alias in node.names)}"
@@ -54,8 +63,8 @@ class FunctionImportChecker(ast.NodeVisitor):
 
     def visit_ImportFrom(self, node):
         """Check if from-import is inside a function."""
-        if self.in_function:
-            # Import inside function is not allowed
+        if self.in_function and not self._has_noqa_comment(node.lineno):
+            # Import inside function is not allowed (unless noqa comment present)
             module = node.module or ""
             names = ", ".join(alias.name for alias in node.names)
             self.errors.append(
@@ -79,8 +88,9 @@ def check_file(filepath: Path) -> list:
         with open(filepath, "r", encoding="utf-8") as f:
             source = f.read()
 
+        source_lines = source.splitlines()
         tree = ast.parse(source, filename=str(filepath))
-        checker = FunctionImportChecker(str(filepath))
+        checker = FunctionImportChecker(str(filepath), source_lines)
         checker.visit(tree)
         return checker.errors
 

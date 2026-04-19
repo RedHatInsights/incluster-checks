@@ -33,7 +33,7 @@ class EtcdRule(OrchestratorRule):
         Raises:
             UnExpectedSystemOutput: If no running etcd pod found
         """
-        pod_name = self._get_pod_name("openshift-etcd", {"app": "etcd"})
+        pod_name = self.oc_api.get_pod_name("openshift-etcd", {"app": "etcd"})
 
         if not pod_name:
             raise UnExpectedSystemOutput(
@@ -59,7 +59,7 @@ class EtcdRule(OrchestratorRule):
         if pod_name is None:
             pod_name = self._get_etcd_pod_name()
 
-        rc, out, err = self.run_rsh_cmd("openshift-etcd", pod_name, etcd_cmd)
+        rc, out, err = self.oc_api.run_rsh_cmd("openshift-etcd", pod_name, etcd_cmd)
         return rc, out, err
 
     def _run_curl_in_pod(self, url, pod_name=None, grep_pattern=None):
@@ -88,7 +88,7 @@ class EtcdRule(OrchestratorRule):
                 "curl --max-time 10 -s --key $ETCDCTL_KEY --cert $ETCDCTL_CERT --cacert $ETCDCTL_CACERT -XGET {url}"
             ).format(url=url)
 
-        rc, out, err = self.run_rsh_cmd("openshift-etcd", pod_name, curl_cmd)
+        rc, out, err = self.oc_api.run_rsh_cmd("openshift-etcd", pod_name, curl_cmd)
         return rc, out, err
 
 

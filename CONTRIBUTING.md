@@ -195,7 +195,7 @@ self.run_cmd(SafeCmdString("cat /etc/hostname") + SafeCmdString("| grep localhos
 # SafeCmdString as variable (bypasses validation - already safe)
 cmd1 = SafeCmdString("etcdctl version")
 cmd2 = SafeCmdString("Running: {cmd}").format(cmd=cmd1)
-self.run_rsh_cmd(namespace, pod, cmd2)
+self.oc_api.run_rsh_cmd(namespace, pod, cmd2)
 ```
 
 **Allowed patterns in format() variables:**
@@ -251,6 +251,22 @@ This validates variables to prevent shell injection.
 - **Avoid command chaining** - Don't use multiple pipes (`|`) with `grep`, `awk`, `sed`, etc.
 - **Single grep is acceptable** - Using one `grep` to filter relevant lines is fine (e.g., `cat /proc/meminfo | grep MemTotal`)
 - **Never use `awk`** - Parse text in Python instead of using `awk` in commands
+- **Use parsing utilities** - Use `parsing_utils` helpers (`parse_json`, `parse_int`, `get_dict_from_string`) for safer parsing with automatic error handling
+
+**Using Cluster API for OrchestratorRule:**
+
+`OrchestratorRule` provides `self.oc_api` for cluster resource access:
+
+```python
+# Use existing oc_api methods when available
+pods = self.oc_api.get_pods(namespace="openshift-etcd")
+network = self.oc_api.select_resources("network.operator/cluster", single=True)
+
+# Use run_oc_command for other oc commands
+rc, out, err = self.oc_api.run_oc_command("get", ["nodes", "-o", "json"])
+```
+
+**Important:** Don't add new methods to `oc_api` if `run_oc_command()` can achieve the same result. Keep the API minimal.
 
 
 ### 2. Add Rule to Domain

@@ -44,7 +44,7 @@ class CephRule(OrchestratorRule):
         """
         try:
             # Check for OSD pods - internal mode has them, external mode doesn't
-            osd_pod = self._get_pod_name(self.NAMESPACE, {"app": "rook-ceph-osd"}, log_errors=False)
+            osd_pod = self.oc_api.get_pod_name(self.NAMESPACE, {"app": "rook-ceph-osd"}, log_errors=False)
             # If no OSD pods found, it's external mode
             return not bool(osd_pod)
         except Exception:
@@ -68,17 +68,17 @@ class CephRule(OrchestratorRule):
             Tuple of (return_code, stdout, stderr)
         """
         # First, try to find the rook-ceph-tools pod (preferred)
-        pod_name = self._get_pod_name(self.NAMESPACE, {"app": "rook-ceph-tools"}, log_errors=False)
+        pod_name = self.oc_api.get_pod_name(self.NAMESPACE, {"app": "rook-ceph-tools"}, log_errors=False)
         if pod_name:
             # Tools pod doesn't need config file
-            return self.run_rsh_cmd(self.NAMESPACE, pod_name, cmd, timeout=timeout)
+            return self.oc_api.run_rsh_cmd(self.NAMESPACE, pod_name, cmd, timeout=timeout)
 
         # Fallback: use ceph operator pod (guaranteed to exist by prerequisite check)
-        pod_name = self._get_pod_name(self.NAMESPACE, {"app": "rook-ceph-operator"})
+        pod_name = self.oc_api.get_pod_name(self.NAMESPACE, {"app": "rook-ceph-operator"})
         ceph_conf = f"/var/lib/rook/{self.NAMESPACE}/{self.NAMESPACE}.config"
         # Append config file path to command (pass SafeCmdString directly for composition)
         cmd_with_config = SafeCmdString("{cmd} -c {conf}").format(cmd=cmd, conf=ceph_conf)
-        return self.run_rsh_cmd(self.NAMESPACE, pod_name, cmd_with_config, timeout=timeout)
+        return self.oc_api.run_rsh_cmd(self.NAMESPACE, pod_name, cmd_with_config, timeout=timeout)
 
     def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
         """
@@ -95,7 +95,9 @@ class CephRule(OrchestratorRule):
 
         try:
             # Check if openshift-storage namespace exists (Rook-Ceph namespace)
-            namespace_obj = self._select_resources(resource_type="namespace/openshift-storage", timeout=10, single=True)
+            namespace_obj = self.oc_api.select_resources(
+                resource_type="namespace/openshift-storage", timeout=10, single=True
+            )
             if not namespace_obj:
                 return PrerequisiteResult.not_met(
                     "OpenShift Storage namespace not found. Ceph is not deployed in this cluster."
@@ -106,7 +108,7 @@ class CephRule(OrchestratorRule):
             )
 
         # Check for operator pod (required)
-        operator_pod = self._get_pod_name(self.NAMESPACE, {"app": "rook-ceph-operator"}, log_errors=False)
+        operator_pod = self.oc_api.get_pod_name(self.NAMESPACE, {"app": "rook-ceph-operator"}, log_errors=False)
 
         if not operator_pod:
             return PrerequisiteResult.not_met(
@@ -115,7 +117,7 @@ class CephRule(OrchestratorRule):
 
         # For external Ceph mode, require rook-ceph-tools pod
         if self._is_external_ceph_mode():
-            tools_pod = self._get_pod_name(self.NAMESPACE, {"app": "rook-ceph-tools"}, log_errors=False)
+            tools_pod = self.oc_api.get_pod_name(self.NAMESPACE, {"app": "rook-ceph-tools"}, log_errors=False)
 
             if not tools_pod:
                 return PrerequisiteResult.not_met(
@@ -467,7 +469,7 @@ class OrphanCsiVolumes(CephRule):
             Set of subvolume names, or RuleResult if operation failed
         """
         jsonpath = "{.items[*].spec.csi.volumeAttributes.subvolumeName}"
-        rc, stdout, stderr = self.run_oc_command("get", ["pv", "-o", f"jsonpath={jsonpath}"])
+        rc, stdout, stderr = self.oc_api.run_oc_command("get", ["pv", "-o", f"jsonpath={jsonpath}"])
 
         # Parse space-separated subvolume names, filter out empty values
         return set(name for name in stdout.split() if name)
@@ -592,7 +594,7 @@ class OsdJournalError(CephRule):
         osd_id = self._extract_osd_id(pod)
 
         # Get pod logs using oc logs command
-        return_code, log_output, stderr = self.run_oc_command(
+        return_code, log_output, stderr = self.oc_api.run_oc_command(
             "logs",
             ["-n", self.NAMESPACE, pod_name, "--since=1h", "--tail=15"],
             timeout=30,

@@ -49,10 +49,10 @@ class SafeCmdString:
              * Examples: /var/log/messages, /etc/file-name.txt, /tmp/test_file.log
              * Blocked: dots in directory names, multiple dots in filename, relative paths
 
-           - Identifiers: alphanumeric start, then letters/digits/dots/dashes/spaces
-             * Must start with letter or digit (prevents leading dash/dot security issue)
-             * Examples: eth0, bond0, br-ex, bond0.110, ovn-k8s-mp0, hello world
-             * Blocked: -rf, --help, .hidden (leading dash/dot)
+           - Identifiers: alphanumeric start, then letters/digits/underscores/dots/dashes/spaces
+             * Must start with letter or digit (prevents leading dash/dot/underscore security issue)
+             * Examples: eth0, bond0, br-ex, bond0.110, ovn-k8s-mp0, test_file, hello world
+             * Blocked: -rf, --help, .hidden, _private (leading dash/dot/underscore)
 
            - Etcd URLs: https://etcd-N.etcd.openshift-etcd.svc:2379/path (validated pattern)
            - Etcd IP URLs: https://IP:2379/path (pattern validated, invalid IPs fail naturally in curl)
@@ -84,7 +84,7 @@ class SafeCmdString:
         # - Filename: letters, digits, dashes, underscores + optional .extension
         r"/([a-zA-Z0-9_-]+/)*[a-zA-Z0-9_-]+(\.[a-zA-Z0-9]+)?|"
         # Identifiers: letters/digits/dots/dashes/spaces (no leading dash/dot for security)
-        r"[a-zA-Z0-9][a-zA-Z0-9.\- ]*"
+        r"[a-zA-Z0-9][a-zA-Z0-9_.\- ]*"
         r")$"
     )
 
@@ -153,8 +153,8 @@ class SafeCmdString:
                 f"Allowed patterns:\n"
                 f"  - Absolute paths: /path/to/file or /path/to/file.ext\n"
                 f"    (letters, digits, dashes, underscores; ONE dot in filename only)\n"
-                f"  - Identifiers: alphanumeric start, then letters/digits/dots/dashes/spaces\n"
-                f"    (e.g., 'eth0', 'br-ex', 'bond0.110', 'ovn-k8s-mp0')\n"
+                f"  - Identifiers: alphanumeric start, then letters/digits/underscores/dots/dashes/spaces\n"
+                f"    (e.g., 'eth0', 'br-ex', 'bond0.110', 'ovn-k8s-mp0', 'test_file')\n"
                 f"  - Etcd URLs: https://etcd-N.etcd.openshift-etcd.svc:2379/path\n"
                 f"  - PCI addresses: 01:00.0 or 0000:01:00.0\n"
                 f"Got: {value_str!r}"
@@ -169,8 +169,8 @@ class SafeCmdString:
         Allows safe patterns in values:
         - Absolute paths: /path/to/file or /path/to/file.ext
           (letters, digits, dashes, underscores; ONE dot in filename only)
-        - Identifiers: alphanumeric start, then letters/digits/dots/dashes/spaces
-          (e.g., 'eth0', 'br-ex', 'bond0.110', 'ovn-k8s-mp0')
+        - Identifiers: alphanumeric start, then letters/digits/underscores/dots/dashes/spaces
+          (e.g., 'eth0', 'br-ex', 'bond0.110', 'ovn-k8s-mp0', 'test_file')
         - Etcd URLs: https://etcd-N.etcd.openshift-etcd.svc:2379/path
         - Etcd IP URLs: https://IP:2379/path (with IP validation)
         - PCI addresses: 01:00.0 or 0000:01:00.0 (hex format)

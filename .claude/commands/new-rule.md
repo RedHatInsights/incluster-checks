@@ -63,6 +63,7 @@ class MyRuleName(Rule):
 - Include helpful error messages in failed results
 - Use `RuleResult.warning()` for non-critical issues
 - Parse command output carefully and handle edge cases
+- Use `parsing_utils` helpers (`parse_json`, `parse_int`, `get_dict_from_string`) when parsing command output
 
 ### OrchestratorRule Template (multi-node comparison)
 
@@ -93,6 +94,25 @@ class MyOrchestratorRule(OrchestratorRule):
             return RuleResult.failed("Data mismatch across nodes")
         return RuleResult.passed()
 ```
+
+**Using Cluster API (`oc_api`):**
+
+`OrchestratorRule` provides `self.oc_api` for cluster resource access:
+
+```python
+# Use existing oc_api methods when available
+pods = self.oc_api.get_pods(namespace="openshift-etcd")
+network = self.oc_api.select_resources("network.operator/cluster", single=True)
+
+# Run commands inside pods
+cmd = SafeCmdString("etcdctl version")
+rc, out, err = self.oc_api.run_rsh_cmd("openshift-etcd", "etcd-pod", cmd)
+
+# Use run_oc_command for other oc commands
+rc, out, err = self.oc_api.run_oc_command("get", ["nodes", "-o", "json"])
+```
+
+**Important:** Don't add new methods to `oc_api` if `run_oc_command()` can achieve the same result. Keep the API minimal.
 
 ## Step 3: Register in Domain
 
@@ -210,7 +230,7 @@ self.run_cmd(SafeCmdString("cat /etc/hostname") + SafeCmdString("| grep localhos
 # SafeCmdString as variable (bypasses validation - already safe)
 cmd1 = SafeCmdString("etcdctl version")
 cmd2 = SafeCmdString("Running: {cmd}").format(cmd=cmd1)
-self.run_rsh_cmd(namespace, pod, cmd2)
+self.oc_api.run_rsh_cmd(namespace, pod, cmd2)
 ```
 
 **Allowed patterns in format() variables:**

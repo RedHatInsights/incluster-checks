@@ -54,7 +54,7 @@ class AllPodsReadyAndRunning(OrchestratorRule):
         not_running_pods = []
 
         # Use helper method from OrchestratorRule (logs command automatically)
-        pod_objects = self.get_all_pods(all_namespaces=True, timeout=45)
+        pod_objects = self.oc_api.get_all_pods(all_namespaces=True, timeout=45)
 
         if not pod_objects:
             return [], []
@@ -142,7 +142,7 @@ class NodesAreReady(OrchestratorRule):
         warned_list = []
 
         # Get all nodes
-        node_objects = self.get_all_nodes(timeout=45)
+        node_objects = self.oc_api.get_all_nodes(timeout=45)
 
         if not node_objects:
             return [], [], []
@@ -202,7 +202,7 @@ class NodesCpuAndMemoryStatus(OrchestratorRule):
     def run_rule(self):
         """Check CPU and memory usage for all nodes."""
         try:
-            _, nodes_info, _ = self.run_oc_command("adm", ["top", "nodes", "--no-headers"], timeout=45)
+            _, nodes_info, _ = self.oc_api.run_oc_command("adm", ["top", "nodes", "--no-headers"], timeout=45)
         except UnExpectedSystemOutput:
             return RuleResult.failed("Failed to get nodes CPU and memory information")
 
@@ -308,7 +308,7 @@ class ValidateNamespaceStatus(OrchestratorRule):
 
     def run_rule(self):
         """Check if all namespaces are in Active status."""
-        namespace_objects = self.get_all_namespaces(timeout=45)
+        namespace_objects = self.oc_api.get_all_namespaces(timeout=45)
 
         if not namespace_objects:
             return RuleResult.failed("No namespaces found in cluster")
@@ -342,7 +342,7 @@ class ValidateAllDaemonsetsScheduled(OrchestratorRule):
     def run_rule(self):
         """Check if all daemonsets have desired number of available copies."""
         try:
-            _, out, _ = self.run_oc_command("get", ["daemonsets", "--all-namespaces", "-o", "json"], timeout=45)
+            _, out, _ = self.oc_api.run_oc_command("get", ["daemonsets", "--all-namespaces", "-o", "json"], timeout=45)
         except UnExpectedSystemOutput:
             return RuleResult.failed("Failed to get daemonsets")
 
@@ -401,7 +401,8 @@ class AllDeploymentsAvailable(OrchestratorRule):
 
     def run_rule(self):
         """Check if all deployments have Available condition set to True."""
-        deployment_objects = self.get_all_deployments()
+        # Get all deployments from all namespaces
+        deployment_objects = self.oc_api.get_all_deployments()
 
         if not deployment_objects:
             return RuleResult.failed("No deployments found in cluster")
@@ -452,7 +453,8 @@ class CheckDeploymentsReplicaStatus(OrchestratorRule):
 
     def run_rule(self):
         """Check if all deployments have desired number of replicas ready."""
-        deployment_objects = self.get_all_deployments()
+        # Get all deployments from all namespaces
+        deployment_objects = self.oc_api.get_all_deployments()
 
         if not deployment_objects:
             return RuleResult.failed("No deployments found in cluster")
@@ -510,7 +512,7 @@ class AllStatefulsetsReady(OrchestratorRule):
     def run_rule(self):
         """Check if all statefulsets have ready replicas matching desired replicas."""
         # Get all statefulsets from all namespaces
-        statefulset_objects = self.get_all_statefulsets()
+        statefulset_objects = self.oc_api.get_all_statefulsets()
 
         if not statefulset_objects:
             return RuleResult.warning("No statefulsets found in cluster")
@@ -562,7 +564,7 @@ class OpenshiftOperatorStatus(OrchestratorRule):
         headers = ["Name", "Version", "Available", "Progressing", "Degraded", "Since", "Message"]
 
         try:
-            _, operators_output, _ = self.run_oc_command(
+            _, operators_output, _ = self.oc_api.run_oc_command(
                 "get", ["clusteroperators.config.openshift.io", "--no-headers"], timeout=45
             )
         except UnExpectedSystemOutput:
@@ -636,7 +638,7 @@ class ValidateAllPoliciesCompliant(OrchestratorRule):
         """Check if all OCM policies are in Compliant state"""
         try:
             # Run the oc command to get all policies from all namespaces
-            _, policies_output, _ = self.run_oc_command(
+            _, policies_output, _ = self.oc_api.run_oc_command(
                 "get", ["policies.policy.open-cluster-management.io", "--all-namespaces", "-o", "json"], timeout=45
             )
         except UnExpectedSystemOutput:
@@ -693,7 +695,7 @@ class VerifyInternalRegistry(OrchestratorRule):
             PrerequisiteResult indicating if registry should be validated
         """
         try:
-            _, registry_config_output, _ = self.run_oc_command(
+            _, registry_config_output, _ = self.oc_api.run_oc_command(
                 "get",
                 ["config.imageregistry.operator.openshift.io", "cluster", "-o", "json"],
                 timeout=45,
@@ -720,7 +722,7 @@ class VerifyInternalRegistry(OrchestratorRule):
 
         """
         # Only check pods if management state is Managed (verified by prerequisite)
-        pod_objects = self.get_all_pods(namespace="openshift-image-registry")
+        pod_objects = self.oc_api.get_all_pods(namespace="openshift-image-registry")
         # Check if there are any pods
         if not pod_objects:
             return RuleResult.failed(
@@ -731,7 +733,7 @@ class VerifyInternalRegistry(OrchestratorRule):
         not_ready_pods = []
 
         for pod in pod_objects:
-            pod_status = self.get_pod_status(pod)
+            pod_status = self.oc_api.get_pod_status(pod)
             if pod_status is None:
                 continue
             if not pod_status["all_containers_ready"]:

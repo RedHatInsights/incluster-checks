@@ -34,7 +34,7 @@ class TestEtcdBasicCheck(RuleTestBase):
                 ),
             },
             tested_object_mock_dict={
-                "_get_pod_name": lambda ns, labels: "etcd-master-0",
+                "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
             },
         ),
     ]
@@ -48,7 +48,7 @@ class TestEtcdBasicCheck(RuleTestBase):
                 ),
             },
             tested_object_mock_dict={
-                "_get_pod_name": lambda ns, labels: "etcd-master-0",
+                "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
             },
             failed_msg="Could not connect to etcd. Command failed with rc=1\nError: Error: connection refused",
         ),
@@ -76,7 +76,7 @@ class TestEtcdAlarmCheck(RuleTestBase):
                 ("openshift-etcd", "etcd-master-0", "etcdctl alarm list"): CmdOutput(""),
             },
             tested_object_mock_dict={
-                "_get_pod_name": lambda ns, labels: "etcd-master-0",
+                "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
             },
         ),
     ]
@@ -90,7 +90,7 @@ class TestEtcdAlarmCheck(RuleTestBase):
                 ),
             },
             tested_object_mock_dict={
-                "_get_pod_name": lambda ns, labels: "etcd-master-0",
+                "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
             },
             failed_msg="Etcd has active alarms:\nmemberID:1234567890 alarm:NOSPACE\nmemberID:9876543210 alarm:NOSPACE",
         ),
@@ -120,7 +120,7 @@ class TestEtcdMemberCountCheck(RuleTestBase):
                 ),
             },
             tested_object_mock_dict={
-                "_get_pod_name": lambda ns, labels: "etcd-master-0",
+                "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
             },
         ),
     ]
@@ -134,7 +134,7 @@ class TestEtcdMemberCountCheck(RuleTestBase):
                 ),
             },
             tested_object_mock_dict={
-                "_get_pod_name": lambda ns, labels: "etcd-master-0",
+                "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
             },
             failed_msg="Etcd does not have at least three members (found 2): master-0, master-1",
         ),
@@ -176,7 +176,7 @@ class TestEtcdLeaderCheck(RuleTestBase):
                 ),
             },
             tested_object_mock_dict={
-                "_get_pod_name": lambda ns, labels: "etcd-master-0",
+                "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
             },
         ),
     ]
@@ -190,7 +190,7 @@ class TestEtcdLeaderCheck(RuleTestBase):
                 ),
             },
             tested_object_mock_dict={
-                "_get_pod_name": lambda ns, labels: "etcd-master-0",
+                "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
             },
             failed_msg="Etcd does not have a leader",
         ),
@@ -230,7 +230,7 @@ class TestEtcdEndpointHealthCheck(RuleTestBase):
                 ): CmdOutput('{"health": "true"}'),
             },
             tested_object_mock_dict={
-                "_get_pod_name": lambda ns, labels: "etcd-master-0",
+                "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
             },
         ),
     ]
@@ -254,7 +254,7 @@ class TestEtcdEndpointHealthCheck(RuleTestBase):
                 ): CmdOutput('{"health": "false"}'),
             },
             tested_object_mock_dict={
-                "_get_pod_name": lambda ns, labels: "etcd-master-0",
+                "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
             },
             failed_msg='The following etcd endpoints are not healthy: [\'https://10.0.0.2:2379\']\nhttps://10.0.0.1:2379: {"health": "true"}\nhttps://10.0.0.2:2379: {"health": "false"}',
         ),
@@ -293,7 +293,7 @@ class TestEtcdWriteReadCycleCheck(RuleTestBase):
                 ("openshift-etcd", "etcd-master-0", f"etcdctl del {test_key}"): CmdOutput("1"),
             },
             tested_object_mock_dict={
-                "_get_pod_name": lambda ns, labels: "etcd-master-0",
+                "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
             },
         ),
     ]
@@ -309,7 +309,7 @@ class TestEtcdWriteReadCycleCheck(RuleTestBase):
                 ): CmdOutput("", return_code=1, err="Error: write failed"),
             },
             tested_object_mock_dict={
-                "_get_pod_name": lambda ns, labels: "etcd-master-0",
+                "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
             },
             failed_msg="Failed to write test data to etcd (rc=1)\nError: Error: write failed",
         ),
@@ -327,7 +327,7 @@ class TestEtcdWriteReadCycleCheck(RuleTestBase):
                 ("openshift-etcd", "etcd-master-0", f"etcdctl del {test_key}"): CmdOutput("1"),
             },
             tested_object_mock_dict={
-                "_get_pod_name": lambda ns, labels: "etcd-master-0",
+                "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
             },
             failed_msg=f"Read value 'wrong-value' does not match written value '{test_value}'",
         ),
@@ -372,7 +372,7 @@ etcd_disk_wal_fsync_duration_seconds_count 10000.0"""
                 ): CmdOutput(good_metrics),
             },
             tested_object_mock_dict={
-                "_get_pod_name": lambda ns, labels: "etcd-master-0",
+                "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
             },
         ),
     ]
@@ -391,7 +391,7 @@ etcd_disk_wal_fsync_duration_seconds_count 10000.0"""
                 ): CmdOutput(slow_metrics),
             },
             tested_object_mock_dict={
-                "_get_pod_name": lambda ns, labels: "etcd-master-0",
+                "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
             },
             failed_msg="Etcd WAL fsync performance is slow on 1 endpoint(s):\n  - https://10.0.0.1:2379: 5.00% of fsync operations exceed 8ms threshold",
         ),
@@ -436,7 +436,7 @@ etcd_disk_backend_commit_duration_seconds_count 10000.0"""
                 ): CmdOutput(good_metrics),
             },
             tested_object_mock_dict={
-                "_get_pod_name": lambda ns, labels: "etcd-master-0",
+                "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
             },
         ),
     ]
@@ -455,7 +455,7 @@ etcd_disk_backend_commit_duration_seconds_count 10000.0"""
                 ): CmdOutput(slow_metrics),
             },
             tested_object_mock_dict={
-                "_get_pod_name": lambda ns, labels: "etcd-master-0",
+                "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
             },
             failed_msg="Etcd backend commit performance is slow on 1 endpoint(s):\n  - https://10.0.0.1:2379: 3.00% of commits exceed 32ms threshold",
         ),

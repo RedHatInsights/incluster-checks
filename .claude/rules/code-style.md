@@ -94,3 +94,86 @@ When you find the same or very similar code in multiple places:
 - Consistent behavior across all code paths
 - Easier to test and maintain
 - Better separation of concerns
+
+## Writing Rules from RCA or Command Output
+
+**Extract the logic, not specific values from examples.**
+
+When creating rules from RCA (Root Cause Analysis) or command output examples, understand the underlying pattern rather than copying specific values.
+
+### Understand Actual Behavior, Not the Example
+
+**Bad - Hardcoded from one example:**
+```python
+def get_external_bridge(self):
+    return "br-ex"  # From RCA showing one specific cluster
+```
+
+**Good - Detect actual behavior:**
+```python
+def get_external_bridges(self):
+    """Get all external bridges (those with physical ports)."""
+    # Query OVS state and detect which bridges have physical ports
+    # Returns dict, not hardcoded string
+```
+
+**Reasoning:** RCA examples show one specific case (br-ex). Real clusters may have different bridge names. Detect actual behavior instead of assuming.
+
+### Verify Hardware Presence, Don't Assume
+
+**Bad - Assume from naming pattern:**
+```python
+def is_physical_port(self, port):
+    return port.startswith("bond") or port.startswith("eth")
+```
+
+**Good - Check actual hardware:**
+```python
+def is_hardware_backed(self, interface):
+    # Check /sys/class/net/{interface}/device for physical NICs
+    # Check /sys/class/net/{interface}/bonding/ for bonds
+    # Returns True only if hardware actually exists
+```
+
+**Reasoning:** Interface names vary across clusters (ens3, enp1s0, eth0, bond0). Check actual hardware presence instead of name patterns.
+
+### Handle Multiple Cases, Not Just the RCA Example
+
+**Bad - Assume single instance:**
+```python
+def validate_vlans(self, vlans):
+    bridge = self.get_external_bridge()  # Returns one bridge
+    ports = self.get_bridge_ports(bridge)
+```
+
+**Good - Handle multiple instances:**
+```python
+def validate_vlans(self, vlans):
+    bridges = self.get_external_bridges()  # Returns dict of all bridges
+    all_ports = []
+    for bridge_info in bridges.values():
+        all_ports.extend(bridge_info["all_ports"])
+```
+
+**Reasoning:** RCA may show single bridge, but production clusters can have multiple bridges (br-ex, br-vm, etc.). Don't limit validation to one instance.
+
+## Helper Functions Over Tuples
+
+**Use separate helper functions instead of tuples for multiple return values.**
+
+```python
+# Bad - tuple return
+def check_status(self) -> tuple[bool, bool]:
+    return (command_ok, has_resource)
+
+# Good - separate helpers
+def is_command_accessible(self) -> bool:
+    return self._run_check_command() == 0
+
+def has_resource(self) -> bool:
+    return self._find_resource() is not None
+```
+
+**When tuples are OK:**
+- Tightly coupled values: `(success: bool, error_msg: str)`
+- Standard patterns: `run_cmd()` returns `(rc, out, err)`

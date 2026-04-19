@@ -68,7 +68,9 @@ class WhereaboutsBaseRule(OrchestratorRule):
             Example: [{'name': 'macvlan-conf', 'namespace': 'default', 'config': {...}}]
         """
         # Get all NetworkAttachmentDefinitions across all namespaces
-        net_attach_defs = self._select_resources("network-attachment-definitions", timeout=120, all_namespaces=True)
+        net_attach_defs = self.oc_api.select_resources(
+            "network-attachment-definitions", timeout=120, all_namespaces=True
+        )
 
         net_attach_def_configs = []
         for nad in net_attach_defs:
@@ -111,7 +113,7 @@ class WhereaboutsBaseRule(OrchestratorRule):
             Example: [{'name': 'whereabouts-ippool', 'namespace': 'default', 'spec': {...}}]
         """
         # Get all IPPools across all namespaces
-        ippools = self._select_resources("ippools", timeout=120, all_namespaces=True)
+        ippools = self.oc_api.select_resources("ippools", timeout=120, all_namespaces=True)
 
         ippool_configs = []
         for ippool in ippools:
@@ -201,7 +203,7 @@ class WhereaboutsBaseRule(OrchestratorRule):
 
         # Execute server-side query using run_oc_command
         cmd_args = ["pod", "-A", "-o", f"jsonpath={jsonpath}"]
-        rc, output, err = self.run_oc_command("get", cmd_args, timeout=120)
+        rc, output, err = self.oc_api.run_oc_command("get", cmd_args, timeout=120)
 
         # Parse output (split by delimiter)
         delimiter = "||"

@@ -165,6 +165,40 @@ def test_safe_cmd_string_blocks_leading_space():
     assert "invalid characters" in error_msg.lower()
 
 
+def test_safe_cmd_string_allows_underscores():
+    """Test that underscores are allowed in identifiers (but not as leading character)."""
+    cmd = SafeCmdString("cat {file}")
+
+    # Underscores in the middle should work
+    result = cmd.format(file="test_file")
+    assert str(result) == "cat test_file"
+
+    # Multiple underscores
+    result = cmd.format(file="my_test_file")
+    assert str(result) == "cat my_test_file"
+
+    assert isinstance(result, SafeCmdString)
+
+
+def test_safe_cmd_string_blocks_leading_underscore():
+    """Test that leading underscores are blocked (security issue)."""
+    cmd = SafeCmdString("cat {file}")
+
+    # Leading underscore could access private/hidden resources
+    with pytest.raises(ValueError) as exc_info:
+        cmd.format(file="_private")
+
+    error_msg = str(exc_info.value)
+    assert "invalid characters" in error_msg.lower()
+
+    # Multiple leading underscores
+    with pytest.raises(ValueError) as exc_info:
+        cmd.format(file="__init__")
+
+    error_msg = str(exc_info.value)
+    assert "invalid characters" in error_msg.lower()
+
+
 def test_safe_cmd_string_empty_value():
     """Test that empty values are handled."""
     cmd = SafeCmdString("cmd {arg}")
@@ -201,8 +235,8 @@ def test_safe_cmd_string_blocks_dangerous_characters(blocked_char, test_value):
         f"Allowed patterns:\n"
         f"  - Absolute paths: /path/to/file or /path/to/file.ext\n"
         f"    (letters, digits, dashes, underscores; ONE dot in filename only)\n"
-        f"  - Identifiers: alphanumeric start, then letters/digits/dots/dashes/spaces\n"
-        f"    (e.g., 'eth0', 'br-ex', 'bond0.110', 'ovn-k8s-mp0')\n"
+        f"  - Identifiers: alphanumeric start, then letters/digits/underscores/dots/dashes/spaces\n"
+        f"    (e.g., 'eth0', 'br-ex', 'bond0.110', 'ovn-k8s-mp0', 'test_file')\n"
         f"  - Etcd URLs: https://etcd-N.etcd.openshift-etcd.svc:2379/path\n"
         f"  - PCI addresses: 01:00.0 or 0000:01:00.0\n"
         f"Got: {test_value!r}"
@@ -222,7 +256,6 @@ def test_safe_cmd_string_blocks_dangerous_characters(blocked_char, test_value):
         ("\n", "test\nvalue"),
         ("#", "test#comment"),
         ("=", "test=value"),
-        ("_", "test_file"),  # Underscore not allowed (not used in actual code)
         (":", "test:value"),
         ("@", "test@host"),
         ("*", "test*.log"),
@@ -244,8 +277,8 @@ def test_safe_cmd_string_blocks_invalid_characters(special_char, test_value):
         f"Allowed patterns:\n"
         f"  - Absolute paths: /path/to/file or /path/to/file.ext\n"
         f"    (letters, digits, dashes, underscores; ONE dot in filename only)\n"
-        f"  - Identifiers: alphanumeric start, then letters/digits/dots/dashes/spaces\n"
-        f"    (e.g., 'eth0', 'br-ex', 'bond0.110', 'ovn-k8s-mp0')\n"
+        f"  - Identifiers: alphanumeric start, then letters/digits/underscores/dots/dashes/spaces\n"
+        f"    (e.g., 'eth0', 'br-ex', 'bond0.110', 'ovn-k8s-mp0', 'test_file')\n"
         f"  - Etcd URLs: https://etcd-N.etcd.openshift-etcd.svc:2379/path\n"
         f"  - PCI addresses: 01:00.0 or 0000:01:00.0\n"
         f"Got: {test_value!r}"
@@ -429,7 +462,6 @@ def test_safe_cmd_string_positional_blocks_dangerous_characters(blocked_char, te
         ("\n", "test\nvalue"),
         ("#", "test#comment"),
         ("=", "test=value"),
-        ("_", "test_file"),  # Underscore not allowed
         ("*", "test*.log"),
     ],
 )

@@ -8,19 +8,23 @@ Based on support/HealthChecks/flows/Network/network_flows_openshift.py
 from typing import List
 
 from in_cluster_checks.core.domain import RuleDomain
-from in_cluster_checks.rules.network.node_connectivity_validations import AreAllNodesConnected, VerifyBondedInterfacesUp
+from in_cluster_checks.rules.network.node_connectivity_validations import (
+    AreAllNodesConnected,
+    BondDnsServersComparison,
+    VerifyBondedInterfacesUp,
+)
 from in_cluster_checks.rules.network.ovnk8s_validations import (
     LogicalSwitchNodeValidator,
     MTUOverlayInterfaces,
     NodesHaveOvnkubeNodePod,
+    OvnRoutingHealthCheck,
 )
 from in_cluster_checks.rules.network.ovs_validations import (
-    BondDnsServersComparison,
-    BondVlanOvsAttachmentCheck,
-    OvnRoutingHealthCheck,
     OvsBridgeInterfaceHealthCheck,
     OvsInterfaceAndPortFound,
     OvsPhysicalPortHealthCheck,
+    OvsProfileActivationCheck,
+    VlanOvsAttachmentCheck,
 )
 from in_cluster_checks.rules.network.whereabouts_validations import (
     WhereaboutsDuplicateIPAddresses,
@@ -52,7 +56,8 @@ class NetworkValidationDomain(RuleDomain):
             OvsInterfaceAndPortFound,
             OvsPhysicalPortHealthCheck,
             OvsBridgeInterfaceHealthCheck,
-            BondVlanOvsAttachmentCheck,
+            VlanOvsAttachmentCheck,
+            OvsProfileActivationCheck,
             OvnRoutingHealthCheck,
             BondDnsServersComparison,
             AreAllNodesConnected,

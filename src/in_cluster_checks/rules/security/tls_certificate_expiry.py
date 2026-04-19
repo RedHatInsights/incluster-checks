@@ -105,7 +105,7 @@ class TlsCertificateExpiry(OrchestratorRule):
         )
 
     def _get_tls_secrets(self):
-        _, out, _ = self.run_oc_command(
+        _, out, _ = self.oc_api.run_oc_command(
             "get", ["secret", "--field-selector=type=kubernetes.io/tls", "-A", "-o", "json"]
         )
         return json.loads(out)

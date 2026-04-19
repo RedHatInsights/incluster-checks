@@ -5,9 +5,11 @@ Validates OVN-Kubernetes networking components and logical switch configurations
 Ported from: support/HealthChecks/flows/Network/ovnk8s_sanity_checks.py
 """
 
+import re
 from typing import Dict, List, Optional, Tuple
 
 from in_cluster_checks.core.rule import OrchestratorRule, PrerequisiteResult, RuleResult
+from in_cluster_checks.rules.network.ovs_base import OvnDetectingNodeRuleBase
 from in_cluster_checks.utils.enums import Objectives
 from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
@@ -30,7 +32,7 @@ class OVNKubernetesBase(OrchestratorRule):
             PrerequisiteResult indicating if OVN-Kubernetes is the network type
         """
         try:
-            network_obj = self._select_resources(resource_type="network.operator/cluster", single=True)
+            network_obj = self.oc_api.select_resources(resource_type="network.operator/cluster", single=True)
             if not network_obj:
                 return PrerequisiteResult.not_met("Cannot determine network type: network.operator/cluster not found")
 
@@ -50,7 +52,7 @@ class OVNKubernetesBase(OrchestratorRule):
         Returns:
             Dictionary mapping {pod_name: node_name}
         """
-        pods = self._get_pods(namespace="openshift-ovn-kubernetes", labels={"app": "ovnkube-node"})
+        pods = self.oc_api.get_pods(namespace="openshift-ovn-kubernetes", labels={"app": "ovnkube-node"})
 
         ovn_pod_to_node_dict = {}
         for pod in pods:
@@ -132,7 +134,7 @@ class LogicalSwitchNodeValidator(OVNKubernetesBase):
 
         for ovnkube_pod, node in ovn_pod_to_node_dict.items():
             # Check if logical switch exists with node name using run_rsh_cmd
-            rc, out, err = self.run_rsh_cmd(
+            rc, out, err = self.oc_api.run_rsh_cmd(
                 namespace="openshift-ovn-kubernetes",
                 pod=ovnkube_pod,
                 command=SafeCmdString("ovn-nbctl ls-list"),
@@ -183,7 +185,7 @@ class MTUOverlayInterfaces(OVNKubernetesBase):
 
         failed_checks = []
         for ovnkube_pod in ovn_pod_to_node_dict:
-            rc, out, err = self.run_rsh_cmd(
+            rc, out, err = self.oc_api.run_rsh_cmd(
                 namespace="openshift-ovn-kubernetes",
                 pod=ovnkube_pod,
                 command=SafeCmdString("ip link show"),
@@ -212,7 +214,7 @@ class MTUOverlayInterfaces(OVNKubernetesBase):
         return RuleResult.passed()
 
     def _get_expected_mtu(self) -> Optional[int]:
-        network_obj = self._select_resources(
+        network_obj = self.oc_api.select_resources(
             resource_type="network.operator/cluster",
             single=True,
         )
@@ -236,3 +238,45 @@ class MTUOverlayInterfaces(OVNKubernetesBase):
                 except (IndexError, ValueError):
                     continue
         return results
+
+
+class OvnRoutingHealthCheck(OvnDetectingNodeRuleBase):
+    """
+    Verify OVN-learned routes are present in routing table.
+
+    Validates that routing table contains routes via OVN interfaces
+    (ovn-k8s-mp0), which are essential for pod-to-pod communication
+    and cluster networking.
+
+    RCA symptom: "node not able to reach openshift API. Therefore the nodes
+                  remains in 'NotReady' state"
+    """
+
+    unique_name = "ovn_routing_health_check"
+    title = "Verify OVN-learned routes are present"
+    links = [
+        "https://github.com/sprizend-rh/in-cluster-checks/wiki/Network-%E2%80%90-OVN-Routing-Health-Check",
+    ]
+
+    def _run_ovn_rule(self) -> RuleResult:
+        """
+        Check for OVN routes in routing table.
+
+        Returns:
+            RuleResult indicating routing health status
+        """
+        routes = self.get_output_from_run_cmd(SafeCmdString("ip route show"))
+
+        # Check for OVN management interface (ovn-k8s-mp<N>)
+        # Pattern matches ovn-k8s-mp0, ovn-k8s-mp1, etc.
+        ovn_interfaces = re.findall(r"ovn-k8s-mp\d+", routes)
+
+        if not ovn_interfaces:
+            return RuleResult.failed(
+                "No routes via OVN management interface found. "
+                "Expected routes via ovn-k8s-mp<N> interface (e.g., ovn-k8s-mp0)"
+            )
+
+        # Report which interface(s) found
+        interface_list = ", ".join(sorted(set(ovn_interfaces)))
+        return RuleResult.passed(f"OVN routes are present (routes via {interface_list} found)")

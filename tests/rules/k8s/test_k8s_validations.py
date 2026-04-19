@@ -52,7 +52,7 @@ class TestAllPodsReadyAndRunning:
 
     def test_all_pods_running_and_ready(self, tested_object):
         """Test when all pods are running and ready."""
-        tested_object.get_all_pods = Mock(
+        tested_object.oc_api.get_all_pods = Mock(
             return_value=[
                 create_mock_pod("default", "pod1", "Running", 2, 2),
                 create_mock_pod("kube-system", "pod2", "Running", 1, 1),
@@ -64,7 +64,7 @@ class TestAllPodsReadyAndRunning:
 
     def test_some_pods_not_running(self, tested_object):
         """Test when some pods are not in Running state."""
-        tested_object.get_all_pods = Mock(
+        tested_object.oc_api.get_all_pods = Mock(
             return_value=[
                 create_mock_pod("default", "running-pod", "Running", 1, 1),
                 create_mock_pod("default", "pending-pod", "Pending", 0, 1),
@@ -78,7 +78,7 @@ class TestAllPodsReadyAndRunning:
 
     def test_completed_pods_ignored(self, tested_object):
         """Test that completed/succeeded pods are ignored."""
-        tested_object.get_all_pods = Mock(
+        tested_object.oc_api.get_all_pods = Mock(
             return_value=[
                 create_mock_pod("default", "running-pod", "Running", 1, 1),
                 create_mock_pod("default", "completed-job", "Succeeded", 0, 1),
@@ -91,7 +91,7 @@ class TestAllPodsReadyAndRunning:
 
     def test_no_pods_found(self, tested_object):
         """Test when no pods are found in the cluster."""
-        tested_object.get_all_pods = Mock(return_value=[])
+        tested_object.oc_api.get_all_pods = Mock(return_value=[])
 
         result = tested_object.run_rule()
         assert result.status == Status.FAILED
@@ -123,7 +123,7 @@ class TestNodesAreReady:
 
     def test_all_nodes_ready(self, tested_object):
         """Test when all nodes are ready."""
-        tested_object.get_all_nodes = Mock(
+        tested_object.oc_api.get_all_nodes = Mock(
             return_value=[
                 create_mock_node("node1", "True"),
                 create_mock_node("node2", "True"),
@@ -135,7 +135,7 @@ class TestNodesAreReady:
 
     def test_some_nodes_not_ready(self, tested_object):
         """Test when some nodes are not ready."""
-        tested_object.get_all_nodes = Mock(
+        tested_object.oc_api.get_all_nodes = Mock(
             return_value=[
                 create_mock_node("node1", "True"),
                 create_mock_node("node2", "False"),
@@ -151,7 +151,7 @@ class TestNodesAreReady:
 
     def test_nodes_with_warnings(self, tested_object):
         """Test when nodes have warning conditions."""
-        tested_object.get_all_nodes = Mock(
+        tested_object.oc_api.get_all_nodes = Mock(
             return_value=[
                 create_mock_node("node1", "True"),
                 create_mock_node(
@@ -169,7 +169,7 @@ class TestNodesAreReady:
 
     def test_no_nodes_found(self, tested_object):
         """Test when no nodes are found."""
-        tested_object.get_all_nodes = Mock(return_value=[])
+        tested_object.oc_api.get_all_nodes = Mock(return_value=[])
 
         result = tested_object.run_rule()
         assert result.status == Status.FAILED
@@ -186,7 +186,7 @@ class TestNodesCpuAndMemoryStatus:
 
     def test_all_nodes_normal_usage(self, tested_object):
         """Test when all nodes have normal CPU/memory usage."""
-        tested_object.run_oc_command = Mock(
+        tested_object.oc_api.run_oc_command = Mock(
             return_value=(0, "node1    100m    5%     2000Mi   10%\nnode2    200m    10%    3000Mi   15%", "")
         )
 
@@ -195,7 +195,7 @@ class TestNodesCpuAndMemoryStatus:
 
     def test_high_cpu_usage(self, tested_object):
         """Test when some nodes have high CPU usage."""
-        tested_object.run_oc_command = Mock(
+        tested_object.oc_api.run_oc_command = Mock(
             return_value=(0, "node1    10000m  85%    2000Mi   10%\nnode2    200m    10%    3000Mi   15%", "")
         )
 
@@ -207,7 +207,7 @@ class TestNodesCpuAndMemoryStatus:
 
     def test_high_memory_usage(self, tested_object):
         """Test when some nodes have high memory usage."""
-        tested_object.run_oc_command = Mock(
+        tested_object.oc_api.run_oc_command = Mock(
             return_value=(0, "node1    100m    5%     50000Mi  90%\nnode2    200m    10%    3000Mi   15%", "")
         )
 
@@ -219,7 +219,7 @@ class TestNodesCpuAndMemoryStatus:
 
     def test_critical_threshold_exceeded(self, tested_object):
         """Test when critical threshold is exceeded."""
-        tested_object.run_oc_command = Mock(
+        tested_object.oc_api.run_oc_command = Mock(
             return_value=(0, "node1    10000m  95%    2000Mi   10%", "")
         )
 
@@ -230,7 +230,7 @@ class TestNodesCpuAndMemoryStatus:
 
     def test_no_metrics_available(self, tested_object):
         """Test when no metrics are available."""
-        tested_object.run_oc_command = Mock(return_value=(0, "", ""))
+        tested_object.oc_api.run_oc_command = Mock(return_value=(0, "", ""))
 
         result = tested_object.run_rule()
         assert result.status == Status.FAILED
@@ -303,7 +303,7 @@ class TestValidateNamespaceStatus:
 
     def test_all_namespaces_active(self, tested_object):
         """Test when all namespaces are active."""
-        tested_object.get_all_namespaces = Mock(
+        tested_object.oc_api.get_all_namespaces = Mock(
             return_value=[
                 create_mock_namespace("default", "Active"),
                 create_mock_namespace("kube-system", "Active"),
@@ -315,7 +315,7 @@ class TestValidateNamespaceStatus:
 
     def test_some_namespaces_terminating(self, tested_object):
         """Test when some namespaces are terminating."""
-        tested_object.get_all_namespaces = Mock(
+        tested_object.oc_api.get_all_namespaces = Mock(
             return_value=[
                 create_mock_namespace("default", "Active"),
                 create_mock_namespace("old-ns", "Terminating"),
@@ -329,7 +329,7 @@ class TestValidateNamespaceStatus:
 
     def test_no_namespaces_found(self, tested_object):
         """Test when no namespaces are found."""
-        tested_object.get_all_namespaces = Mock(return_value=[])
+        tested_object.oc_api.get_all_namespaces = Mock(return_value=[])
 
         result = tested_object.run_rule()
         assert result.status == Status.FAILED
@@ -366,7 +366,7 @@ class TestValidateAllDaemonsetsScheduled:
                 },
             ]
         }
-        tested_object.run_oc_command = Mock(return_value=(0, json.dumps(daemonsets_data), ""))
+        tested_object.oc_api.run_oc_command = Mock(return_value=(0, json.dumps(daemonsets_data), ""))
 
         result = tested_object.run_rule()
         assert result.status == Status.PASSED
@@ -393,7 +393,7 @@ class TestValidateAllDaemonsetsScheduled:
                 },
             ]
         }
-        tested_object.run_oc_command = Mock(return_value=(0, json.dumps(daemonsets_data), ""))
+        tested_object.oc_api.run_oc_command = Mock(return_value=(0, json.dumps(daemonsets_data), ""))
 
         result = tested_object.run_rule()
         assert result.status == Status.FAILED
@@ -425,7 +425,7 @@ class TestValidateAllDaemonsetsScheduled:
                 },
             ]
         }
-        tested_object.run_oc_command = Mock(return_value=(0, json.dumps(daemonsets_data), ""))
+        tested_object.oc_api.run_oc_command = Mock(return_value=(0, json.dumps(daemonsets_data), ""))
 
         result = tested_object.run_rule()
         assert result.status == Status.PASSED
@@ -444,7 +444,7 @@ class TestValidateAllDaemonsetsScheduled:
                 },
             ]
         }
-        tested_object.run_oc_command = Mock(return_value=(0, json.dumps(daemonsets_data), ""))
+        tested_object.oc_api.run_oc_command = Mock(return_value=(0, json.dumps(daemonsets_data), ""))
 
         result = tested_object.run_rule()
         assert result.status == Status.PASSED
@@ -463,7 +463,7 @@ class TestValidateAllDaemonsetsScheduled:
                 },
             ]
         }
-        tested_object.run_oc_command = Mock(return_value=(0, json.dumps(daemonsets_data), ""))
+        tested_object.oc_api.run_oc_command = Mock(return_value=(0, json.dumps(daemonsets_data), ""))
 
         result = tested_object.run_rule()
         assert result.status == Status.FAILED
@@ -487,7 +487,7 @@ baremetal                                  4.15.29    True        False         
 cloud-controller-manager                   4.15.29    True        False         False      14d
 cluster-autoscaler                         4.15.29    True        False         False      14d"""
 
-        tested_object.run_oc_command = Mock(return_value=(0, operator_output, ""))
+        tested_object.oc_api.run_oc_command = Mock(return_value=(0, operator_output, ""))
 
         result = tested_object.run_rule()
         assert result.status == Status.INFO
@@ -511,7 +511,7 @@ cluster-autoscaler                         4.15.29    True        False         
 baremetal                                  4.15.29    False       False         False      14d     Operator is degraded
 cloud-controller-manager                   4.15.29    True        False         False      14d"""
 
-        tested_object.run_oc_command = Mock(return_value=(0, operator_output, ""))
+        tested_object.oc_api.run_oc_command = Mock(return_value=(0, operator_output, ""))
 
         result = tested_object.run_rule()
         assert result.status == Status.FAILED
@@ -526,7 +526,7 @@ cloud-controller-manager                   4.15.29    True        False         
 baremetal                                  4.15.29    True        True          False      14d     Rolling out new pods
 cloud-controller-manager                   4.15.29    True        False         False      14d"""
 
-        tested_object.run_oc_command = Mock(return_value=(0, operator_output, ""))
+        tested_object.oc_api.run_oc_command = Mock(return_value=(0, operator_output, ""))
 
         result = tested_object.run_rule()
         assert result.status == Status.FAILED
@@ -541,7 +541,7 @@ cloud-controller-manager                   4.15.29    True        False         
 baremetal                                  4.15.29    True        True          False      14d     Rolling out
 cloud-controller-manager                   4.15.29    True        False         False      14d"""
 
-        tested_object.run_oc_command = Mock(return_value=(0, operator_output, ""))
+        tested_object.oc_api.run_oc_command = Mock(return_value=(0, operator_output, ""))
 
         result = tested_object.run_rule()
         assert result.status == Status.FAILED
@@ -554,7 +554,7 @@ cloud-controller-manager                   4.15.29    True        False         
 
     def test_no_operators_found(self, tested_object):
         """Test when no cluster operators are found."""
-        tested_object.run_oc_command = Mock(return_value=(0, "", ""))
+        tested_object.oc_api.run_oc_command = Mock(return_value=(0, "", ""))
 
         result = tested_object.run_rule()
         assert result.status == Status.FAILED
@@ -567,7 +567,7 @@ bad-operator                               4.15.29    False       False         
 progressing-operator                       4.15.29    True        True          False      14d     Working
 another-good-operator                      4.15.29    True        False         False      14d"""
 
-        tested_object.run_oc_command = Mock(return_value=(0, operator_output, ""))
+        tested_object.oc_api.run_oc_command = Mock(return_value=(0, operator_output, ""))
 
         result = tested_object.run_rule()
         assert result.status == Status.FAILED
@@ -594,7 +594,7 @@ class TestAllDeploymentsAvailable(RuleTestBase):
         RuleScenarioParams(
             "all deployments are available",
             tested_object_mock_dict={
-                "get_all_deployments": Mock(
+                "oc_api.get_all_deployments": Mock(
                     return_value=[
                         create_mock_deployment(
                             "deployment1",
@@ -626,7 +626,7 @@ class TestAllDeploymentsAvailable(RuleTestBase):
         RuleScenarioParams(
             "some deployments are not available",
             tested_object_mock_dict={
-                "get_all_deployments": Mock(
+                "oc_api.get_all_deployments": Mock(
                     return_value=[
                         create_mock_deployment(
                             "deployment1",
@@ -661,7 +661,7 @@ class TestAllDeploymentsAvailable(RuleTestBase):
         RuleScenarioParams(
             "deployment has no Available condition",
             tested_object_mock_dict={
-                "get_all_deployments": Mock(
+                "oc_api.get_all_deployments": Mock(
                     return_value=[
                         create_mock_deployment(
                             "deployment1",
@@ -680,13 +680,13 @@ class TestAllDeploymentsAvailable(RuleTestBase):
         ),
         RuleScenarioParams(
             "no deployments found in cluster",
-            tested_object_mock_dict={"get_all_deployments": Mock(return_value=[])},
+            tested_object_mock_dict={"oc_api.get_all_deployments": Mock(return_value=[])},
             failed_msg="No deployments found in cluster",
         ),
         RuleScenarioParams(
             "deployments are in mixed states",
             tested_object_mock_dict={
-                "get_all_deployments": Mock(
+                "oc_api.get_all_deployments": Mock(
                     return_value=[
                         create_mock_deployment(
                             "good-deployment",
@@ -743,7 +743,7 @@ class TestCheckDeploymentsReplicaStatus(RuleTestBase):
         RuleScenarioParams(
             "all deployments have correct replica counts",
             tested_object_mock_dict={
-                "get_all_deployments": Mock(
+                "oc_api.get_all_deployments": Mock(
                     return_value=[
                         create_mock_deployment(
                             "deployment1",
@@ -774,7 +774,7 @@ class TestCheckDeploymentsReplicaStatus(RuleTestBase):
         RuleScenarioParams(
             "deployment with zero replicas (scaled down) passes",
             tested_object_mock_dict={
-                "get_all_deployments": Mock(
+                "oc_api.get_all_deployments": Mock(
                     return_value=[
                         create_mock_deployment(
                             "scaled-down",
@@ -808,7 +808,7 @@ class TestCheckDeploymentsReplicaStatus(RuleTestBase):
         RuleScenarioParams(
             "some deployments don't have all replicas ready",
             tested_object_mock_dict={
-                "get_all_deployments": Mock(
+                "oc_api.get_all_deployments": Mock(
                     return_value=[
                         create_mock_deployment(
                             "deployment1",
@@ -830,7 +830,7 @@ class TestCheckDeploymentsReplicaStatus(RuleTestBase):
         RuleScenarioParams(
             "some deployments don't have all replicas available",
             tested_object_mock_dict={
-                "get_all_deployments": Mock(
+                "oc_api.get_all_deployments": Mock(
                     return_value=[
                         create_mock_deployment(
                             "deployment2",
@@ -852,7 +852,7 @@ class TestCheckDeploymentsReplicaStatus(RuleTestBase):
         RuleScenarioParams(
             "deployment has rollout in progress",
             tested_object_mock_dict={
-                "get_all_deployments": Mock(
+                "oc_api.get_all_deployments": Mock(
                     return_value=[
                         create_mock_deployment(
                             "deployment3",
@@ -874,7 +874,7 @@ class TestCheckDeploymentsReplicaStatus(RuleTestBase):
         RuleScenarioParams(
             "multiple deployments with different issues",
             tested_object_mock_dict={
-                "get_all_deployments": Mock(
+                "oc_api.get_all_deployments": Mock(
                     return_value=[
                         create_mock_deployment(
                             "good-deployment",
@@ -918,7 +918,7 @@ class TestCheckDeploymentsReplicaStatus(RuleTestBase):
         ),
         RuleScenarioParams(
             "no deployments found in cluster",
-            tested_object_mock_dict={"get_all_deployments": Mock(return_value=[])},
+            tested_object_mock_dict={"oc_api.get_all_deployments": Mock(return_value=[])},
             failed_msg="No deployments found in cluster",
         ),
     ]
@@ -941,7 +941,7 @@ class TestAllStatefulsetsReady(RuleTestBase):
         RuleScenarioParams(
             "all statefulsets are ready",
             tested_object_mock_dict={
-                "get_all_statefulsets": Mock(
+                "oc_api.get_all_statefulsets": Mock(
                     return_value=[
                         create_mock_statefulset(
                             "statefulset1",
@@ -965,7 +965,7 @@ class TestAllStatefulsetsReady(RuleTestBase):
         RuleScenarioParams(
             "some statefulsets are not ready",
             tested_object_mock_dict={
-                "get_all_statefulsets": Mock(
+                "oc_api.get_all_statefulsets": Mock(
                     return_value=[
                         create_mock_statefulset(
                             "statefulset1",
@@ -988,7 +988,7 @@ class TestAllStatefulsetsReady(RuleTestBase):
         RuleScenarioParams(
             "statefulset has zero ready replicas",
             tested_object_mock_dict={
-                "get_all_statefulsets": Mock(
+                "oc_api.get_all_statefulsets": Mock(
                     return_value=[
                         create_mock_statefulset(
                             "statefulset1",
@@ -1005,7 +1005,7 @@ class TestAllStatefulsetsReady(RuleTestBase):
         RuleScenarioParams(
             "statefulsets in mixed states",
             tested_object_mock_dict={
-                "get_all_statefulsets": Mock(
+                "oc_api.get_all_statefulsets": Mock(
                     return_value=[
                         create_mock_statefulset(
                             "good-statefulset",
@@ -1037,7 +1037,7 @@ class TestAllStatefulsetsReady(RuleTestBase):
     scenario_warning = [
         RuleScenarioParams(
             "no statefulsets found in cluster",
-            tested_object_mock_dict={"get_all_statefulsets": Mock(return_value=[])},
+            tested_object_mock_dict={"oc_api.get_all_statefulsets": Mock(return_value=[])},
             failed_msg="No statefulsets found in cluster",
         ),
     ]
@@ -1100,7 +1100,7 @@ class TestValidateAllPoliciesCompliant(RuleTestBase):
         RuleScenarioParams(
             "all policies are compliant",
             tested_object_mock_dict={
-                "run_oc_command": Mock(return_value=(0, json.dumps(all_compliant_policies), ""))
+                "oc_api.run_oc_command": Mock(return_value=(0, json.dumps(all_compliant_policies), ""))
             },
         ),
     ]
@@ -1109,7 +1109,7 @@ class TestValidateAllPoliciesCompliant(RuleTestBase):
         RuleScenarioParams(
             "some policies are non-compliant",
             tested_object_mock_dict={
-                "run_oc_command": Mock(return_value=(0, json.dumps(some_non_compliant_policies), ""))
+                "oc_api.run_oc_command": Mock(return_value=(0, json.dumps(some_non_compliant_policies), ""))
             },
             failed_msg="There are 2 non-compliant policies:\n"
             "  open-cluster-management/policy2 - NonCompliant\n"
@@ -1121,7 +1121,7 @@ class TestValidateAllPoliciesCompliant(RuleTestBase):
     scenario_warning = [
         RuleScenarioParams(
             "no policies found in cluster",
-            tested_object_mock_dict={"run_oc_command": Mock(return_value=(0, json.dumps(no_policies), ""))},
+            tested_object_mock_dict={"oc_api.run_oc_command": Mock(return_value=(0, json.dumps(no_policies), ""))},
             failed_msg="No policies found in cluster",
         ),
     ]
@@ -1190,8 +1190,8 @@ class TestVerifyInternalRegistry(RuleTestBase):
         RuleScenarioParams(
             "registry is managed and pods are running",
             tested_object_mock_dict={
-                "run_oc_command": Mock(return_value=(0, json.dumps(registry_config_managed), "")),
-                "get_all_pods": Mock(
+                "oc_api.run_oc_command": Mock(return_value=(0, json.dumps(registry_config_managed), "")),
+                "oc_api.get_all_pods": Mock(
                     return_value=[
                         create_mock_registry_pod("image-registry-1", "openshift-image-registry", "Running", True),
                         create_mock_registry_pod("image-registry-2", "openshift-image-registry", "Running", True),
@@ -1202,8 +1202,8 @@ class TestVerifyInternalRegistry(RuleTestBase):
         RuleScenarioParams(
             "registry is managed with one running pod",
             tested_object_mock_dict={
-                "run_oc_command": Mock(return_value=(0, json.dumps(registry_config_managed), "")),
-                "get_all_pods": Mock(
+                "oc_api.run_oc_command": Mock(return_value=(0, json.dumps(registry_config_managed), "")),
+                "oc_api.get_all_pods": Mock(
                     return_value=[
                         create_mock_registry_pod("image-registry-1", "openshift-image-registry", "Running", True),
                     ]
@@ -1216,13 +1216,13 @@ class TestVerifyInternalRegistry(RuleTestBase):
         RuleScenarioParams(
             "registry is not in Managed state (Removed)",
             tested_object_mock_dict={
-                "run_oc_command": Mock(return_value=(0, json.dumps(registry_config_removed), "")),
+                "oc_api.run_oc_command": Mock(return_value=(0, json.dumps(registry_config_removed), "")),
             },
         ),
         RuleScenarioParams(
             "registry is not in Managed state (Unmanaged)",
             tested_object_mock_dict={
-                "run_oc_command": Mock(return_value=(0, json.dumps(registry_config_unmanaged), "")),
+                "oc_api.run_oc_command": Mock(return_value=(0, json.dumps(registry_config_unmanaged), "")),
             },
         ),
     ]
@@ -1231,16 +1231,16 @@ class TestVerifyInternalRegistry(RuleTestBase):
         RuleScenarioParams(
             "registry is managed but no pods found",
             tested_object_mock_dict={
-                "run_oc_command": Mock(return_value=(0, json.dumps(registry_config_managed), "")),
-                "get_all_pods": Mock(return_value=[]),
+                "oc_api.run_oc_command": Mock(return_value=(0, json.dumps(registry_config_managed), "")),
+                "oc_api.get_all_pods": Mock(return_value=[]),
             },
             failed_msg="Image registry is Managed but no registry pods found in openshift-image-registry namespace.\n",            
         ),
         RuleScenarioParams(
             "registry is managed but pods are not running",
             tested_object_mock_dict={
-                "run_oc_command": Mock(return_value=(0, json.dumps(registry_config_managed), "")),
-                "get_all_pods": Mock(
+                "oc_api.run_oc_command": Mock(return_value=(0, json.dumps(registry_config_managed), "")),
+                "oc_api.get_all_pods": Mock(
                     return_value=[
                         create_mock_registry_pod("image-registry-1", "openshift-image-registry", "Pending", True),
                     ]
@@ -1252,8 +1252,8 @@ class TestVerifyInternalRegistry(RuleTestBase):
         RuleScenarioParams(
             "registry is managed but pods running with containers not ready",
             tested_object_mock_dict={
-                "run_oc_command": Mock(return_value=(0, json.dumps(registry_config_managed), "")),
-                "get_all_pods": Mock(
+                "oc_api.run_oc_command": Mock(return_value=(0, json.dumps(registry_config_managed), "")),
+                "oc_api.get_all_pods": Mock(
                     return_value=[
                         create_mock_registry_pod("image-registry-1", "openshift-image-registry", "Running", False),
                     ]

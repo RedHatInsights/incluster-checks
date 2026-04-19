@@ -12,7 +12,13 @@ from in_cluster_checks.rules.network.ovnk8s_validations import (
     LogicalSwitchNodeValidator,
     MTUOverlayInterfaces,
     NodesHaveOvnkubeNodePod,
+    OvnRoutingHealthCheck
 )
+from in_cluster_checks.rules.network.ovs_base import (
+    IsOVNKubernetesCollector,
+    OvnSecondaryNetworkBridgesCollector
+)
+from tests.rules.network.test_ovs_validations import OvnDetectingNodeRuleTestBase
 from tests.pytest_tools.test_operator_base import CmdOutput
 from tests.pytest_tools.test_rule_base import RuleScenarioParams, RuleTestBase
 
@@ -40,7 +46,7 @@ class OVNKubernetesTestBase(RuleTestBase):
         RuleScenarioParams(
             "prerequisite_fulfilled",
             tested_object_mock_dict={
-                "_select_resources": Mock(return_value=_create_mock_network_ovnkube())
+                "oc_api.select_resources": Mock(return_value=_create_mock_network_ovnkube())
             },
         )
     ]
@@ -296,3 +302,86 @@ class TestMTUOverlayInterfaces(OVNKubernetesTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+
+class TestOvnRoutingHealthCheck(OvnDetectingNodeRuleTestBase):
+    """Test OvnRoutingHealthCheck rule."""
+
+    tested_type = OvnRoutingHealthCheck
+
+    # Healthy output
+    routes_good = "default via 10.0.0.1 dev ovn-k8s-mp0\n10.244.0.0/16 dev ovn-k8s-mp0\n"
+
+    # Broken output
+    routes_missing = "default via 10.0.0.1 dev eth0\n10.0.0.0/24 dev eth0\n"
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "ovn routes present (mp0)",
+            {
+                "ip route show": CmdOutput(routes_good),
+            },
+            data_collector_dict={
+                IsOVNKubernetesCollector: {"orchestrator": True},
+                OvnSecondaryNetworkBridgesCollector: {"orchestrator": set()},
+            },
+        ),
+        RuleScenarioParams(
+            "ovn routes present (mp1 - non-standard numbering)",
+            {
+                "ip route show": CmdOutput("default via 10.0.0.1 dev ovn-k8s-mp1\n10.244.0.0/16 dev ovn-k8s-mp1\n"),
+            },
+            data_collector_dict={
+                IsOVNKubernetesCollector: {"orchestrator": True},
+                OvnSecondaryNetworkBridgesCollector: {"orchestrator": set()},
+            },
+        ),
+        RuleScenarioParams(
+            "ovn routes present with secondary network bridge",
+            {
+                "ip route show": CmdOutput(routes_good),
+            },
+            data_collector_dict={
+                IsOVNKubernetesCollector: {"orchestrator": True},
+                OvnSecondaryNetworkBridgesCollector: {"orchestrator": {"br-vm"}},
+            },
+        ),
+        RuleScenarioParams(
+            "ovn routes present with multiple secondary bridges",
+            {
+                "ip route show": CmdOutput(routes_good),
+            },
+            data_collector_dict={
+                IsOVNKubernetesCollector: {"orchestrator": True},
+                OvnSecondaryNetworkBridgesCollector: {"orchestrator": {"br-vm", "br-tenant"}},
+            },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "ovn routes missing",
+            {
+                "ip route show": CmdOutput(routes_missing),
+            },
+            data_collector_dict={
+                IsOVNKubernetesCollector: {"orchestrator": True},
+                OvnSecondaryNetworkBridgesCollector: {"orchestrator": set()},
+            },
+            failed_msg=(
+                "No routes via OVN management interface found. "
+                "Expected routes via ovn-k8s-mp<N> interface (e.g., ovn-k8s-mp0)"
+            ),
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        """Test scenarios where rule should pass."""
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        """Test scenarios where rule should fail."""
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+

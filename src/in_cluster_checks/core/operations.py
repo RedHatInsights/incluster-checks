@@ -12,7 +12,9 @@ from typing import Any
 
 from in_cluster_checks import global_config
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
+from in_cluster_checks.utils.enums import Objectives
 from in_cluster_checks.utils.file_utils import FileUtils
+from in_cluster_checks.utils.oc_api_utils import OcApiUtils
 from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
@@ -354,6 +356,10 @@ class DataCollector(Operator):
 
         Args:
             host_executor: NodeExecutor or ContainerExecutor instance (optional for abstract usage)
+
+        Raises:
+            ValueError: If trying to use objective_hosts=[Objectives.ORCHESTRATOR]
+                       (use OrchestratorDataCollector instead)
         """
         if host_executor:
             super().__init__(host_executor)
@@ -362,6 +368,22 @@ class DataCollector(Operator):
             self._host_executor = None
             self.logger = logging.getLogger(__name__)
         self._host_exceptions_dict = {}
+
+        # Validate objective_hosts (can be overridden by subclasses)
+        self._validate_objective_hosts()
+
+    def _validate_objective_hosts(self):
+        """
+        Validate objective_hosts configuration.
+
+        Regular DataCollector cannot use ORCHESTRATOR objective.
+        OrchestratorDataCollector overrides this to skip validation.
+        """
+        if Objectives.ORCHESTRATOR in self.objective_hosts:
+            raise ValueError(
+                f"{self.__class__.__name__} cannot use objective_hosts=[Objectives.ORCHESTRATOR]. "
+                f"Use OrchestratorDataCollector instead for cluster API access."
+            )
 
     def _add_cmd_to_log(self, cmd: str | SafeCmdString):
         """Add command to bash_cmd_lines with node prefix for data collectors."""
@@ -426,3 +448,64 @@ class DataCollector(Operator):
             return "\n".join(lines)
         else:
             return exc_type
+
+
+class OrchestratorDataCollector(DataCollector):
+    """
+    DataCollector with OpenShift cluster API access.
+
+    Parallel to OrchestratorRule - provides oc API methods for DataCollectors
+    that need to query cluster resources (pods, nodes, CRs, etc.).
+
+    MUST be used for DataCollectors with objective_hosts = [Objectives.ORCHESTRATOR].
+    Regular DataCollector will raise ValueError if ORCHESTRATOR objective is used.
+
+    Usage:
+        class MyCollector(OrchestratorDataCollector):
+            objective_hosts = [Objectives.ORCHESTRATOR]
+
+            def collect_data(self):
+                network_obj = self.oc_api.select_resources("network.operator/cluster", single=True)
+                return network_obj.model.spec.defaultNetwork.type
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+
+    def __init__(self, host_executor=None):
+        """
+        Initialize with oc_api helper.
+
+        Args:
+            host_executor: OrchestratorExecutor instance (optional for abstract usage)
+
+        Note: Validation of ORCHESTRATOR objective is skipped via _validate_objective_hosts() override.
+        """
+        # Call parent init (validation is skipped by our override)
+        DataCollector.__init__(self, host_executor)
+
+        # Add cluster API access helper
+        self.oc_api = OcApiUtils(self)
+
+    def _validate_objective_hosts(self):
+        """Override to skip ORCHESTRATOR validation - this class is designed for it."""
+        pass
+
+    def run_cmd(self, cmd: SafeCmdString, timeout: int = 120) -> tuple:
+        """
+        Not available for OrchestratorDataCollector - use oc_api methods instead.
+
+        OrchestratorDataCollector runs in orchestrator context and doesn't execute on nodes.
+        To run commands in pods, use self.oc_api.run_rsh_cmd(namespace, pod, command).
+
+        Args:
+            cmd: Command (not used)
+            timeout: Timeout (not used)
+
+        Raises:
+            NotImplementedError: Always raised with guidance
+        """
+        raise NotImplementedError(
+            f"run_cmd('{cmd}', timeout={timeout}) is not available for "
+            f"OrchestratorDataCollector ({self.__class__.__name__}). "
+            f"Use self.oc_api.run_rsh_cmd(namespace, pod, command) instead."
+        )

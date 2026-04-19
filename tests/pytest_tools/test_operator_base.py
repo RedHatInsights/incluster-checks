@@ -99,14 +99,14 @@ class OperatorTestBase:
         mock_executor.node_name = "test-node"
         mock_executor.ip = "192.168.1.10"
         mock_executor.host_name = "test-node"
-    
-        # Check if this is an OrchestratorRule (doesn't need host_executor)
+
+        # Check if this is an OrchestratorRule
         if issubclass(self.tested_type, OrchestratorRule):
             # OrchestratorRule requires host_executor and optional node_executors
             tested_obj = self.tested_type(host_executor=mock_executor, node_executors=None)
         else:
-            # Regular Rule requires host_executor
-            tested_obj = self.tested_type(mock_executor)
+            # Regular Rule/DataCollector/OrchestratorDataCollector requires host_executor
+            tested_obj = self.tested_type(host_executor=mock_executor)
 
         return tested_obj
 
@@ -143,13 +143,10 @@ class OperatorTestBase:
             side_effect=self._get_output_from_run_cmd_side_effects
         )
 
-        # Mock run_rsh_cmd for OrchestratorRules
-        if hasattr(operator_object, 'run_rsh_cmd'):
-            operator_object.run_rsh_cmd = Mock(side_effect=self._run_rsh_cmd_side_effects)
-
-        # Mock run_oc_command for OrchestratorRules
-        if hasattr(operator_object, 'run_oc_command'):
-            operator_object.run_oc_command = Mock(side_effect=self._run_oc_command_side_effects)
+        # Mock oc_api methods for OrchestratorRule and OrchestratorDataCollector
+        if hasattr(operator_object, 'oc_api'):
+            operator_object.oc_api.run_rsh_cmd = Mock(side_effect=self._run_rsh_cmd_side_effects)
+            operator_object.oc_api.run_oc_command = Mock(side_effect=self._run_oc_command_side_effects)
 
         # Mock run_data_collector
         operator_object.run_data_collector = Mock(
@@ -167,8 +164,17 @@ class OperatorTestBase:
             operator_object: Rule or DataCollector instance
         """
         # Apply tested_object_mock_dict - mock methods on the tested object itself
+        # Supports nested attributes like "oc_api.get_pod_name" or "file_utils.is_file_exist"
         for tested_object_method, mock_object in self.tested_object_mock_dict.items():
-            setattr(operator_object, tested_object_method, mock_object)
+            if "." in tested_object_method:
+                # Handle nested attributes (e.g., "oc_api.method_name")
+                parts = tested_object_method.split(".", 1)
+                parent_attr = parts[0]
+                child_attr = parts[1]
+                parent_obj = getattr(operator_object, parent_attr)
+                setattr(parent_obj, child_attr, mock_object)
+            else:
+                setattr(operator_object, tested_object_method, mock_object)
 
     def _prepare_patches_list(self, scenario_params: ScenarioParams, tested_object=None) -> List:
         """

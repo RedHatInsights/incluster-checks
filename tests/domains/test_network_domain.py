@@ -9,20 +9,21 @@ import pytest
 from in_cluster_checks.domains.network_domain import NetworkValidationDomain
 from in_cluster_checks.rules.network.node_connectivity_validations import (
     AreAllNodesConnected,
+    BondDnsServersComparison,
     VerifyBondedInterfacesUp,
 )
 from in_cluster_checks.rules.network.ovnk8s_validations import (
     LogicalSwitchNodeValidator,
     MTUOverlayInterfaces,
     NodesHaveOvnkubeNodePod,
+    OvnRoutingHealthCheck,
 )
 from in_cluster_checks.rules.network.ovs_validations import (
-    BondDnsServersComparison,
-    BondVlanOvsAttachmentCheck,
-    OvnRoutingHealthCheck,
     OvsBridgeInterfaceHealthCheck,
     OvsInterfaceAndPortFound,
     OvsPhysicalPortHealthCheck,
+    OvsProfileActivationCheck,
+    VlanOvsAttachmentCheck,
 )
 from in_cluster_checks.rules.network.whereabouts_validations import (
     WhereaboutsDuplicateIPAddresses,
@@ -66,11 +67,12 @@ class TestNetworkRuleDomain:
         rules = domain.get_rule_classes()
 
         assert isinstance(rules, list)
-        assert len(rules) == 15
+        assert len(rules) == 16
         assert OvsInterfaceAndPortFound in rules
         assert OvsPhysicalPortHealthCheck in rules
         assert OvsBridgeInterfaceHealthCheck in rules
-        assert BondVlanOvsAttachmentCheck in rules
+        assert VlanOvsAttachmentCheck in rules
+        assert OvsProfileActivationCheck in rules
         assert OvnRoutingHealthCheck in rules
         assert BondDnsServersComparison in rules
         assert AreAllNodesConnected in rules

@@ -15,7 +15,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
-from in_cluster_checks.rules.security.tls_certificate_expiry import TlsCertificateExpiry
+from in_cluster_checks.rules.security.tls_certificate_validations import TlsCertificateExpiry
 from in_cluster_checks.utils.enums import Status
 from tests.pytest_tools.test_operator_base import CmdOutput
 from tests.pytest_tools.test_rule_base import (

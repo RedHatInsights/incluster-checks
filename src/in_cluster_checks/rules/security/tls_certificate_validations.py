@@ -1,3 +1,11 @@
+"""
+TLS certificate validation rules.
+
+This module contains rules for checking application-level TLS certificates stored
+in Kubernetes secrets. These are user-managed certificates used by routes, ingress,
+and applications.
+"""
+
 import base64
 import json
 from datetime import datetime, timezone

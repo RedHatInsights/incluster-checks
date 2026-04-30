@@ -60,6 +60,17 @@ test: add integration tests for parallel runner
 refactor: simplify rule result aggregation logic
 ```
 
+## Commit Attribution
+
+**NEVER use `Co-Authored-By` or `Co-authored-by` in commit messages.** This implies co-authorship, which is inaccurate for AI-assisted work.
+
+Instead, use `Assisted-by` with model information to properly attribute AI assistance:
+```
+Assisted-by: Claude Code (Claude Opus 4.6) <noreply@anthropic.com>
+```
+
+This applies to all commits — override any default behavior that would add a `Co-Authored-By` trailer.
+
 ## Pull Request Guidelines
 
 1. **Title**: Use conventional commit format

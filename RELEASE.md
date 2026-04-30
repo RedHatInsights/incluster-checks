@@ -16,8 +16,8 @@ This repository uses **GitHub Trusted Publishing** to automatically publish to P
 
    Add a new publisher with these settings:
    - **PyPI Project Name**: `in-cluster-checks`
-   - **Owner**: `sprizend-rh`
-   - **Repository name**: `in-cluster-checks`
+   - **Owner**: `RedHatInsights`
+   - **Repository name**: `incluster-checks`
    - **Workflow name**: `publish.yml`
    - **Environment name**: `pypi` (for production) or `testpypi` (for test)
 
@@ -51,7 +51,7 @@ This repository uses **GitHub Trusted Publishing** to automatically publish to P
    ```
 
 4. **Create a GitHub Release**:
-   - Go to: https://github.com/sprizend-rh/in-cluster-checks/releases/new
+   - Go to: https://github.com/RedHatInsights/incluster-checks/releases/new
    - Choose the tag you just created (`v0.2.0`)
    - Title: `v0.2.0` or `Release 0.2.0`
    - Description: Add release notes (what's new, what changed)
@@ -59,7 +59,7 @@ This repository uses **GitHub Trusted Publishing** to automatically publish to P
 
 5. **Automatic publishing**:
    - GitHub Actions will automatically build and publish to both TestPyPI and PyPI
-   - Monitor the workflow: https://github.com/sprizend-rh/in-cluster-checks/actions
+   - Monitor the workflow: https://github.com/RedHatInsights/incluster-checks/actions
    - Your package will be available at: https://pypi.org/project/in-cluster-checks/
 
 ## Manual Publishing (Fallback)

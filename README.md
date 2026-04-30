@@ -1,6 +1,6 @@
 # In-Cluster Checks
 
-[![CI](https://github.com/sprizend-rh/in-cluster-checks/workflows/CI/badge.svg)](https://github.com/sprizend-rh/in-cluster-checks/actions)
+[![CI](https://github.com/RedHatInsights/incluster-checks/workflows/CI/badge.svg)](https://github.com/RedHatInsights/incluster-checks/actions)
 [![License: 3-Clause BSD](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://opensource.org/license/bsd-3-clause)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 

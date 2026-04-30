@@ -45,7 +45,7 @@ This project uses the GitHub MCP (Model Context Protocol) plugin for GitHub oper
 
 ## Repository Information
 
-- **Main repository**: `sprizend-rh/in-cluster-checks`
+- **Main repository**: `RedHatInsights/incluster-checks`
 
 When using GitHub MCP tools, determine the owner/repo dynamically from git remotes:
 ```bash
@@ -55,15 +55,15 @@ git remote get-url origin
 git remote get-url upstream
 ```
 
-For this project's upstream: `owner: "sprizend-rh"`, `repo: "in-cluster-checks"`
+For this project's upstream: `owner: "RedHatInsights"`, `repo: "incluster-checks"`
 
 ## Common Usage Patterns
 
 ### List open PRs in upstream
 ```
 mcp__plugin_github_github__list_pull_requests(
-  owner: "sprizend-rh",
-  repo: "in-cluster-checks",
+  owner: "RedHatInsights",
+  repo: "incluster-checks",
   state: "open"
 )
 ```
@@ -71,8 +71,8 @@ mcp__plugin_github_github__list_pull_requests(
 ### Get PR details
 ```
 mcp__plugin_github_github__pull_request_read(
-  owner: "sprizend-rh",
-  repo: "in-cluster-checks",
+  owner: "RedHatInsights",
+  repo: "incluster-checks",
   pull_number: 50
 )
 ```
@@ -80,15 +80,15 @@ mcp__plugin_github_github__pull_request_read(
 ### Search for PRs by author
 ```
 mcp__plugin_github_github__search_pull_requests(
-  query: "is:pr author:USERNAME repo:sprizend-rh/in-cluster-checks"
+  query: "is:pr author:USERNAME repo:RedHatInsights/incluster-checks"
 )
 ```
 
 ### Create a pull request
 ```
 mcp__plugin_github_github__create_pull_request(
-  owner: "sprizend-rh",
-  repo: "in-cluster-checks",
+  owner: "RedHatInsights",
+  repo: "incluster-checks",
   title: "feat: add new validation rule",
   body: "Description of changes...",
   head: "YOUR-FORK:feature-branch",

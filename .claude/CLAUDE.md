@@ -82,5 +82,5 @@ See [@.claude/rules/github-mcp.md](rules/github-mcp.md) for detailed GitHub MCP 
 
 ## Additional Resources
 
-- **Project Wiki**: https://github.com/sprizend-rh/in-cluster-checks/wiki - Detailed knowledge sharing about rules and documentation
+- **Project Wiki**: https://github.com/RedHatInsights/incluster-checks/wiki - Detailed knowledge sharing about rules and documentation
 - **Contributing Guide**: See [CONTRIBUTING.md](../CONTRIBUTING.md) for development setup and contribution guidelines

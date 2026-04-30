@@ -207,7 +207,7 @@ The project will be considered production-ready when:
 
 ## Repository Information
 
-- **GitHub**: https://github.com/sprizend-rh/in-cluster-checks
+- **GitHub**: https://github.com/RedHatInsights/incluster-checks
 - **Package Name**: `in-cluster-checks`
 - **CLI Command**: `in-cluster-checks`
 - **Python Module**: `in_cluster_checks`

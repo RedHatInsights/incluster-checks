@@ -148,22 +148,22 @@ class YourNewRule(Rule):
 
 The `links` field should contain references to documentation about the rule:
 
-1. **Create a Wiki page** for the new rule at https://github.com/sprizend-rh/in-cluster-checks/wiki
-   - Use the [wiki template](https://github.com/sprizend-rh/in-cluster-checks/wiki) to create the page
+1. **Create a Wiki page** for the new rule at https://github.com/RedHatInsights/incluster-checks/wiki
+   - Use the [wiki template](https://github.com/RedHatInsights/incluster-checks/wiki) to create the page
    - Document what the rule checks, why it's important, and troubleshooting steps
    - Include example output or scenarios
 
 2. **Add the Wiki URL** to the `links` field:
    ```python
    links = [
-       "https://github.com/sprizend-rh/in-cluster-checks/wiki/YourNewRule",
+       "https://github.com/RedHatInsights/incluster-checks/wiki/YourNewRule",
    ]
    ```
 
 3. **Additional documentation URLs** can also be included (Knowledge Base articles, OpenShift docs, bug reports, etc.):
    ```python
    links = [
-       "https://github.com/sprizend-rh/in-cluster-checks/wiki/YourNewRule",
+       "https://github.com/RedHatInsights/incluster-checks/wiki/YourNewRule",
        "https://access.redhat.com/solutions/12345",
    ]
    ```
@@ -518,17 +518,17 @@ We recommend developing and testing directly on a machine with OpenShift cluster
    # You should see: "Hi USERNAME! You've successfully authenticated..."
    ```
 
-2. **Fork the repository** on GitHub: https://github.com/sprizend-rh/in-cluster-checks
+2. **Fork the repository** on GitHub: https://github.com/RedHatInsights/incluster-checks
 
 3. **Clone your fork**:
    ```bash
-   git clone https://github.com/YOUR-USERNAME/in-cluster-checks.git
-   cd in-cluster-checks
+   git clone https://github.com/YOUR-USERNAME/incluster-checks.git
+   cd incluster-checks
    ```
 
 4. **Add upstream remote**:
    ```bash
-   git remote add upstream https://github.com/sprizend-rh/in-cluster-checks.git
+   git remote add upstream https://github.com/RedHatInsights/incluster-checks.git
    ```
 
 ### Install Dependencies
@@ -613,7 +613,7 @@ If all tests pass and pre-commit runs successfully, your development environment
     3. Click "Create pull request"
 
     **Option 2: Via GitHub**
-    1. Go to the [repository on GitHub](https://github.com/sprizend-rh/in-cluster-checks)
+    1. Go to the [repository on GitHub](https://github.com/RedHatInsights/incluster-checks)
     2. Click "New Pull Request"
     3. Select your fork and branch
     4. Fill out the PR template
@@ -646,9 +646,9 @@ Before submitting your PR, ensure:
 
 ## Questions?
 
-- **Bug reports or feature requests**: [Open an issue](https://github.com/sprizend-rh/in-cluster-checks/issues/new) on GitHub
-- **General questions**: [Open an issue](https://github.com/sprizend-rh/in-cluster-checks/issues/new) with your question
-- **Documentation and rule information**: Check the [project wiki](https://github.com/sprizend-rh/in-cluster-checks/wiki) for detailed knowledge sharing about rules
+- **Bug reports or feature requests**: [Open an issue](https://github.com/RedHatInsights/incluster-checks/issues/new) on GitHub
+- **General questions**: [Open an issue](https://github.com/RedHatInsights/incluster-checks/issues/new) with your question
+- **Documentation and rule information**: Check the [project wiki](https://github.com/RedHatInsights/incluster-checks/wiki) for detailed knowledge sharing about rules
 - **Private matters**: Contact maintainers directly via GitHub
 
 ## License

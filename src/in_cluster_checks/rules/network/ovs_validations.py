@@ -36,7 +36,7 @@ class VlanOvsAttachmentCheck(OvnDetectingNodeRuleBase):
     unique_name = "vlan_ovs_attachment_check"
     title = "Verify OVS-configured VLAN interfaces are attached to OVS bridge"
     links = [
-        "https://github.com/sprizend-rh/in-cluster-checks/wiki/Network-%E2%80%90-VLAN-OVS-Attachment-Check",
+        "https://github.com/RedHatInsights/incluster-checks/wiki/Network-%E2%80%90-VLAN-OVS-Attachment-Check",
     ]
 
     def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
@@ -227,7 +227,7 @@ class OvsInterfaceAndPortFound(OvnDetectingNodeRuleBase):
     unique_name = "ovs_interface_and_port_managed_by_network_manager"
     title = "Verify that ovs interface and port are managed by network manager"
     links = [
-        "https://github.com/sprizend-rh/in-cluster-checks/wiki/Network-%E2%80%90-OVS-Interface-And-Port-Found",
+        "https://github.com/RedHatInsights/incluster-checks/wiki/Network-%E2%80%90-OVS-Interface-And-Port-Found",
     ]
 
     def _run_ovn_rule(self):
@@ -279,7 +279,7 @@ class OvsPhysicalPortHealthCheck(OvnDetectingNodeRuleBase):
     unique_name = "ovs_physical_port_health_check"
     title = "Verify OVS physical port is UP and has no IP"
     links = [
-        "https://github.com/sprizend-rh/in-cluster-checks/wiki/Network-%E2%80%90-OVS-Physical-Port-Health-Check",
+        "https://github.com/RedHatInsights/incluster-checks/wiki/Network-%E2%80%90-OVS-Physical-Port-Health-Check",
     ]
 
     def _run_ovn_rule(self) -> RuleResult:
@@ -395,7 +395,7 @@ class OvsBridgeInterfaceHealthCheck(OvnDetectingNodeRuleBase):
     unique_name = "ovs_bridge_interface_health_check"
     title = "Verify OVS bridge is UP with OVN link-local IP"
     links = [
-        "https://github.com/sprizend-rh/in-cluster-checks/wiki/Network-%E2%80%90-OVS-Bridge-Interface-Health-Check",
+        "https://github.com/RedHatInsights/incluster-checks/wiki/Network-%E2%80%90-OVS-Bridge-Interface-Health-Check",
     ]
 
     def _run_ovn_rule(self) -> RuleResult:
@@ -649,7 +649,7 @@ class OvsProfileActivationCheck(OvnDetectingNodeRuleBase):
     unique_name = "ovs_profile_activation_check"
     title = "Verify OVS NetworkManager profiles are activated"
     links = [
-        "https://github.com/sprizend-rh/in-cluster-checks/wiki/Network-%E2%80%90-OVS-Profile-Activation-Check",
+        "https://github.com/RedHatInsights/incluster-checks/wiki/Network-%E2%80%90-OVS-Profile-Activation-Check",
     ]
 
     def _run_ovn_rule(self) -> RuleResult:

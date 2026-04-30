@@ -40,9 +40,9 @@ dev = [
 in-cluster-checks = "in_cluster_checks.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/sprizend-rh/in-cluster-checks"
-Repository = "https://github.com/sprizend-rh/in-cluster-checks"
-Issues = "https://github.com/sprizend-rh/in-cluster-checks/issues"
+Homepage = "https://github.com/RedHatInsights/incluster-checks"
+Repository = "https://github.com/RedHatInsights/incluster-checks"
+Issues = "https://github.com/RedHatInsights/incluster-checks/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

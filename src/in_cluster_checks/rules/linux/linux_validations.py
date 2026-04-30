@@ -234,7 +234,7 @@ class SelinuxMode(Rule):
     unique_name = "selinux_mode"
     title = "SELinux enforcing mode"
     links = [
-        "https://github.com/sprizend-rh/in-cluster-checks/wiki/Linux-%E2%80%90-SELinux-enforcing-mode",
+        "https://github.com/RedHatInsights/incluster-checks/wiki/Linux-%E2%80%90-SELinux-enforcing-mode",
         (
             "https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/9/html/"
             "using_selinux/getting-started-with-selinux_using-selinux"
@@ -263,7 +263,7 @@ class AuditdBacklogLimit(Rule):
     unique_name = "auditd_backlog_limit"
     title = "Check auditd backlog limit usage"
     links = [
-        "https://github.com/sprizend-rh/in-cluster-checks/wiki/Linux-%E2%80%90-Check-auditd-backlog-limit-usage",
+        "https://github.com/RedHatInsights/incluster-checks/wiki/Linux-%E2%80%90-Check-auditd-backlog-limit-usage",
     ]
 
     BACKLOG = "backlog"

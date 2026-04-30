@@ -201,7 +201,7 @@ class BondDnsServersComparison(OrchestratorRule):
     unique_name = "bond_dns_servers_comparison"
     title = "Compare bond DNS servers across hosts"
     links = [
-        "https://github.com/sprizend-rh/in-cluster-checks/wiki/Network-%E2%80%90-Bond-DNS-Servers-Comparison",
+        "https://github.com/RedHatInsights/incluster-checks/wiki/Network-%E2%80%90-Bond-DNS-Servers-Comparison",
     ]
 
     def run_rule(self):

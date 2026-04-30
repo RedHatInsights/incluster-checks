@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
-from in_cluster_checks.rules.security.ca_certificate_expiry import KubeletCaExpiryCheck
+from in_cluster_checks.rules.security.ca_certificate_validations import KubeletCaExpiryCheck
 from tests.pytest_tools.test_operator_base import CmdOutput
 from tests.pytest_tools.test_rule_base import RuleScenarioParams, RuleTestBase
 

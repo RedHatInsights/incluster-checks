@@ -1,13 +1,16 @@
 """
-Certificate expiry validation rules.
+Node certificate validation rules.
 
-Ported from support/HealthChecks/flows/Security/Certificate/allcertificate_expiry_dates.py
-Adapted for OpenShift in-cluster checks on node filesystems.
+This module contains rules for checking node-level certificates and their rotation mechanisms.
+Node certificates rotate every 30 days automatically, and these rules ensure both the certificates
+themselves and the rotation mechanism are healthy.
 """
 
+import json
 from datetime import datetime
 
-from in_cluster_checks.core.rule import PrerequisiteResult, Rule, RuleResult
+from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
+from in_cluster_checks.core.rule import OrchestratorRule, PrerequisiteResult, Rule, RuleResult
 from in_cluster_checks.utils.enums import Objectives
 from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
@@ -239,3 +242,144 @@ class NodeCertificateExpiry(Rule):
         # All checks passed or certificates not found (which is OK for optional certs)
         checked_count = len([r for r in cert_results if r["status"] in ["ok", "expiring_soon"]])
         return RuleResult.passed(f"All {checked_count} found certificate(s) are valid", system_info=system_info)
+
+
+class KubeletCsrHealthCheck(OrchestratorRule):
+    """
+    Check kubelet Certificate Signing Request (CSR) health.
+
+    Kubelet node certificates rotate every 30 days automatically. This rule
+    detects when certificate rotation fails by monitoring CSR status.
+
+    Alert condition: CSRs stuck in Pending or Denied state
+    Severity: WARNING - fixable by manually approving CSRs
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "kubelet_csr_health_check"
+    title = "Check kubelet CSR health"
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/Security-‐-Check-kubelet-CSR-health",
+    ]
+
+    def run_rule(self):
+        """Check kubelet CSR health by querying cluster CSRs."""
+        try:
+            csr_data = self._get_csr_data()
+        except UnExpectedSystemOutput:
+            return RuleResult.failed("Failed to retrieve Certificate Signing Requests from cluster")
+
+        pending_csrs, denied_csrs = self._filter_kubelet_csrs(csr_data)
+
+        return self._evaluate_csr_status(pending_csrs, denied_csrs)
+
+    def _evaluate_csr_status(self, pending_csrs, denied_csrs):
+        """
+        Evaluate CSR status and return appropriate result.
+
+        Args:
+            pending_csrs: List of pending CSR names
+            denied_csrs: List of denied CSR names
+
+        Returns:
+            RuleResult with appropriate status
+        """
+        if not pending_csrs and not denied_csrs:
+            return RuleResult.passed("All kubelet CSRs are approved and healthy")
+
+        error_messages = []
+
+        if denied_csrs:
+            error_messages.append(
+                f"CRITICAL: {len(denied_csrs)} kubelet CSR(s) have been DENIED:\n  "
+                + "\n  ".join(denied_csrs)
+                + "\n\nDenied CSRs indicate certificate rotation was explicitly rejected.\n"
+                "Kubelet certificates will NOT rotate automatically."
+            )
+
+        if pending_csrs:
+            error_messages.append(
+                f"WARNING: {len(pending_csrs)} kubelet CSR(s) are PENDING approval:\n  "
+                + "\n  ".join(pending_csrs)
+                + "\n\nPending CSRs indicate the 30-day automatic rotation mechanism is not working.\n"
+                "Certificates will expire if CSRs remain pending."
+            )
+
+        return RuleResult.warning("\n\n".join(error_messages))
+
+    def _get_csr_data(self):
+        """
+        Retrieve all Certificate Signing Requests from the cluster.
+
+        Returns:
+            dict: Parsed CSR data from JSON output
+
+        Raises:
+            UnExpectedSystemOutput: If CSR retrieval or parsing fails
+        """
+        _, out, _ = self.oc_api.run_oc_command(
+            "get",
+            ["csr", "-o", "json"],
+            timeout=45,
+        )
+
+        try:
+            return json.loads(out)
+        except json.JSONDecodeError as e:
+            raise UnExpectedSystemOutput(
+                ip=self.get_host_ip(),
+                cmd="oc get csr -o json",
+                output=out,
+                message=f"Failed to parse CSR JSON: {e}",
+            )
+
+    def _filter_kubelet_csrs(self, csr_data):
+        """
+        Filter CSRs to find kubelet-related ones in Pending or Denied state.
+
+        Args:
+            csr_data: Parsed CSR JSON data
+
+        Returns:
+            tuple: (pending_csrs, denied_csrs) - lists of CSR names
+        """
+        pending_csrs = []
+        denied_csrs = []
+
+        for item in csr_data.get("items", []):
+            metadata = item.get("metadata", {})
+            csr_name = metadata.get("name", "unknown")
+
+            # Filter for kubelet CSRs (username contains "system:node:")
+            spec = item.get("spec", {})
+            username = spec.get("username", "")
+
+            if not username.startswith("system:node:"):
+                continue
+
+            # Check CSR status
+            status = item.get("status", {})
+            conditions = status.get("conditions", [])
+
+            if not conditions:
+                # No conditions means Pending
+                pending_csrs.append(csr_name)
+                continue
+
+            # Check if CSR is Approved or Denied
+            csr_status_found = False
+            for condition in conditions:
+                condition_type = condition.get("type", "")
+                if condition_type == "Denied":
+                    denied_csrs.append(csr_name)
+                    csr_status_found = True
+                    break
+                elif condition_type == "Approved":
+                    csr_status_found = True
+                    break
+
+            # If no Approved or Denied condition found, treat as Pending
+            if not csr_status_found:
+                pending_csrs.append(csr_name)
+
+        return pending_csrs, denied_csrs

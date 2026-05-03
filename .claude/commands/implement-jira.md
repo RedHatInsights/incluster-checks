@@ -10,8 +10,9 @@ You are helping the user implement a Jira ticket. Follow these steps in order:
 Extract the Jira ticket number from the args. Expected format: PDRIVE-XXX
 
 ## 2. Git Workflow - MUST DO FIRST
-**CRITICAL**: Before reading the ticket or doing ANY work, complete these git steps:
+**CRITICAL**: Before doing ANY implementation work, complete these git steps:
 
+### 2a. Update main branch
 ```bash
 # Switch to main branch
 git checkout main
@@ -19,9 +20,26 @@ git checkout main
 # Fetch and rebase from upstream
 git fetch upstream
 git rebase upstream/main
+```
 
-# Create new branch with ticket number as name
-git checkout -b <TICKET-NUMBER>
+### 2b. Fetch Jira Ticket Details (needed for branch name)
+Fetch the ticket from Jira to get the title for the branch name:
+- Use `mcp__jira__get_ticket` with the ticket number
+- Extract the title for use in branch naming
+
+### 2c. Create descriptive branch
+Create a branch with a short descriptive name followed by the ticket number. Do NOT use prefixes like `feat/` or `fix/`.
+
+**Format**: `<short-description>-<TICKET-NUMBER>`
+
+**Examples**:
+- `wiki-page-cmd-PDRIVE-553`
+- `network-check-PDRIVE-505`
+- `fix-timeout-PDRIVE-412`
+
+```bash
+# Create branch with descriptive name (no prefix, short, with ticket number)
+git checkout -b <short-description>-<TICKET-NUMBER>
 
 # Verify the branch was created correctly
 git branch --show-current
@@ -29,44 +47,34 @@ git branch --show-current
 
 **IMPORTANT**: Only proceed to step 3 after confirming the branch is created and checked out.
 
-## 3. Fetch Jira Ticket Details
-Use the Atlassian MCP tool to fetch ticket details:
-- **cloudId**: "https://redhat.atlassian.net"
-- Use `mcp__plugin_atlassian_atlassian__getJiraIssue` with the ticket number
-- Extract: title, description, acceptance criteria, issue type, priority, assignee
-
-If needed, use GitHub MCP to:
-- Check if a PR already exists for this ticket
-- Review related branches or commits
-
-## 4. Present Ticket Information
-Show the user a summary of the ticket:
+## 3. Present Ticket Information
+Show the user a summary of the ticket (already fetched in step 2b):
 - **Ticket**: [TICKET-NUMBER] Title
 - **Type**: Bug/Task/Story
 - **Priority**: High/Medium/Low
 - **Description**: (formatted clearly)
 - **Acceptance Criteria**: (if present)
 
-## 5. Plan the Implementation
+## 4. Plan the Implementation
 Based on the ticket details:
 - Identify affected files and components
 - Propose an implementation approach
 - Ask for user confirmation before proceeding
 
-## 6. Help with Implementation
+## 5. Help with Implementation
 - Implement the requested changes
 - Follow all code style guidelines from `.claude/rules/code-style.md`
 - Ensure proper testing based on `.claude/rules/testing.md`
 - Run tests before committing: `source .venv/bin/activate && pytest`
 
-## 7. Ready to Commit?
+## 6. Ready to Commit?
 **IMPORTANT**: Before committing, ask the user if they're ready to commit the changes.
 - Show summary of what was changed
 - Wait for user confirmation
 - When committing, use the conventional commits format from `.claude/rules/git-workflow.md`
 - Include the ticket number in the commit message (e.g., `feat(PDRIVE-123): add new validation rule`)
 
-## 8. Ensure Latest Code
+## 7. Ensure Latest Code
 After committing, ensure the branch is based on the latest upstream code:
 
 ```bash
@@ -79,14 +87,14 @@ git rebase upstream/main
 
 If conflicts occur, guide the user through resolving them.
 
-## 9. Push the Branch
+## 8. Push the Branch
 Push the branch to origin:
 
 ```bash
-git push -u origin <TICKET-NUMBER>
+git push -u origin <branch-name>
 ```
 
-## 10. Create Pull Request
+## 9. Create Pull Request
 Use GitHub MCP to offer creating a pull request:
 - Follow all GitHub MCP guidelines from `.claude/rules/github-mcp.md`
 - **MUST** show the user the proposed PR details and ask for explicit confirmation before creating
@@ -96,7 +104,7 @@ Use GitHub MCP to offer creating a pull request:
 - Determine the fork by checking git remote origin URL
 - **owner**: Your fork username (extracted from origin remote)
 - **repo**: "incluster-checks"
-- **head**: `<username>:<TICKET-NUMBER>` (your fork's branch)
+- **head**: `<username>:<branch-name>` (your fork's branch)
 - **base**: "main"
 - **title**: Use conventional commit format with ticket number
 - **body**: Include:
@@ -107,7 +115,7 @@ Use GitHub MCP to offer creating a pull request:
 - Use `mcp__plugin_github_github__create_pull_request`
 - Return the PR URL to the user
 
-## 11. Update Jira Ticket (Optional)
+## 10. Update Jira Ticket (Optional)
 After PR creation, offer to update the Jira ticket with implementation details:
 - **MUST** ask the user for approval before updating the ticket
 - Show the user what will be added to the ticket
@@ -129,9 +137,9 @@ After PR creation, offer to update the Jira ticket with implementation details:
 User invokes: `/implement-jira PDRIVE-505`
 
 Expected workflow:
-1. Checkout main → fetch upstream → rebase upstream/main → create branch `PDRIVE-505`
-2. Fetch ticket details from Jira using Atlassian MCP
-3. Check GitHub MCP for existing PRs/branches (if needed)
+1. Checkout main → fetch upstream → rebase upstream/main
+2. Fetch ticket details from Jira (needed for branch name)
+3. Create descriptive branch: `network-check-PDRIVE-505` (short description + ticket number, no prefix)
 4. Show ticket summary
 5. Plan implementation
 6. Implement changes

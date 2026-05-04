@@ -143,14 +143,15 @@ User invokes: `/implement-jira PDRIVE-505`
 Expected workflow:
 1. Checkout main → fetch upstream → rebase upstream/main
 2. Fetch ticket details from Jira (needed for branch name)
-3. Create descriptive branch: `network-check-PDRIVE-505` (short description + ticket number, no prefix)
-4. Show ticket summary
-5. Plan implementation
-6. Implement changes
-7. Run tests: `source .venv/bin/activate && pytest`
-8. Ask user if ready to commit
-9. When confirmed, commit with conventional commit format: `feat(PDRIVE-505): description`
-10. Fetch upstream and rebase on upstream/main to ensure latest code
-11. Push branch to origin
-12. Offer to create PR via GitHub MCP (following `.claude/rules/github-mcp.md` guidelines)
-13. Offer to update Jira ticket with implementation summary and PR link (ask user approval first)
+3. Check GitHub MCP for existing PRs/branches (if needed)
+4. Create descriptive branch: `network-check-PDRIVE-505` (short description + ticket number, no prefix)
+5. Show ticket summary
+6. Plan implementation
+7. Implement changes
+8. Run tests: `source .venv/bin/activate && pytest`
+9. Ask user if ready to commit
+10. When confirmed, commit with conventional commit format: `feat(PDRIVE-505): description`
+11. Fetch upstream and rebase on upstream/main to ensure latest code
+12. Push branch to origin
+13. Offer to create PR via GitHub MCP (following `.claude/rules/github-mcp.md` guidelines)
+14. Offer to update Jira ticket with implementation summary and PR link (ask user approval first)

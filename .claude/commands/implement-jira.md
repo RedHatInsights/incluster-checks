@@ -25,7 +25,11 @@ git rebase upstream/main
 ### 2b. Fetch Jira Ticket Details (needed for branch name)
 Fetch the ticket from Jira to get the title for the branch name:
 - Use `mcp__plugin_atlassian_atlassian__getJiraIssue` with the ticket number
-- Extract the title for use in branch naming
+- Extract: title, description, acceptance criteria, issue type, priority, assignee
+
+If needed, use GitHub MCP to:
+- Check if a PR already exists for this ticket
+- Review related branches or commits
 
 ### 2c. Create descriptive branch
 Create a branch with a short descriptive name followed by the ticket number. Do NOT use directory-style prefixes like `feat/` or `fix/`.

@@ -14,6 +14,7 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     AllPodsReadyAndRunning,
     AllStatefulsetsReady,
     CheckDeploymentsReplicaStatus,
+    NodesAreReady,
     NodesCpuAndMemoryStatus,
     OpenshiftOperatorStatus,
     ValidateAllDaemonsetsScheduled,
@@ -95,6 +96,84 @@ class TestAllPodsReadyAndRunning:
         result = tested_object.run_rule()
         assert result.status == Status.FAILED
         assert "Did not get any pods" in result.message
+
+
+def create_mock_node(name, ready_status, other_conditions=None):
+    """Create a mock node object."""
+    mock_node = Mock()
+    conditions = [{"type": "Ready", "status": ready_status}]
+
+    if other_conditions:
+        conditions.extend(other_conditions)
+
+    mock_node.as_dict.return_value = {
+        "metadata": {"name": name},
+        "status": {"conditions": conditions},
+    }
+    return mock_node
+
+
+class TestNodesAreReady:
+    """Test NodesAreReady rule."""
+
+    @pytest.fixture
+    def tested_object(self):
+        """Create instance of NodesAreReady for testing."""
+        return NodesAreReady(host_executor=Mock(), node_executors={})
+
+    def test_all_nodes_ready(self, tested_object):
+        """Test when all nodes are ready."""
+        tested_object.oc_api.get_all_nodes = Mock(
+            return_value=[
+                create_mock_node("node1", "True"),
+                create_mock_node("node2", "True"),
+            ]
+        )
+
+        result = tested_object.run_rule()
+        assert result.status == Status.PASSED
+
+    def test_some_nodes_not_ready(self, tested_object):
+        """Test when some nodes are not ready."""
+        tested_object.oc_api.get_all_nodes = Mock(
+            return_value=[
+                create_mock_node("node1", "True"),
+                create_mock_node("node2", "False"),
+                create_mock_node("node3", "Unknown"),
+            ]
+        )
+
+        result = tested_object.run_rule()
+        assert result.status == Status.FAILED
+        assert "node2" in result.message
+        assert "node3" in result.message
+        assert "not ready" in result.message
+
+    def test_nodes_with_warnings(self, tested_object):
+        """Test when nodes have warning conditions."""
+        tested_object.oc_api.get_all_nodes = Mock(
+            return_value=[
+                create_mock_node("node1", "True"),
+                create_mock_node(
+                    "node2",
+                    "True",
+                    [{"type": "DiskPressure", "status": "True"}],
+                ),
+            ]
+        )
+
+        result = tested_object.run_rule()
+        assert result.status == Status.FAILED
+        assert "node2" in result.message
+        assert "DiskPressure" in result.message
+
+    def test_no_nodes_found(self, tested_object):
+        """Test when no nodes are found."""
+        tested_object.oc_api.get_all_nodes = Mock(return_value=[])
+
+        result = tested_object.run_rule()
+        assert result.status == Status.FAILED
+        assert "Did not get nodes list" in result.message
 
 
 class TestNodesCpuAndMemoryStatus:

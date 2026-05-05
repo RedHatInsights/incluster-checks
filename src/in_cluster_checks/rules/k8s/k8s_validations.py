@@ -98,6 +98,97 @@ class AllPodsReadyAndRunning(OrchestratorRule):
         return ready_pods, not_running_pods
 
 
+class NodesAreReady(OrchestratorRule):
+    """Verify all nodes are in Ready state."""
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "all_nodes_are_ready"
+    title = "Verify nodes are ready"
+
+    def run_rule(self):
+        """Check if all nodes are in Ready state."""
+        ready_list, not_ready_list, warned_list = self._get_nodes_lists()
+
+        if len(ready_list) == 0:
+            return RuleResult.failed("Did not get nodes list from 'oc get nodes'")
+
+        error_messages = []
+
+        if not_ready_list:
+            error_messages.append("The following nodes are not ready:\n  " + "\n  ".join(not_ready_list))
+
+        if warned_list:
+            error_messages.append(
+                "The following nodes are ready but having some issues:\n  " + "\n  ".join(warned_list)
+            )
+
+        if error_messages:
+            return RuleResult.failed("\n\n".join(error_messages))
+
+        return RuleResult.passed()
+
+    def _get_nodes_lists(self):
+        """
+        Get lists of ready, not-ready, and warned nodes.
+
+        Returns:
+            tuple: (ready_list, not_ready_list, warned_list)
+                   - ready_list: node names in Ready state
+                   - not_ready_list: node names not in Ready state
+                   - warned_list: "node_name - status" for nodes with warnings
+        """
+        ready_list = []
+        not_ready_list = []
+        warned_list = []
+
+        # Get all nodes
+        node_objects = self.oc_api.get_all_nodes(timeout=45)
+
+        if not node_objects:
+            return [], [], []
+
+        for node in node_objects:
+            node_data = node.as_dict()
+            node_name = node_data["metadata"]["name"]
+            status_dict = node_data.get("status", {})
+            conditions = status_dict.get("conditions", [])
+
+            # Find Ready condition
+            ready_condition = None
+            for condition in conditions:
+                if condition.get("type") == "Ready":
+                    ready_condition = condition
+                    break
+
+            if not ready_condition:
+                not_ready_list.append(node_name)
+                continue
+
+            ready_status = ready_condition.get("status", "Unknown")
+
+            if ready_status == "True":
+                # Check for other warning conditions (DiskPressure, MemoryPressure, etc.)
+                warning_conditions = []
+                for condition in conditions:
+                    condition_type = condition.get("type")
+                    condition_status = condition.get("status", "False")
+                    if (
+                        condition_type != "Ready"
+                        and condition_status == "True"
+                        and condition_type in ["DiskPressure", "MemoryPressure", "PIDPressure", "NetworkUnavailable"]
+                    ):
+                        warning_conditions.append(condition_type)
+
+                if warning_conditions:
+                    warned_list.append(f"{node_name} - Ready,{','.join(warning_conditions)}")
+                else:
+                    ready_list.append(node_name)
+            else:
+                not_ready_list.append(node_name)
+
+        return ready_list, not_ready_list, warned_list
+
+
 class NodesCpuAndMemoryStatus(OrchestratorRule):
     """Check node CPU and memory usage against thresholds."""
 

@@ -14,6 +14,7 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     AllPodsReadyAndRunning,
     AllStatefulsetsReady,
     CheckDeploymentsReplicaStatus,
+    NodesAreReady,
     NodesCpuAndMemoryStatus,
     OpenshiftOperatorStatus,
     ValidateAllDaemonsetsScheduled,
@@ -39,6 +40,122 @@ def create_mock_pod(namespace, name, phase, ready_containers, total_containers):
         },
     }
     return mock_pod
+
+
+def create_mock_node(name, ready_status="True", warning_conditions=None):
+    """Create a mock node object.
+
+    Args:
+        name: Node name
+        ready_status: Ready condition status ("True", "False", "Unknown")
+        warning_conditions: List of warning condition types to set to True
+                          (e.g., ["DiskPressure", "MemoryPressure"])
+    """
+    mock_node = Mock()
+    conditions = [
+        {
+            "type": "Ready",
+            "status": ready_status,
+            "reason": "KubeletReady" if ready_status == "True" else "KubeletNotReady",
+            "message": "kubelet is posting ready status" if ready_status == "True" else "kubelet is not ready",
+        }
+    ]
+
+    if warning_conditions:
+        for condition_type in warning_conditions:
+            conditions.append(
+                {
+                    "type": condition_type,
+                    "status": "True",
+                    "reason": f"{condition_type}Detected",
+                    "message": f"Node has {condition_type} condition",
+                }
+            )
+
+    mock_node.as_dict.return_value = {
+        "metadata": {"name": name},
+        "status": {"conditions": conditions},
+    }
+    return mock_node
+
+
+class TestNodesAreReady(RuleTestBase):
+    """Test NodesAreReady rule."""
+
+    tested_type = NodesAreReady
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "all nodes are ready with no warnings",
+            tested_object_mock_dict={
+                "oc_api.get_all_nodes": Mock(
+                    return_value=[
+                        create_mock_node("master-1", ready_status="True"),
+                        create_mock_node("master-2", ready_status="True"),
+                        create_mock_node("worker-1", ready_status="True"),
+                    ]
+                )
+            },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "node not ready",
+            tested_object_mock_dict={
+                "oc_api.get_all_nodes": Mock(
+                    return_value=[
+                        create_mock_node("master-1", ready_status="True"),
+                        create_mock_node("worker-1", ready_status="False"),
+                    ]
+                )
+            },
+            failed_msg="The following nodes are not ready:\n"
+            "  worker-1",
+        ),
+        RuleScenarioParams(
+            "node ready with DiskPressure warning",
+            tested_object_mock_dict={
+                "oc_api.get_all_nodes": Mock(
+                    return_value=[
+                        create_mock_node("master-1", ready_status="True"),
+                        create_mock_node("worker-1", ready_status="True", warning_conditions=["DiskPressure"]),
+                    ]
+                )
+            },
+            failed_msg="The following nodes are ready but having some issues:\n"
+            "  worker-1 - Ready,DiskPressure",
+        ),
+        RuleScenarioParams(
+            "mixed node states - not ready and warnings",
+            tested_object_mock_dict={
+                "oc_api.get_all_nodes": Mock(
+                    return_value=[
+                        create_mock_node("master-1", ready_status="True"),
+                        create_mock_node("worker-1", ready_status="False"),
+                        create_mock_node("worker-2", ready_status="True", warning_conditions=["DiskPressure"]),
+                    ]
+                )
+            },
+            failed_msg="The following nodes are not ready:\n"
+            "  worker-1\n\n"
+            "The following nodes are ready but having some issues:\n"
+            "  worker-2 - Ready,DiskPressure",
+        ),
+        RuleScenarioParams(
+            "no nodes found in cluster",
+            tested_object_mock_dict={"oc_api.get_all_nodes": Mock(return_value=[])},
+            failed_msg="Did not get nodes list from 'oc get nodes'",
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
 
 
 class TestAllPodsReadyAndRunning:

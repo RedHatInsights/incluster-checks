@@ -654,3 +654,69 @@ class VerifyInternalRegistry(OrchestratorRule):
             return RuleResult.failed(message)
 
         return RuleResult.passed()
+
+
+class NodesAreReady(OrchestratorRule):
+    """Verify all cluster nodes are in Ready state with no warning conditions."""
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "all_nodes_are_ready"
+    title = "Verify all nodes are ready"
+    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-nodes-are-ready"]
+
+    WARNING_CONDITIONS = ["DiskPressure", "MemoryPressure", "PIDPressure", "NetworkUnavailable"]
+
+    def run_rule(self):
+        """Check if all nodes are in Ready state with no warning conditions."""
+        node_objects = self.oc_api.get_all_nodes(timeout=45)
+
+        if not node_objects:
+            return RuleResult.failed("Did not get nodes list from 'oc get nodes'")
+
+        ready_list = []
+        not_ready_list = []
+        warned_list = []
+
+        for node in node_objects:
+            node_data = node.as_dict()
+            node_name = node_data["metadata"]["name"]
+            status_dict = node_data.get("status", {})
+            conditions = status_dict.get("conditions", [])
+
+            ready_condition = None
+            warning_conditions = []
+
+            for condition in conditions:
+                condition_type = condition.get("type")
+                condition_status = condition.get("status")
+
+                if condition_type == "Ready":
+                    ready_condition = condition
+                elif condition_type in self.WARNING_CONDITIONS and condition_status == "True":
+                    warning_conditions.append(condition_type)
+
+            if not ready_condition:
+                not_ready_list.append(node_name)
+            elif ready_condition.get("status") != "True":
+                not_ready_list.append(node_name)
+            elif warning_conditions:
+                warned_list.append(f"{node_name} - Ready,{','.join(warning_conditions)}")
+            else:
+                ready_list.append(node_name)
+
+        if not_ready_list or warned_list:
+            error_messages = []
+
+            if not_ready_list:
+                error_messages.append(
+                    "The following nodes are not ready:\n  " + "\n  ".join(not_ready_list)
+                )
+
+            if warned_list:
+                error_messages.append(
+                    "The following nodes are ready but having some issues:\n  " + "\n  ".join(warned_list)
+                )
+
+            return RuleResult.failed("\n\n".join(error_messages))
+
+        return RuleResult.passed()

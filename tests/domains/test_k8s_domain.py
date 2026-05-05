@@ -3,7 +3,6 @@
 from in_cluster_checks.domains.k8s_domain import K8sValidationDomain
 from in_cluster_checks.rules.k8s.k8s_validations import (
     AllPodsReadyAndRunning,
-    NodesAreReady,
     NodesCpuAndMemoryStatus,
     OpenshiftOperatorStatus,
     ValidateAllDaemonsetsScheduled,
@@ -24,9 +23,8 @@ def test_k8s_domain_rules():
     domain = K8sValidationDomain()
     rules = domain.get_rule_classes()
 
-    assert len(rules) == 11
+    assert len(rules) == 10
     assert AllPodsReadyAndRunning in rules
-    assert NodesAreReady in rules
     assert NodesCpuAndMemoryStatus in rules
     assert ValidateNamespaceStatus in rules
     assert ValidateAllDaemonsetsScheduled in rules

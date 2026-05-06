@@ -1291,47 +1291,23 @@ def create_mock_console_pod(name):
     return mock_pod
 
 
+def _console_config(management_state=None):
+    """Build a console operator config with the given managementState."""
+    spec = {"managementState": management_state} if management_state else {}
+    return {"spec": spec, "status": {}}
+
+
 class TestVerifyWebConsoleDisabled(RuleTestBase):
     """Test VerifyWebConsoleDisabled rule."""
 
     tested_type = VerifyWebConsoleDisabled
-
-    # Console config - Removed state (web console disabled)
-    console_config_removed = {
-        "spec": {
-            "managementState": "Removed",
-        },
-        "status": {},
-    }
-
-    # Console config - Unmanaged state (web console disabled)
-    console_config_unmanaged = {
-        "spec": {
-            "managementState": "Unmanaged",
-        },
-        "status": {},
-    }
-
-    # Console config - Managed state (web console enabled)
-    console_config_managed = {
-        "spec": {
-            "managementState": "Managed",
-        },
-        "status": {},
-    }
-
-    # Console config - missing managementState
-    console_config_unknown = {
-        "spec": {},
-        "status": {},
-    }
 
     scenario_passed = [
         RuleScenarioParams(
             "console is disabled (Removed) and no pods in openshift-console namespace",
             tested_object_mock_dict={
                 "oc_api.run_oc_command": Mock(
-                    return_value=(0, json.dumps(console_config_removed), "")
+                    return_value=(0, json.dumps(_console_config("Removed")), "")
                 ),
                 "oc_api.get_all_pods": Mock(return_value=[]),
             },
@@ -1340,7 +1316,7 @@ class TestVerifyWebConsoleDisabled(RuleTestBase):
             "console is disabled (Unmanaged) and no pods in openshift-console namespace",
             tested_object_mock_dict={
                 "oc_api.run_oc_command": Mock(
-                    return_value=(0, json.dumps(console_config_unmanaged), "")
+                    return_value=(0, json.dumps(_console_config("Unmanaged")), "")
                 ),
                 "oc_api.get_all_pods": Mock(return_value=[]),
             },
@@ -1352,7 +1328,7 @@ class TestVerifyWebConsoleDisabled(RuleTestBase):
             "console operator is Managed (web console enabled)",
             tested_object_mock_dict={
                 "oc_api.run_oc_command": Mock(
-                    return_value=(0, json.dumps(console_config_managed), "")
+                    return_value=(0, json.dumps(_console_config("Managed")), "")
                 ),
             },
         ),
@@ -1360,7 +1336,7 @@ class TestVerifyWebConsoleDisabled(RuleTestBase):
             "console operator managementState is missing",
             tested_object_mock_dict={
                 "oc_api.run_oc_command": Mock(
-                    return_value=(0, json.dumps(console_config_unknown), "")
+                    return_value=(0, json.dumps(_console_config()), "")
                 ),
             },
         ),
@@ -1371,7 +1347,7 @@ class TestVerifyWebConsoleDisabled(RuleTestBase):
             "console is disabled but pods still exist in openshift-console namespace",
             tested_object_mock_dict={
                 "oc_api.run_oc_command": Mock(
-                    return_value=(0, json.dumps(console_config_removed), "")
+                    return_value=(0, json.dumps(_console_config("Removed")), "")
                 ),
                 "oc_api.get_all_pods": Mock(
                     return_value=[

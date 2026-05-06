@@ -20,6 +20,7 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     ValidateAllPoliciesCompliant,
     ValidateNamespaceStatus,
     VerifyInternalRegistry,
+    VerifyWebConsoleDisabled,
 )
 
 
@@ -53,4 +54,5 @@ class K8sValidationDomain(RuleDomain):
             OpenshiftOperatorStatus,
             ValidateAllPoliciesCompliant,
             VerifyInternalRegistry,
+            VerifyWebConsoleDisabled,
         ]

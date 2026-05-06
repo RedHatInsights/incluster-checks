@@ -21,6 +21,7 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     ValidateAllPoliciesCompliant,
     ValidateNamespaceStatus,
     VerifyInternalRegistry,
+    VerifyWebConsoleDisabled,
 )
 from in_cluster_checks.utils.enums import Status
 from tests.pytest_tools.test_rule_base import RuleScenarioParams, RuleTestBase
@@ -1261,6 +1262,114 @@ class TestVerifyInternalRegistry(RuleTestBase):
             },
             failed_msg="Image registry is Managed but following pods are not ready:\n"
             "  image-registry-1 - Running, Not all containers ready",
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
+    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+
+def create_mock_console_pod(name):
+    """Create a mock console pod object."""
+    mock_pod = Mock()
+    mock_pod.as_dict.return_value = {
+        "metadata": {"namespace": "openshift-console", "name": name},
+        "status": {
+            "phase": "Running",
+            "containerStatuses": [{"ready": True}],
+        },
+    }
+    return mock_pod
+
+
+class TestVerifyWebConsoleDisabled(RuleTestBase):
+    """Test VerifyWebConsoleDisabled rule."""
+
+    tested_type = VerifyWebConsoleDisabled
+
+    # Console config - Removed state (web console disabled)
+    console_config_removed = {
+        "spec": {
+            "managementState": "Removed",
+        },
+        "status": {},
+    }
+
+    # Console config - Unmanaged state (web console disabled)
+    console_config_unmanaged = {
+        "spec": {
+            "managementState": "Unmanaged",
+        },
+        "status": {},
+    }
+
+    # Console config - Managed state (web console enabled)
+    console_config_managed = {
+        "spec": {
+            "managementState": "Managed",
+        },
+        "status": {},
+    }
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "console is disabled (Removed) and no pods in openshift-console namespace",
+            tested_object_mock_dict={
+                "oc_api.run_oc_command": Mock(
+                    return_value=(0, json.dumps(console_config_removed), "")
+                ),
+                "oc_api.get_all_pods": Mock(return_value=[]),
+            },
+        ),
+        RuleScenarioParams(
+            "console is disabled (Unmanaged) and no pods in openshift-console namespace",
+            tested_object_mock_dict={
+                "oc_api.run_oc_command": Mock(
+                    return_value=(0, json.dumps(console_config_unmanaged), "")
+                ),
+                "oc_api.get_all_pods": Mock(return_value=[]),
+            },
+        ),
+    ]
+
+    scenario_prerequisite_not_fulfilled = [
+        RuleScenarioParams(
+            "console operator is Managed (web console enabled)",
+            tested_object_mock_dict={
+                "oc_api.run_oc_command": Mock(
+                    return_value=(0, json.dumps(console_config_managed), "")
+                ),
+            },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "console is disabled but pods still exist in openshift-console namespace",
+            tested_object_mock_dict={
+                "oc_api.run_oc_command": Mock(
+                    return_value=(0, json.dumps(console_config_removed), "")
+                ),
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_console_pod("console-7b4f8c6d9-abc12"),
+                        create_mock_console_pod("downloads-6f5d7c8b4-xyz34"),
+                    ]
+                ),
+            },
+            failed_msg="Found 2 pod(s) in openshift-console namespace "
+            "but web console should be disabled:\n"
+            "  console-7b4f8c6d9-abc12\n"
+            "  downloads-6f5d7c8b4-xyz34",
         ),
     ]
 

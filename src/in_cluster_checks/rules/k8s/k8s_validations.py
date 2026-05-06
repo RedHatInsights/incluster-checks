@@ -745,3 +745,72 @@ class VerifyInternalRegistry(OrchestratorRule):
             return RuleResult.failed(message)
 
         return RuleResult.passed()
+
+
+class VerifyWebConsoleDisabled(OrchestratorRule):
+    """Verify OpenShift web console is disabled and no pods exist in openshift-console namespace.
+
+    On edge clusters (SNO), the web console should be disabled to reduce resource usage.
+    This rule checks that the console operator managementState is not 'Managed' and
+    that no pods are running in the openshift-console namespace.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_web_console_disabled"
+    title = "Verify web console is disabled (edge/SNO clusters)"
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-web-console-disabled",
+        "https://docs.openshift.com/container-platform/latest/web_console/disabling-web-console.html",
+    ]
+
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        """Check if the web console is configured as disabled.
+
+        The rule is only applicable when the console operator's managementState
+        is not 'Managed' (i.e., 'Removed' or 'Unmanaged'), indicating that the
+        web console is intentionally disabled.
+        """
+        try:
+            _, console_config_output, _ = self.oc_api.run_oc_command(
+                "get",
+                ["console.operator.openshift.io", "cluster", "-o", "json"],
+                timeout=45,
+            )
+        except UnExpectedSystemOutput:
+            return PrerequisiteResult.not_met("Failed to get console operator configuration")
+
+        try:
+            console_config = json.loads(console_config_output)
+        except json.JSONDecodeError as e:
+            return PrerequisiteResult.not_met(f"Failed to parse console operator configuration: {e}")
+
+        spec = console_config.get("spec", {})
+        management_state = spec.get("managementState", "Unknown")
+
+        if management_state == "Managed":
+            return PrerequisiteResult.not_met(
+                f"Console operator managementState is '{management_state}' - "
+                "web console is enabled, this check is for edge/SNO clusters where console should be disabled"
+            )
+
+        return PrerequisiteResult.met()
+
+    def run_rule(self):
+        """Verify no pods exist in the openshift-console namespace."""
+        pod_objects = self.oc_api.get_all_pods(namespace="openshift-console")
+
+        if pod_objects:
+            pod_names = []
+            for pod in pod_objects:
+                pod_data = pod.as_dict()
+                pod_name = pod_data["metadata"]["name"]
+                pod_names.append(pod_name)
+
+            message = (
+                f"Found {len(pod_objects)} pod(s) in openshift-console namespace "
+                "but web console should be disabled:\n  "
+            )
+            message += "\n  ".join(pod_names)
+            return RuleResult.failed(message)
+
+        return RuleResult.passed()

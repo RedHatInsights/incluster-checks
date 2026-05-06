@@ -787,13 +787,13 @@ class VerifyWebConsoleDisabled(OrchestratorRule):
         spec = console_config.get("spec", {})
         management_state = spec.get("managementState", "Unknown")
 
-        if management_state == "Managed":
-            return PrerequisiteResult.not_met(
-                f"Console operator managementState is '{management_state}' - "
-                "web console is enabled, this check is for edge/SNO clusters where console should be disabled"
-            )
+        if management_state in {"Removed", "Unmanaged"}:
+            return PrerequisiteResult.met()
 
-        return PrerequisiteResult.met()
+        return PrerequisiteResult.not_met(
+            f"Console operator managementState is '{management_state}' - "
+            "this check only applies when web console is explicitly disabled (Removed/Unmanaged)"
+        )
 
     def run_rule(self):
         """Verify no pods exist in the openshift-console namespace."""

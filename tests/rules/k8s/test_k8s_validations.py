@@ -1320,6 +1320,12 @@ class TestVerifyWebConsoleDisabled(RuleTestBase):
         "status": {},
     }
 
+    # Console config - missing managementState
+    console_config_unknown = {
+        "spec": {},
+        "status": {},
+    }
+
     scenario_passed = [
         RuleScenarioParams(
             "console is disabled (Removed) and no pods in openshift-console namespace",
@@ -1347,6 +1353,14 @@ class TestVerifyWebConsoleDisabled(RuleTestBase):
             tested_object_mock_dict={
                 "oc_api.run_oc_command": Mock(
                     return_value=(0, json.dumps(console_config_managed), "")
+                ),
+            },
+        ),
+        RuleScenarioParams(
+            "console operator managementState is missing",
+            tested_object_mock_dict={
+                "oc_api.run_oc_command": Mock(
+                    return_value=(0, json.dumps(console_config_unknown), "")
                 ),
             },
         ),

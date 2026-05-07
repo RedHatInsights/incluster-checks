@@ -814,3 +814,73 @@ class VerifyWebConsoleDisabled(OrchestratorRule):
             return RuleResult.failed(message)
 
         return RuleResult.passed()
+
+
+class VerifyNetworkDiagnosticsDisabled(OrchestratorRule):
+    """Verify no pods exist in openshift-network-diagnostics namespace when diagnostics are disabled.
+
+    On edge clusters (SNO), network diagnostics should be disabled to reduce resource usage.
+    This rule checks that the network operator has disableNetworkDiagnostics set to true and
+    that no pods are running in the openshift-network-diagnostics namespace.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_network_diagnostics_disabled"
+    title = "Verify no pods in network diagnostics namespace (edge/SNO clusters)"
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-network-diagnostics-disabled",
+        "https://docs.redhat.com/en/documentation/openshift_container_platform"
+        "/4.17/html/networking_operators/cluster-network-operator",
+    ]
+
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        """Check if network diagnostics is configured as disabled.
+
+        The rule is only applicable when the network operator's
+        disableNetworkDiagnostics is set to true, indicating that network
+        diagnostics is intentionally disabled.
+        """
+        try:
+            _, network_config_output, _ = self.oc_api.run_oc_command(
+                "get",
+                ["network.operator.openshift.io", "cluster", "-o", "json"],
+                timeout=45,
+            )
+        except UnExpectedSystemOutput:
+            return PrerequisiteResult.not_met("Failed to get network operator configuration")
+
+        try:
+            network_config = json.loads(network_config_output)
+        except json.JSONDecodeError as e:
+            return PrerequisiteResult.not_met(f"Failed to parse network operator configuration: {e}")
+
+        spec = network_config.get("spec", {})
+        disable_diagnostics = spec.get("disableNetworkDiagnostics")
+
+        if disable_diagnostics is True:
+            return PrerequisiteResult.met()
+
+        return PrerequisiteResult.not_met(
+            f"Network operator disableNetworkDiagnostics is '{disable_diagnostics}' - "
+            "this check only applies when network diagnostics is explicitly disabled (true)"
+        )
+
+    def run_rule(self):
+        """Verify no pods exist in the openshift-network-diagnostics namespace."""
+        pod_objects = self.oc_api.get_all_pods(namespace="openshift-network-diagnostics")
+
+        if pod_objects:
+            pod_names = []
+            for pod in pod_objects:
+                pod_data = pod.as_dict()
+                pod_name = pod_data["metadata"]["name"]
+                pod_names.append(pod_name)
+
+            message = (
+                f"Found {len(pod_objects)} pod(s) in openshift-network-diagnostics namespace "
+                "but network diagnostics should be disabled:\n  "
+            )
+            message += "\n  ".join(pod_names)
+            return RuleResult.failed(message)
+
+        return RuleResult.passed()

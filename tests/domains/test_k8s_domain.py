@@ -10,6 +10,7 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     ValidateNamespaceStatus,
     ValidateAllPoliciesCompliant,
     VerifyInternalRegistry,
+    VerifyNetworkDiagnosticsDisabled,
     VerifyWebConsoleDisabled,
 )
 
@@ -25,7 +26,7 @@ def test_k8s_domain_rules():
     domain = K8sValidationDomain()
     rules = domain.get_rule_classes()
 
-    assert len(rules) == 12
+    assert len(rules) == 13
     assert AllPodsReadyAndRunning in rules
     assert NodesAreReady in rules
     assert NodesCpuAndMemoryStatus in rules
@@ -35,3 +36,4 @@ def test_k8s_domain_rules():
     assert ValidateAllPoliciesCompliant in rules
     assert VerifyInternalRegistry in rules
     assert VerifyWebConsoleDisabled in rules
+    assert VerifyNetworkDiagnosticsDisabled in rules

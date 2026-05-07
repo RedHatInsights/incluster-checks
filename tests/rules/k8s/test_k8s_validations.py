@@ -21,9 +21,11 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     ValidateAllPoliciesCompliant,
     ValidateNamespaceStatus,
     VerifyInternalRegistry,
+    VerifyNetworkDiagnosticsDisabled,
     VerifyWebConsoleDisabled,
 )
 from in_cluster_checks.utils.enums import Status
+from tests.pytest_tools.test_operator_base import CmdOutput
 from tests.pytest_tools.test_rule_base import RuleScenarioParams, RuleTestBase
 
 
@@ -1373,4 +1375,100 @@ class TestVerifyWebConsoleDisabled(RuleTestBase):
 
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+
+def create_mock_network_diagnostics_pod(name):
+    """Create a mock network diagnostics pod object."""
+    mock_pod = Mock()
+    mock_pod.as_dict.return_value = {
+        "metadata": {"namespace": "openshift-network-diagnostics", "name": name},
+        "status": {
+            "phase": "Running",
+            "containerStatuses": [{"ready": True}],
+        },
+    }
+    return mock_pod
+
+
+def _network_config(disable_diagnostics=None):
+    """Build a network operator config with the given disableNetworkDiagnostics value."""
+    spec = {"disableNetworkDiagnostics": disable_diagnostics} if disable_diagnostics is not None else {}
+    return {"spec": spec, "status": {}}
+
+
+class TestVerifyNetworkDiagnosticsDisabled(RuleTestBase):
+    """Test VerifyNetworkDiagnosticsDisabled rule."""
+
+    tested_type = VerifyNetworkDiagnosticsDisabled
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "network diagnostics disabled and no pods in openshift-network-diagnostics namespace",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(return_value=[]),
+            },
+            oc_cmd_output_dict={
+                ("get", ("network.operator.openshift.io", "cluster", "-o", "json")): CmdOutput(
+                    json.dumps(_network_config(True))
+                ),
+            },
+        ),
+    ]
+
+    scenario_prerequisite_not_fulfilled = [
+        RuleScenarioParams(
+            "network diagnostics is not disabled (disableNetworkDiagnostics is false)",
+            oc_cmd_output_dict={
+                ("get", ("network.operator.openshift.io", "cluster", "-o", "json")): CmdOutput(
+                    json.dumps(_network_config(False))
+                ),
+            },
+        ),
+        RuleScenarioParams(
+            "network operator disableNetworkDiagnostics is missing",
+            oc_cmd_output_dict={
+                ("get", ("network.operator.openshift.io", "cluster", "-o", "json")): CmdOutput(
+                    json.dumps(_network_config())
+                ),
+            },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "network diagnostics disabled but pods still exist in openshift-network-diagnostics namespace",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_network_diagnostics_pod("network-check-source-7b4f8c6d9-abc12"),
+                        create_mock_network_diagnostics_pod("network-check-target-xyz34"),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("network.operator.openshift.io", "cluster", "-o", "json")): CmdOutput(
+                    json.dumps(_network_config(True))
+                ),
+            },
+            failed_msg="Found 2 pod(s) in openshift-network-diagnostics namespace "
+            "but network diagnostics should be disabled:\n"
+            "  network-check-source-7b4f8c6d9-abc12\n"
+            "  network-check-target-xyz34",
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
+    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        """Test prerequisite not fulfilled scenarios."""
+        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        """Test passed scenarios."""
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        """Test failed scenarios."""
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)

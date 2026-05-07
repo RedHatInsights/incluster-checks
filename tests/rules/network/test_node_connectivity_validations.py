@@ -487,7 +487,7 @@ Address:        172.30.0.10#53
                 ),
                 "_node_executors": {
                     "worker-0": Mock(
-                        run_cmd=Mock(return_value=(0, nslookup_success, ""))
+                        execute_cmd=Mock(return_value=(0, nslookup_success, ""))
                     )
                 },
             },
@@ -503,7 +503,7 @@ Address:        172.30.0.10#53
                 ),
                 "_node_executors": {
                     "worker-0": Mock(
-                        run_cmd=Mock(return_value=(0, nslookup_success, ""))
+                        execute_cmd=Mock(return_value=(0, nslookup_success, ""))
                     )
                 },
             },
@@ -517,7 +517,7 @@ Address:        172.30.0.10#53
                 ),
                 "_node_executors": {
                     "worker-0": Mock(
-                        run_cmd=Mock(return_value=(0, nslookup_success, ""))
+                        execute_cmd=Mock(return_value=(0, nslookup_success, ""))
                     )
                 },
             },
@@ -531,7 +531,7 @@ Address:        172.30.0.10#53
                 ),
                 "_node_executors": {
                     "worker-0": Mock(
-                        run_cmd=Mock(return_value=(0, nslookup_success, ""))
+                        execute_cmd=Mock(return_value=(0, nslookup_success, ""))
                     )
                 },
             },
@@ -545,7 +545,7 @@ Address:        172.30.0.10#53
                 ),
                 "_node_executors": {
                     "worker-0": Mock(
-                        run_cmd=Mock(return_value=(1, nslookup_failure, "command failed"))
+                        execute_cmd=Mock(return_value=(1, nslookup_failure, "command failed"))
                     )
                 },
             },
@@ -559,7 +559,7 @@ Address:        172.30.0.10#53
                 ),
                 "_node_executors": {
                     "worker-0": Mock(
-                        run_cmd=Mock(return_value=(0, nslookup_failure, ""))
+                        execute_cmd=Mock(return_value=(0, nslookup_failure, ""))
                     )
                 },
             },

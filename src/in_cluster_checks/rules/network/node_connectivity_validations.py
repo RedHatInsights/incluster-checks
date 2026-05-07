@@ -407,7 +407,7 @@ class VerifyDnsReachability(OrchestratorRule):
         executor = self._node_executors[first_node_name]
 
         try:
-            rc, output, err = executor.run_cmd(SafeCmdString("nslookup {domain}").format(domain=self.TEST_DOMAIN))
+            rc, output, err = executor.execute_cmd(SafeCmdString("nslookup {domain}").format(domain=self.TEST_DOMAIN))
         except Exception as e:
             return False, f"DNS resolution test failed on {first_node_name}: {e}"
 

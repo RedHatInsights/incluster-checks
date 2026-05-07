@@ -6,7 +6,7 @@ Based on HealthChecks DiskBlueprintDataCollectors pattern.
 """
 
 import re
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from in_cluster_checks.rules.hw_fw_details.hw_fw_base import HwFwDataCollector
 from in_cluster_checks.utils.enums import Objectives
@@ -82,7 +82,7 @@ class DiskDataCollector(HwFwDataCollector):
 
         return True
 
-    def _collect_lsblk_data(self, field_name: str, is_number: bool = False) -> Dict[str, any]:
+    def _collect_lsblk_data(self, field_name: str, is_number: bool = False) -> Dict[str, Any]:
         """
         Collect data from lsblk for specific field.
 
@@ -281,7 +281,7 @@ class DiskSize(DiskDataCollector):
         """Get blueprint objective name."""
         return "Disk@size_in_mb"
 
-    def collect_data(self, **kwargs) -> Dict[str, int]:
+    def collect_data(self, **kwargs) -> Dict[str, Any]:
         """
         Collect disk size in MB for each disk.
 
@@ -310,13 +310,12 @@ class DiskSize(DiskDataCollector):
 
             if disk_name not in disk_ids:
                 continue
-
             try:
                 size_bytes = int(size_bytes_str)
                 size_mb = size_bytes // self.BYTES_IN_MB
                 result[disk_name] = size_mb
             except ValueError:
-                result[disk_name] = 0
+                result[disk_name] = "----"
 
         return result
 

@@ -8,6 +8,7 @@ Ported from: support/HealthChecks/flows/Network/network_validations.py
 import os
 import re
 
+from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.operations import DataCollector
 from in_cluster_checks.core.rule import OrchestratorRule, PrerequisiteResult, Rule, RuleResult
 from in_cluster_checks.rules.network.ovs_base import OvsOperatorBase
@@ -332,3 +333,110 @@ class BondDnsServersComparison(OrchestratorRule):
         return RuleResult.passed(
             f"DNS configuration consistent across all nodes for {len(all_bond_names)} bond interfaces"
         )
+
+
+class VerifyDnsReachability(OrchestratorRule):
+    """
+    Verify DNS reachability in the cluster.
+
+    Checks if the cluster DNS operator is healthy and then verifies
+    DNS resolution is working by attempting to resolve a known domain.
+    This ensures both the DNS infrastructure and actual DNS resolution
+    are functioning correctly.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_dns_reachability"
+    title = "Verify DNS reachability"
+    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/Network-‐-Verify-DNS-reachability"]
+
+    DNS_OPERATOR = "dns"
+    TEST_DOMAIN = "kubernetes.default.svc.cluster.local"
+
+    def _check_dns_operator_health(self) -> tuple[bool, str]:
+        """
+        Check if the DNS operator is healthy.
+
+        Returns:
+            Tuple of (is_healthy, message)
+        """
+        try:
+            _, operator_output, _ = self.oc_api.run_oc_command(
+                "get", ["clusteroperator", self.DNS_OPERATOR, "--no-headers"], timeout=30
+            )
+        except UnExpectedSystemOutput as e:
+            return False, f"Failed to get DNS operator status: {e}"
+
+        if not operator_output or not operator_output.strip():
+            return False, f"DNS operator '{self.DNS_OPERATOR}' not found"
+
+        operator_values = operator_output.strip().split()
+
+        if len(operator_values) < 5:
+            return False, f"Unexpected DNS operator output format: {operator_output}"
+
+        name = operator_values[0]
+        available = operator_values[2]
+        progressing = operator_values[3]
+        degraded = operator_values[4]
+
+        issues = []
+        if available != "True":
+            issues.append(f"not available (Available={available})")
+        if progressing == "True":
+            issues.append(f"in progress (Progressing={progressing})")
+        if degraded == "True":
+            issues.append(f"degraded (Degraded={degraded})")
+
+        if issues:
+            return False, f"DNS operator '{name}' is {', '.join(issues)}"
+
+        return True, f"DNS operator '{name}' is healthy"
+
+    def _test_dns_resolution(self) -> tuple[bool, str]:
+        """
+        Test DNS resolution by attempting to resolve a known domain.
+
+        Returns:
+            Tuple of (is_successful, message)
+        """
+        if not self._node_executors:
+            return False, "No node executors available for DNS resolution test"
+
+        first_node_name = next(iter(self._node_executors.keys()))
+        executor = self._node_executors[first_node_name]
+
+        try:
+            rc, output, err = executor.run_cmd(SafeCmdString("nslookup {domain}").format(domain=self.TEST_DOMAIN))
+        except Exception as e:
+            return False, f"DNS resolution test failed on {first_node_name}: {e}"
+
+        if rc != 0:
+            error_details = err.strip() if err else output.strip()
+            return False, f"DNS resolution failed for '{self.TEST_DOMAIN}' on {first_node_name}: {error_details}"
+
+        if "server can't find" in output.lower() or "nxdomain" in output.lower():
+            return False, f"DNS resolution failed: domain '{self.TEST_DOMAIN}' not found"
+
+        return True, f"DNS resolution successful for '{self.TEST_DOMAIN}' on {first_node_name}"
+
+    def run_rule(self) -> RuleResult:
+        """
+        Verify DNS reachability.
+
+        First checks if the DNS operator is healthy, then tests actual DNS resolution.
+
+        Returns:
+            RuleResult indicating DNS health and reachability status
+        """
+        is_healthy, operator_msg = self._check_dns_operator_health()
+
+        if not is_healthy:
+            return RuleResult.failed(f"DNS operator health check failed: {operator_msg}")
+
+        is_resolvable, resolution_msg = self._test_dns_resolution()
+
+        if not is_resolvable:
+            return RuleResult.failed(f"DNS resolution test failed: {resolution_msg}\n({operator_msg})")
+
+        return RuleResult.passed(f"DNS is reachable: {operator_msg}, {resolution_msg}")

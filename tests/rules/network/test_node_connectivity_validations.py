@@ -17,7 +17,8 @@ from in_cluster_checks.rules.network.node_connectivity_validations import (
     AreAllNodesConnected,
     VerifyBondedInterfacesUp,
     BondDnsCollector,
-    BondDnsServersComparison
+    BondDnsServersComparison,
+    VerifyDnsReachability,
 )
 from tests.pytest_tools.test_operator_base import CmdOutput
 from tests.pytest_tools.test_rule_base import RuleScenarioParams, RuleTestBase
@@ -441,4 +442,136 @@ ipv6.method:                            manual
     @pytest.mark.parametrize("scenario_params", scenarios)
     def test_collect_data(self, scenario_params, tested_object):
         DataCollectorTestBase.test_collect_data(self, scenario_params, tested_object)
+
+
+class TestVerifyDnsReachability(RuleTestBase):
+    """Test VerifyDnsReachability validator."""
+
+    tested_type = VerifyDnsReachability
+
+    @pytest.fixture
+    def tested_object(self):
+        """
+        Create tested object (OrchestratorRule).
+
+        Returns:
+            Instance of VerifyDnsReachability
+        """
+        tested_obj = self.tested_type(host_executor=Mock())
+        return tested_obj
+
+    dns_operator_healthy = "dns   4.12.0   True   False   False   23d"
+    dns_operator_not_available = "dns   4.12.0   False   False   False   23d"
+    dns_operator_degraded = "dns   4.12.0   True   False   True   23d"
+    dns_operator_progressing = "dns   4.12.0   True   True   False   23d"
+
+    nslookup_success = """Server:         172.30.0.10
+Address:        172.30.0.10#53
+
+Name:   kubernetes.default.svc.cluster.local
+Address: 172.30.0.1
+"""
+
+    nslookup_failure = """Server:         172.30.0.10
+Address:        172.30.0.10#53
+
+** server can't find kubernetes.default.svc.cluster.local: NXDOMAIN
+"""
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "dns operator healthy and resolution works",
+            tested_object_mock_dict={
+                "oc_api": Mock(
+                    run_oc_command=Mock(return_value=(0, dns_operator_healthy, ""))
+                ),
+                "_node_executors": {
+                    "worker-0": Mock(
+                        run_cmd=Mock(return_value=(0, nslookup_success, ""))
+                    )
+                },
+            },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "dns operator not available",
+            tested_object_mock_dict={
+                "oc_api": Mock(
+                    run_oc_command=Mock(return_value=(0, dns_operator_not_available, ""))
+                ),
+                "_node_executors": {
+                    "worker-0": Mock(
+                        run_cmd=Mock(return_value=(0, nslookup_success, ""))
+                    )
+                },
+            },
+            failed_msg="DNS operator health check failed: DNS operator 'dns' is not available (Available=False)",
+        ),
+        RuleScenarioParams(
+            "dns operator degraded",
+            tested_object_mock_dict={
+                "oc_api": Mock(
+                    run_oc_command=Mock(return_value=(0, dns_operator_degraded, ""))
+                ),
+                "_node_executors": {
+                    "worker-0": Mock(
+                        run_cmd=Mock(return_value=(0, nslookup_success, ""))
+                    )
+                },
+            },
+            failed_msg="DNS operator health check failed: DNS operator 'dns' is degraded (Degraded=True)",
+        ),
+        RuleScenarioParams(
+            "dns operator progressing",
+            tested_object_mock_dict={
+                "oc_api": Mock(
+                    run_oc_command=Mock(return_value=(0, dns_operator_progressing, ""))
+                ),
+                "_node_executors": {
+                    "worker-0": Mock(
+                        run_cmd=Mock(return_value=(0, nslookup_success, ""))
+                    )
+                },
+            },
+            failed_msg="DNS operator health check failed: DNS operator 'dns' is in progress (Progressing=True)",
+        ),
+        RuleScenarioParams(
+            "dns operator healthy but resolution fails",
+            tested_object_mock_dict={
+                "oc_api": Mock(
+                    run_oc_command=Mock(return_value=(0, dns_operator_healthy, ""))
+                ),
+                "_node_executors": {
+                    "worker-0": Mock(
+                        run_cmd=Mock(return_value=(1, nslookup_failure, "command failed"))
+                    )
+                },
+            },
+            failed_msg="DNS resolution test failed: DNS resolution failed for 'kubernetes.default.svc.cluster.local' on worker-0: command failed\n(DNS operator 'dns' is healthy)",
+        ),
+        RuleScenarioParams(
+            "dns operator healthy but resolution returns NXDOMAIN",
+            tested_object_mock_dict={
+                "oc_api": Mock(
+                    run_oc_command=Mock(return_value=(0, dns_operator_healthy, ""))
+                ),
+                "_node_executors": {
+                    "worker-0": Mock(
+                        run_cmd=Mock(return_value=(0, nslookup_failure, ""))
+                    )
+                },
+            },
+            failed_msg="DNS resolution test failed: DNS resolution failed: domain 'kubernetes.default.svc.cluster.local' not found\n(DNS operator 'dns' is healthy)",
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
 

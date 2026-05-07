@@ -747,6 +747,121 @@ class VerifyInternalRegistry(OrchestratorRule):
         return RuleResult.passed()
 
 
+class VerifyClusterOperatorsAvailable(OrchestratorRule):
+    """Verify all cluster operators are in Available state.
+
+    Cluster operators are essential components required for the cluster to
+    function properly. This rule checks that every ClusterOperator resource
+    has its Available condition set to True and is not Degraded, ensuring
+    all critical cluster components are operational. It also warns about
+    operators that are Progressing or not Upgradeable.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_cluster_operators_available"
+    title = "Verify all cluster operators are in available state"
+    supported_profiles = {"nokia-qa"}
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-cluster-operators-available",
+    ]
+
+    def run_rule(self):
+        """Check cluster operator conditions: Available, Degraded, Progressing, Upgradeable."""
+        try:
+            _, operators_output, _ = self.oc_api.run_oc_command("get", ["clusteroperators", "-o", "json"], timeout=45)
+        except UnExpectedSystemOutput:
+            return RuleResult.failed("Failed to get cluster operators")
+
+        try:
+            operators_data = json.loads(operators_output)
+        except json.JSONDecodeError as e:
+            raise UnExpectedSystemOutput(
+                ip=self.get_host_ip(),
+                cmd="oc get clusteroperators -o json",
+                output=operators_output,
+                message=f"Failed to parse JSON: {e}",
+            ) from e
+
+        items = operators_data.get("items", [])
+
+        if not items:
+            return RuleResult.failed("No cluster operators found in cluster")
+
+        unavailable_operators = []
+        degraded_operators = []
+        progressing_operators = []
+        not_upgradeable_operators = []
+
+        for operator in items:
+            metadata = operator.get("metadata", {})
+            name = metadata.get("name", "unknown")
+            conditions = self._get_conditions_dict(operator)
+
+            available_condition = conditions.get("Available")
+            degraded_condition = conditions.get("Degraded")
+            progressing_condition = conditions.get("Progressing")
+            upgradeable_condition = conditions.get("Upgradeable")
+
+            if not available_condition or available_condition.get("status") != "True":
+                reason = "NoAvailableCondition"
+                message = "No Available condition found"
+                if available_condition:
+                    reason = available_condition.get("reason", "Unknown")
+                    message = available_condition.get("message", "")
+                unavailable_operators.append(f"{name} - Reason: {reason}, Message: {message}")
+
+            if degraded_condition and degraded_condition.get("status") == "True":
+                reason = degraded_condition.get("reason", "Unknown")
+                message = degraded_condition.get("message", "")
+                degraded_operators.append(f"{name} - Reason: {reason}, Message: {message}")
+
+            if progressing_condition and progressing_condition.get("status") == "True":
+                reason = progressing_condition.get("reason", "Unknown")
+                message = progressing_condition.get("message", "")
+                progressing_operators.append(f"{name} - Reason: {reason}, Message: {message}")
+
+            if upgradeable_condition and upgradeable_condition.get("status") == "False":
+                reason = upgradeable_condition.get("reason", "Unknown")
+                message = upgradeable_condition.get("message", "")
+                not_upgradeable_operators.append(f"{name} - Reason: {reason}, Message: {message}")
+
+        error_messages = []
+        warning_messages = []
+
+        if unavailable_operators:
+            error_messages.append(
+                "Following cluster operators are not available:\n  " + "\n  ".join(unavailable_operators)
+            )
+
+        if degraded_operators:
+            error_messages.append("Following cluster operators are degraded:\n  " + "\n  ".join(degraded_operators))
+
+        if error_messages:
+            return RuleResult.failed("\n\n".join(error_messages))
+
+        if progressing_operators:
+            warning_messages.append(
+                "Following cluster operators are progressing:\n  " + "\n  ".join(progressing_operators)
+            )
+
+        if not_upgradeable_operators:
+            warning_messages.append(
+                "Following cluster operators are not upgradeable:\n  " + "\n  ".join(not_upgradeable_operators)
+            )
+
+        if warning_messages:
+            return RuleResult.warning("\n\n".join(warning_messages))
+
+        return RuleResult.passed()
+
+    @staticmethod
+    def _get_conditions_dict(operator):
+        """Build a dict of condition type to condition object for an operator."""
+        status = operator.get("status", {})
+        conditions = status.get("conditions", [])
+        return {condition.get("type"): condition for condition in conditions}
+
+
 class VerifyWebConsoleDisabled(OrchestratorRule):
     """Verify OpenShift web console is disabled and no pods exist in openshift-console namespace.
 

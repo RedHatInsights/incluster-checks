@@ -503,9 +503,10 @@ class WhereaboutsMissingAllocations(WhereaboutsBaseRule):
         results = []
         for pod in missing_ip_allocation_pod_list:
             for pod_ip in pod["ips"]:
+                # We move the string cleaning outside of the f-string to avoid the backslash error
+                clean_ip = json.dumps(pod_ip).strip('"')
                 results.append(
-                    f"--> Pod {pod['namespace']}/{pod['name']} "
-                    f"has a missing IP allocation for IP {json.dumps(pod_ip).strip('\"')}"
+                    f"--> Pod {pod['namespace']}/{pod['name']} " f"has a missing IP allocation for IP {clean_ip}"
                 )
 
         message = f"Missing whereabouts ippool allocations have been detected:\n{chr(10).join(results)}"

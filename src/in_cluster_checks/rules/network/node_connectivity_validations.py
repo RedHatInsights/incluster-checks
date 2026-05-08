@@ -393,7 +393,7 @@ class VerifyDnsReachability(Rule):
             Tuple of (is_healthy, message)
         """
         try:
-            _, operator_output, _ = self.oc_api.run_oc_command(
+            _, operator_output, _ = self.host_executor.oc_api.run_oc_command(
                 "get", ["clusteroperator", self.DNS_OPERATOR, "--no-headers"], timeout=30
             )
         except UnExpectedSystemOutput as e:

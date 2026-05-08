@@ -8,6 +8,7 @@ Ported from: support/HealthChecks/flows/Network/network_validations.py
 import os
 import re
 
+from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.operations import DataCollector
 from in_cluster_checks.core.rule import OrchestratorRule, PrerequisiteResult, Rule, RuleResult
 from in_cluster_checks.rules.network.ovs_base import OvsOperatorBase
@@ -332,3 +333,129 @@ class BondDnsServersComparison(OrchestratorRule):
         return RuleResult.passed(
             f"DNS configuration consistent across all nodes for {len(all_bond_names)} bond interfaces"
         )
+
+
+class VerifyDnsReachability(Rule):
+    """
+    Verify DNS reachability in the cluster.
+
+    This rule checks if DNS servers are reachable by:
+    1. Checking if the cluster DNS operator is healthy
+    2. Finding DNS server IPs from /etc/resolv.conf
+    3. Pinging each DNS server to verify reachability
+
+    Note: This checks DNS server reachability, NOT domain name resolution.
+    """
+
+    objective_hosts = [Objectives.ALL_NODES]
+    unique_name = "verify_dns_reachability"
+    title = "Verify DNS reachability"
+    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/Network-‐-Verify-DNS-reachability"]
+
+    DNS_OPERATOR = "dns"
+    RESOLV_CONF_PATH = "/etc/resolv.conf"
+
+    def run_rule(self) -> RuleResult:
+        """
+        Verify DNS reachability.
+
+        Returns:
+            RuleResult indicating DNS health and reachability status
+        """
+        # Step 1: Check DNS operator health
+        is_healthy, operator_msg = self._check_dns_operator_health()
+        if not is_healthy:
+            return RuleResult.failed(f"DNS operator health check failed: {operator_msg}")
+
+        # Step 2: Find DNS servers from /etc/resolv.conf
+        dns_servers = self._get_dns_servers_from_resolv_conf()
+        if not dns_servers:
+            return RuleResult.failed("No DNS servers found in /etc/resolv.conf")
+
+        # Step 3: Ping each DNS server
+        unreachable_servers = []
+        for dns_server in dns_servers:
+            if not self._ping_dns_server(dns_server):
+                unreachable_servers.append(dns_server)
+
+        if unreachable_servers:
+            return RuleResult.failed(
+                f"DNS servers unreachable: {', '.join(unreachable_servers)}\n({operator_msg})"
+            )
+
+        return RuleResult.passed(
+            f"All DNS servers are reachable ({len(dns_servers)} servers checked): {', '.join(dns_servers)}"
+        )
+
+    def _check_dns_operator_health(self) -> tuple[bool, str]:
+        """
+        Check if the DNS operator is healthy.
+
+        Returns:
+            Tuple of (is_healthy, message)
+        """
+        try:
+            _, operator_output, _ = self.oc_api.run_oc_command(
+                "get", ["clusteroperator", self.DNS_OPERATOR, "--no-headers"], timeout=30
+            )
+        except UnExpectedSystemOutput as e:
+            return False, f"Failed to get DNS operator status: {e}"
+
+        if not operator_output or not operator_output.strip():
+            return False, f"DNS operator '{self.DNS_OPERATOR}' not found"
+
+        operator_values = operator_output.strip().split()
+
+        if len(operator_values) < 5:
+            return False, f"Unexpected DNS operator output format: {operator_output}"
+
+        name = operator_values[0]
+        available = operator_values[2]
+        progressing = operator_values[3]
+        degraded = operator_values[4]
+
+        issues = []
+        if available != "True":
+            issues.append(f"not available (Available={available})")
+        if progressing == "True":
+            issues.append(f"in progress (Progressing={progressing})")
+        if degraded == "True":
+            issues.append(f"degraded (Degraded={degraded})")
+
+        if issues:
+            return False, f"DNS operator '{name}' is {', '.join(issues)}"
+
+        return True, f"DNS operator '{name}' is healthy"
+
+    def _get_dns_servers_from_resolv_conf(self) -> list[str]:
+        """
+        Extract DNS server IPs from /etc/resolv.conf.
+
+        Returns:
+            List of DNS server IP addresses
+        """
+        cmd = SafeCmdString("cat {resolv_conf} | grep '^nameserver'").format(resolv_conf=self.RESOLV_CONF_PATH)
+        output = self.get_output_from_run_cmd(cmd)
+
+        dns_servers = []
+        for line in output.splitlines():
+            # Each line format: "nameserver <IP>"
+            parts = line.strip().split()
+            if len(parts) == 2 and parts[0] == "nameserver":
+                dns_servers.append(parts[1])
+
+        return dns_servers
+
+    def _ping_dns_server(self, dns_server: str) -> bool:
+        """
+        Ping a DNS server to check if it's reachable.
+
+        Args:
+            dns_server: DNS server IP address
+
+        Returns:
+            True if DNS server is reachable, False otherwise
+        """
+        cmd = SafeCmdString("ping -c 1 -W 2 {dns_server}").format(dns_server=dns_server)
+        rc, _, _ = self.run_cmd(cmd)
+        return rc == 0

@@ -17,7 +17,8 @@ from in_cluster_checks.rules.network.node_connectivity_validations import (
     AreAllNodesConnected,
     VerifyBondedInterfacesUp,
     BondDnsCollector,
-    BondDnsServersComparison
+    BondDnsServersComparison,
+    VerifyDnsReachability
 )
 from tests.pytest_tools.test_operator_base import CmdOutput
 from tests.pytest_tools.test_rule_base import RuleScenarioParams, RuleTestBase
@@ -441,4 +442,123 @@ ipv6.method:                            manual
     @pytest.mark.parametrize("scenario_params", scenarios)
     def test_collect_data(self, scenario_params, tested_object):
         DataCollectorTestBase.test_collect_data(self, scenario_params, tested_object)
+
+
+class TestVerifyDnsReachability(RuleTestBase):
+    """Tests for VerifyDnsReachability rule."""
+
+    tested_type = VerifyDnsReachability
+
+    # DNS operator outputs
+    dns_operator_healthy = "dns   4.16.0   True   False   False   30d"
+    dns_operator_not_available = "dns   4.16.0   False   False   False   30d"
+    dns_operator_degraded = "dns   4.16.0   True   False   True   30d"
+
+    # /etc/resolv.conf outputs
+    resolv_conf_with_servers = """nameserver 192.168.1.1
+nameserver 192.168.1.2
+search cluster.local"""
+
+    resolv_conf_empty = """search cluster.local"""
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "dns operator healthy and all dns servers reachable",
+            tested_object_mock_dict={
+                "oc_api": Mock(
+                    run_oc_command=Mock(return_value=(0, dns_operator_healthy, ""))
+                ),
+            },
+            cmd_input_output_dict={
+                "cat /etc/resolv.conf | grep '^nameserver'": CmdOutput(
+                    "nameserver 192.168.1.1\nnameserver 192.168.1.2"
+                ),
+                "ping -c 1 -W 2 192.168.1.1": CmdOutput("", return_code=0),
+                "ping -c 1 -W 2 192.168.1.2": CmdOutput("", return_code=0),
+            },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "dns operator not available",
+            tested_object_mock_dict={
+                "oc_api": Mock(
+                    run_oc_command=Mock(return_value=(0, dns_operator_not_available, ""))
+                ),
+            },
+            cmd_input_output_dict={
+                "cat /etc/resolv.conf | grep '^nameserver'": CmdOutput(
+                    "nameserver 192.168.1.1"
+                ),
+            },
+            failed_msg="DNS operator health check failed: DNS operator 'dns' is not available (Available=False)",
+        ),
+        RuleScenarioParams(
+            "dns operator degraded",
+            tested_object_mock_dict={
+                "oc_api": Mock(
+                    run_oc_command=Mock(return_value=(0, dns_operator_degraded, ""))
+                ),
+            },
+            cmd_input_output_dict={
+                "cat /etc/resolv.conf | grep '^nameserver'": CmdOutput(
+                    "nameserver 192.168.1.1"
+                ),
+            },
+            failed_msg="DNS operator health check failed: DNS operator 'dns' is degraded (Degraded=True)",
+        ),
+        RuleScenarioParams(
+            "no dns servers found in resolv.conf",
+            tested_object_mock_dict={
+                "oc_api": Mock(
+                    run_oc_command=Mock(return_value=(0, dns_operator_healthy, ""))
+                ),
+            },
+            cmd_input_output_dict={
+                "cat /etc/resolv.conf | grep '^nameserver'": CmdOutput(""),
+            },
+            failed_msg="No DNS servers found in /etc/resolv.conf",
+        ),
+        RuleScenarioParams(
+            "some dns servers unreachable",
+            tested_object_mock_dict={
+                "oc_api": Mock(
+                    run_oc_command=Mock(return_value=(0, dns_operator_healthy, ""))
+                ),
+            },
+            cmd_input_output_dict={
+                "cat /etc/resolv.conf | grep '^nameserver'": CmdOutput(
+                    "nameserver 192.168.1.1\nnameserver 192.168.1.2"
+                ),
+                "ping -c 1 -W 2 192.168.1.1": CmdOutput("", return_code=0),
+                "ping -c 1 -W 2 192.168.1.2": CmdOutput("", return_code=1),
+            },
+            failed_msg="DNS servers unreachable: 192.168.1.2\n(DNS operator 'dns' is healthy)",
+        ),
+        RuleScenarioParams(
+            "all dns servers unreachable",
+            tested_object_mock_dict={
+                "oc_api": Mock(
+                    run_oc_command=Mock(return_value=(0, dns_operator_healthy, ""))
+                ),
+            },
+            cmd_input_output_dict={
+                "cat /etc/resolv.conf | grep '^nameserver'": CmdOutput(
+                    "nameserver 192.168.1.1\nnameserver 192.168.1.2"
+                ),
+                "ping -c 1 -W 2 192.168.1.1": CmdOutput("", return_code=1),
+                "ping -c 1 -W 2 192.168.1.2": CmdOutput("", return_code=1),
+            },
+            failed_msg="DNS servers unreachable: 192.168.1.1, 192.168.1.2\n(DNS operator 'dns' is healthy)",
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
 

@@ -12,6 +12,7 @@ from in_cluster_checks.rules.network.node_connectivity_validations import (
     AreAllNodesConnected,
     BondDnsServersComparison,
     VerifyBondedInterfacesUp,
+    VerifyDnsReachability,
 )
 from in_cluster_checks.rules.network.ovnk8s_validations import (
     LogicalSwitchNodeValidator,
@@ -62,6 +63,7 @@ class NetworkValidationDomain(RuleDomain):
             BondDnsServersComparison,
             AreAllNodesConnected,
             VerifyBondedInterfacesUp,
+            VerifyDnsReachability,
             NodesHaveOvnkubeNodePod,
             LogicalSwitchNodeValidator,
             MTUOverlayInterfaces,

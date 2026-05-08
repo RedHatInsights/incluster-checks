@@ -379,9 +379,7 @@ class VerifyDnsReachability(Rule):
                 unreachable_servers.append(dns_server)
 
         if unreachable_servers:
-            return RuleResult.failed(
-                f"DNS servers unreachable: {', '.join(unreachable_servers)}\n({operator_msg})"
-            )
+            return RuleResult.failed(f"DNS servers unreachable: {', '.join(unreachable_servers)}\n({operator_msg})")
 
         return RuleResult.passed(
             f"All DNS servers are reachable ({len(dns_servers)} servers checked): {', '.join(dns_servers)}"

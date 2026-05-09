@@ -145,7 +145,7 @@ class TestVerifyDnsReachability(RuleTestBase):
                 ),
                 "get_data_collector_exceptions": Mock(return_value={}),
             },
-            failed_msg="Unreachable from one or more nodes (1):",
+            failed_msg="DNS servers from cluster upstream resolvers:",
         ),
         RuleScenarioParams(
             scenario_title="no_dns_servers_found",
@@ -154,7 +154,7 @@ class TestVerifyDnsReachability(RuleTestBase):
                 "run_data_collector": Mock(return_value={}),
                 "get_data_collector_exceptions": Mock(return_value={}),
             },
-            failed_msg="No DNS servers found.",
+            failed_msg="No DNS servers found. Neither upstream DNS resolvers configured nor nameservers in /etc/resolv.conf.",
         ),
         RuleScenarioParams(
             scenario_title="data_collection_failed",
@@ -163,7 +163,7 @@ class TestVerifyDnsReachability(RuleTestBase):
                 "run_data_collector": Mock(return_value={}),
                 "get_data_collector_exceptions": Mock(return_value={"node-1": Exception("Connection failed")}),
             },
-            failed_msg="Failed to test DNS reachability from 1 node(s): node-1.",
+            failed_msg="Failed to test DNS reachability from 1 node(s): node-1. Cannot verify DNS reachability with incomplete data.",
         ),
     ]
 

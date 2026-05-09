@@ -145,7 +145,7 @@ class TestVerifyDnsReachability(RuleTestBase):
                 ),
                 "get_data_collector_exceptions": Mock(return_value={}),
             },
-            failed_msg="DNS servers from cluster upstream resolvers:",
+            failed_msg="Unreachable from one or more nodes",
         ),
         RuleScenarioParams(
             scenario_title="no_dns_servers_found",

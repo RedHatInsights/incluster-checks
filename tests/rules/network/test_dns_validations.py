@@ -27,69 +27,44 @@ nameserver 192.168.1.1
 nameserver 8.8.8.8
 """
 
-    scenario_data_collected = [
+    scenarios = [
         DataCollectorScenarioParams(
-            scenario_title="upstream_dns_servers_all_reachable",
-            tested_object_mock_dict={},
-            cmd_to_output={
-                "ping -c 3 -W 2 192.168.1.1": CmdOutput(""),
-                "ping -c 3 -W 2 8.8.8.8": CmdOutput(""),
-            },
-            collect_data_kwargs={"upstream_dns_servers": ["192.168.1.1", "8.8.8.8"]},
-            expected_data={
-                "source": "cluster upstream resolvers",
-                "reachable": ["192.168.1.1", "8.8.8.8"],
-                "unreachable": [],
-            },
-        ),
-        DataCollectorScenarioParams(
-            scenario_title="upstream_dns_servers_some_unreachable",
-            tested_object_mock_dict={},
-            cmd_to_output={
-                "ping -c 3 -W 2 192.168.1.1": CmdOutput(""),
-                "ping -c 3 -W 2 8.8.8.8": CmdOutput("", return_code=1),
-            },
-            collect_data_kwargs={"upstream_dns_servers": ["192.168.1.1", "8.8.8.8"]},
-            expected_data={
-                "source": "cluster upstream resolvers",
-                "reachable": ["192.168.1.1"],
-                "unreachable": ["8.8.8.8"],
-            },
-        ),
-        DataCollectorScenarioParams(
-            scenario_title="resolv_conf_dns_servers_reachable",
-            tested_object_mock_dict={
-                "file_utils.is_file_exist": Mock(return_value=True),
-            },
-            cmd_to_output={
+            "resolv_conf_dns_servers_reachable",
+            {
                 "cat /etc/resolv.conf": CmdOutput(resolv_conf_standard),
                 "ping -c 3 -W 2 192.168.1.1": CmdOutput(""),
                 "ping -c 3 -W 2 8.8.8.8": CmdOutput(""),
             },
-            expected_data={
+            scenario_res={
                 "source": "/etc/resolv.conf",
                 "reachable": ["192.168.1.1", "8.8.8.8"],
                 "unreachable": [],
             },
-        ),
-    ]
-
-    scenario_data_not_collected = [
-        DataCollectorScenarioParams(
-            scenario_title="resolv_conf_not_exist",
             tested_object_mock_dict={
-                "file_utils.is_file_exist": Mock(return_value=False),
+                "file_utils.is_file_exist": Mock(return_value=True),
+            },
+        ),
+        DataCollectorScenarioParams(
+            "resolv_conf_dns_servers_some_unreachable",
+            {
+                "cat /etc/resolv.conf": CmdOutput(resolv_conf_standard),
+                "ping -c 3 -W 2 192.168.1.1": CmdOutput(""),
+                "ping -c 3 -W 2 8.8.8.8": CmdOutput("", return_code=1),
+            },
+            scenario_res={
+                "source": "/etc/resolv.conf",
+                "reachable": ["192.168.1.1"],
+                "unreachable": ["8.8.8.8"],
+            },
+            tested_object_mock_dict={
+                "file_utils.is_file_exist": Mock(return_value=True),
             },
         ),
     ]
 
-    @pytest.mark.parametrize("scenario_params", scenario_data_collected)
-    def test_scenario_data_collected(self, scenario_params, tested_object):
-        DataCollectorTestBase.test_scenario_data_collected(self, scenario_params, tested_object)
-
-    @pytest.mark.parametrize("scenario_params", scenario_data_not_collected)
-    def test_scenario_data_not_collected(self, scenario_params, tested_object):
-        DataCollectorTestBase.test_scenario_data_not_collected(self, scenario_params, tested_object)
+    @pytest.mark.parametrize("scenario_params", scenarios)
+    def test_collect_data(self, scenario_params, tested_object):
+        DataCollectorTestBase.test_collect_data(self, scenario_params, tested_object)
 
 
 class TestVerifyDnsReachability(RuleTestBase):

@@ -260,7 +260,7 @@ class VerifyDnsReachability(OrchestratorRule):
 
             # Add per-node details
             if per_node_details:
-                message += f"\n  Per-node details:\n"
+                message += "\n  Per-node details:\n"
                 for detail in per_node_details:
                     message += f"    {detail}\n"
 

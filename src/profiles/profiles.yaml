@@ -16,5 +16,6 @@ profiles:
     include: [telco-base]
 
   # --- Layer 4: Specific Implementations ---
-
+  nokia-qa:
+    include: [rh-nokia]
 

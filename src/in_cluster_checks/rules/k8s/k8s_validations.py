@@ -632,7 +632,7 @@ class ValidateAllPoliciesCompliant(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "validate_all_policies_compliant"
     title = "Verify all policies are in compliant state"
-    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-Verify-policies-compliance"]
+    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-policies-compliance"]
 
     def run_rule(self):
         """Check if all OCM policies are in Compliant state"""

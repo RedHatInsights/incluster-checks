@@ -397,6 +397,7 @@ class AllDeploymentsAvailable(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "all_deployments_available"
     title = "Verify all deployments are available"
+    supported_profiles = {"nokia-qa"}
     links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-deployments-availability"]
 
     def run_rule(self):
@@ -449,6 +450,7 @@ class CheckDeploymentsReplicaStatus(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "check_deployments_replica_status"
     title = "Verify deployment replica counts"
+    supported_profiles = {"nokia-qa"}
     links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Check-deployment-replicas-status"]
 
     def run_rule(self):
@@ -507,6 +509,7 @@ class AllStatefulsetsReady(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "all_statefulsets_ready"
     title = "Verify all statefulsets are ready"
+    supported_profiles = {"nokia-qa"}
     links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-statefulsets-readiness"]
 
     def run_rule(self):
@@ -632,6 +635,7 @@ class ValidateAllPoliciesCompliant(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "validate_all_policies_compliant"
     title = "Verify all policies are in compliant state"
+    supported_profiles = {"nokia-qa"}
     links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-policies-compliance"]
 
     def run_rule(self):
@@ -685,6 +689,7 @@ class VerifyInternalRegistry(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "verify_internal_registry"
     title = "Verify internal image registry is configured and available"
+    supported_profiles = {"nokia-qa"}
     links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-internal-image-registry"]
 
     def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
@@ -758,6 +763,7 @@ class VerifyWebConsoleDisabled(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "verify_web_console_disabled"
     title = "Verify web console is disabled (edge/SNO clusters)"
+    supported_profiles = {"nokia-qa"}
     links = [
         "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-web-console-disabled",
         "https://docs.openshift.com/container-platform/latest/web_console/disabling-web-console.html",
@@ -827,6 +833,7 @@ class VerifyNetworkDiagnosticsDisabled(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "verify_network_diagnostics_disabled"
     title = "Verify no pods in network diagnostics namespace (edge/SNO clusters)"
+    supported_profiles = {"nokia-qa"}
     links = [
         "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-network-diagnostics-disabled",
         "https://docs.redhat.com/en/documentation/openshift_container_platform"

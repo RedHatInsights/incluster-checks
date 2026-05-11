@@ -53,7 +53,7 @@ Reference: @.claude/skills/implement-jira.md (Step 2)
    - Example: `PDRIVE-553_check_disk_usage`
    
    ```bash
-   git checkout -b PDRIVE-XXX-short-description
+   git checkout -b PDRIVE-XXX_short-description
    git branch --show-current
    ```
 
@@ -320,7 +320,7 @@ Use `mcp__plugin_atlassian_atlassian__addCommentToJiraIssue` with `contentFormat
 Before marking complete, verify:
 
 - [ ] Ticket type validated as "Story"
-- [ ] Branch created with format: `TICKET-NUMBER-description`
+- [ ] Branch created with format: `TICKET-NUMBER_description`
 - [ ] Rule class created with all required fields
 - [ ] All commands use `SafeCmdString`
 - [ ] No `self.logger` usage in rule

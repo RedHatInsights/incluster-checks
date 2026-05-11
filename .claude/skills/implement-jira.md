@@ -32,18 +32,18 @@ If needed, use GitHub MCP to:
 - Review related branches or commits
 
 ### 2c. Create descriptive branch
-Create a branch with a short descriptive name followed by the ticket number. Do NOT use directory-style prefixes like `feat/` or `fix/`.
+Create a branch with a short descriptive name followed by the ticket number.
 
-**Format**: `<TICKET-NUMBER>-<short-description>`
+**Format**: `<TICKET-NUMBER>_<short-description>`
 
 **Examples**:
-- `PDRIVE-553-wiki-page-cmd`
-- `PDRIVE-505-network-check`
-- `PDRIVE-412-fix-timeout`
+- `PDRIVE-553_wiki_page_cmd`
+- `PDRIVE-505_network_check`
+- `PDRIVE-412_fix_timeout`
 
 ```bash
 # Create branch with ticket number first, then short description
-git checkout -b <TICKET-NUMBER>-<short-description>
+git checkout -b <TICKET-NUMBER>_<short-description>
 
 # Verify the branch was created correctly
 git branch --show-current
@@ -144,7 +144,7 @@ Expected workflow:
 1. Checkout main → fetch upstream → rebase upstream/main
 2. Fetch ticket details from Jira (needed for branch name)
 3. Check GitHub MCP for existing PRs/branches (if needed)
-4. Create descriptive branch: `PDRIVE-505-network-check` (ticket number + short description, no prefix)
+4. Create descriptive branch: `PDRIVE-505_network_check` (ticket number + short description)
 5. Show ticket summary
 6. Plan implementation
 7. Implement changes

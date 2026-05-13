@@ -948,11 +948,11 @@ class VerifyNfdOperatorHealth(OrchestratorRule):
 
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "verify_nfd_operator_health"
-    title = "Verify NFD operator pods are healthy"  
+    title = "Verify NFD operator pods are healthy"
     supported_profiles = {"nokia-qa"}
     links = [
         "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-NFD-operator-health",
-        "https://docs.openshift.com/container-platform/latest/hardware_enablement"
+        "https://docs.openshift.com/container-platform/4.18/hardware_enablement"
         "/psap-node-feature-discovery-operator.html",
     ]
 

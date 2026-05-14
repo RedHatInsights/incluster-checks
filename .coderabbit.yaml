@@ -52,6 +52,6 @@ knowledge_base:
     scope: auto
   code_guidelines:
     enabled: true
-    file_patterns:
+    filePatterns:
       - "**/CLAUDE.md"
       - ".claude/rules/*.md"

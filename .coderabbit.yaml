@@ -13,10 +13,14 @@ reviews:
     Prioritize these review concerns:
     - Code should be clean, readable, and simple. Flag any unnecessary code, dead code, or code
       that can be removed without affecting functionality.
-    - No duplicated logic. If the same or very similar code exists in multiple places, flag it.
+    - If a function is too long, it should be broken into smaller, focused functions.
+    - Error messages must be clear and informative so the end user can understand what went wrong.
+    - No duplicated logic. Check if similar code already exists elsewhere in the project before
+      adding new code. If the same or very similar logic exists, flag it and suggest reusing
+      the existing implementation.
     - Logic correctness: verify set operations, conditional branches, and aggregation logic
       handle all cases including edge cases and partial states.
-    - Verify that wiki links in rule files actually point to valid URLs.
+    - Verify that all links (wiki pages, documentation, external references) are valid and accessible.
 
   path_instructions:
     - path: "src/in_cluster_checks/rules/**/*.py"

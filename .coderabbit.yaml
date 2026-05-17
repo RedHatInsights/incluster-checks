@@ -1,0 +1,61 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: en
+
+reviews:
+  auto_review:
+    enabled: true
+    drafts: false
+  request_changes_workflow: true
+
+  instructions: |
+    This is a Python framework for running health check rules on OpenShift clusters.
+    Prioritize these review concerns:
+    - Code should be clean, readable, and simple. Flag any unnecessary code, dead code, or code
+      that can be removed without affecting functionality.
+    - If a function is too long, it should be broken into smaller, focused functions.
+    - Error messages must be clear and informative so the end user can understand what went wrong.
+    - No duplicated logic. Check if similar code already exists elsewhere in the project before
+      adding new code. If the same or very similar logic exists, flag it and suggest reusing
+      the existing implementation.
+    - Logic correctness: verify set operations, conditional branches, and aggregation logic
+      handle all cases including edge cases and partial states.
+    - Verify that all links (wiki pages, documentation, external references) are valid and accessible.
+
+  path_instructions:
+    - path: "src/in_cluster_checks/rules/**/*.py"
+      instructions: |
+        When reviewing rule implementations:
+        - Every rule that depends on a binary, package, or system condition MUST implement
+          is_prerequisite_fulfilled() returning PrerequisiteResult.not_met("reason") when missing.
+        - If a rule is profile-specific, it must declare supported_profiles = {"profile-name"}.
+        - When aggregating results across nodes, verify the set math handles partial state correctly.
+          For example, `unreachable - reachable` silently masks the case where a resource is
+          healthy on some nodes but not others. Flag any set subtraction that could hide partial failures.
+        - When checking resource health conditions (e.g., cluster operators), verify all relevant
+          conditions are covered, not just the primary one.
+        - Rules must NOT use self.logger. Return messages via RuleResult.failed() or RuleResult.warning().
+        - Data should be defined and sourced at the right level. If data is available in run_rule(),
+          pass it as a parameter rather than embedding it in lower-level methods.
+        - Flag redundant if-statements inside blocks that already guarantee the condition.
+        - Verify the rule actually validates functionality, not just connectivity or presence.
+          For example, DNS checks should verify resolution works (nslookup/dig), not just reachability.
+
+    - path: "tests/**/*.py"
+      instructions: |
+        When reviewing tests:
+        - DataCollectorScenarioParams uses the correct field names: cmd_input_output_dict (NOT cmd_to_output),
+          scenario_res (NOT expected_data). collect_data_kwargs is NOT a valid field.
+        - Prefer comprehensive test coverage. Check that tests cover all meaningful scenarios including
+          edge cases, partial state, empty output, and missing resources.
+        - When a new rule is added, the corresponding domain test must have an updated rule count.
+
+knowledge_base:
+  opt_out: false
+  learnings:
+    scope: auto
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "**/CLAUDE.md"
+      - ".claude/rules/*.md"

@@ -937,6 +937,82 @@ class VerifyWebConsoleDisabled(OrchestratorRule):
         return RuleResult.passed()
 
 
+class VerifyNfdOperatorHealth(OrchestratorRule):
+    """Verify Node Feature Discovery (NFD) operator pods are healthy.
+
+    NFD sets the stage for cluster functionality by labelling nodes with
+    hardware capabilities.  This rule checks that the NFD operator has been
+    installed (Subscription exists) and that every pod in the openshift-nfd
+    namespace is Running with all containers ready.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_nfd_operator_health"
+    title = "Verify NFD operator pods are healthy"
+    supported_profiles = {"nokia-qa"}
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-NFD-operator-health",
+        "https://docs.openshift.com/container-platform/4.18/hardware_enablement"
+        "/psap-node-feature-discovery-operator.html",
+    ]
+
+    NFD_NAMESPACE = "openshift-nfd"
+
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        """Check that the NFD operator has been installed via a Subscription.
+
+        Queries the cluster for a Subscription resource with the
+        ``nfd`` package name.  If none is found the rule is not applicable.
+        """
+        try:
+            _, subscriptions_output, _ = self.oc_api.run_oc_command(
+                "get",
+                ["subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json"],
+                timeout=45,
+            )
+        except UnExpectedSystemOutput:
+            return PrerequisiteResult.not_met("Failed to get operator subscriptions from cluster")
+
+        try:
+            subscriptions_data = json.loads(subscriptions_output)
+        except json.JSONDecodeError as e:
+            return PrerequisiteResult.not_met(f"Failed to parse operator subscriptions: {e}")
+
+        for sub in subscriptions_data.get("items", []):
+            spec = sub.get("spec", {})
+            if spec.get("name") == "nfd":
+                return PrerequisiteResult.met()
+
+        return PrerequisiteResult.not_met(
+            "NFD operator subscription not found - " "Node Feature Discovery operator is not installed on this cluster"
+        )
+
+    def run_rule(self):
+        """Verify all pods in the openshift-nfd namespace are Running and Ready."""
+        pod_objects = self.oc_api.get_all_pods(namespace=self.NFD_NAMESPACE)
+
+        if not pod_objects:
+            return RuleResult.failed(
+                f"No pods found in {self.NFD_NAMESPACE} namespace. " "NFD operator may not be fully deployed."
+            )
+
+        not_ready_pods = []
+
+        for pod in pod_objects:
+            pod_status = self.oc_api.get_pod_status(pod)
+            if pod_status is None:
+                continue
+            if not pod_status["all_containers_ready"]:
+                not_ready_pods.append(pod_status["status_message"])
+
+        if not_ready_pods:
+            message = f"NFD operator has unhealthy pods in {self.NFD_NAMESPACE} namespace:\n  "
+            message += "\n  ".join(not_ready_pods)
+            return RuleResult.failed(message)
+
+        return RuleResult.passed()
+
+
 class VerifyNetworkDiagnosticsDisabled(OrchestratorRule):
     """Verify no pods exist in openshift-network-diagnostics namespace when diagnostics are disabled.
 

@@ -23,6 +23,7 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     VerifyClusterOperatorsAvailable,
     VerifyInternalRegistry,
     VerifyNetworkDiagnosticsDisabled,
+    VerifyNfdOperatorHealth,
     VerifyWebConsoleDisabled,
 )
 from in_cluster_checks.utils.enums import Status
@@ -1727,4 +1728,148 @@ class TestVerifyNetworkDiagnosticsDisabled(RuleTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):
         """Test failed scenarios."""
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+
+def create_mock_nfd_pod(name, phase, all_containers_ready=True):
+    """Create a mock NFD pod object."""
+    mock_pod = Mock()
+    container_statuses = [
+        {"ready": all_containers_ready},
+    ]
+    mock_pod.as_dict.return_value = {
+        "metadata": {"namespace": "openshift-nfd", "name": name},
+        "status": {
+            "phase": phase,
+            "containerStatuses": container_statuses,
+        },
+    }
+    return mock_pod
+
+
+def _nfd_subscriptions(include_nfd=True):
+    """Build a subscriptions response, optionally including the nfd subscription."""
+    items = []
+    if include_nfd:
+        items.append(
+            {
+                "metadata": {"name": "nfd-sub", "namespace": "openshift-nfd"},
+                "spec": {"name": "nfd", "source": "redhat-operators"},
+            }
+        )
+    items.append(
+        {
+            "metadata": {"name": "other-operator", "namespace": "openshift-operators"},
+            "spec": {"name": "other", "source": "redhat-operators"},
+        }
+    )
+    return {"items": items}
+
+
+class TestVerifyNfdOperatorHealth(RuleTestBase):
+    """Test VerifyNfdOperatorHealth rule."""
+
+    tested_type = VerifyNfdOperatorHealth
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "NFD operator installed and all pods are healthy",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_nfd_pod("nfd-controller-manager-abc123", "Running", True),
+                        create_mock_nfd_pod("nfd-worker-xyz789", "Running", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nfd_subscriptions(include_nfd=True))
+                ),
+            },
+        ),
+    ]
+
+    scenario_prerequisite_not_fulfilled = [
+        RuleScenarioParams(
+            "NFD operator subscription not found",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nfd_subscriptions(include_nfd=False))
+                ),
+            },
+        ),
+        RuleScenarioParams(
+            "no subscriptions exist in cluster",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps({"items": []})
+                ),
+            },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "NFD operator installed but no pods found",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(return_value=[]),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nfd_subscriptions(include_nfd=True))
+                ),
+            },
+            failed_msg="No pods found in openshift-nfd namespace. " "NFD operator may not be fully deployed.",
+        ),
+        RuleScenarioParams(
+            "NFD operator installed but some pods are not running",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_nfd_pod("nfd-controller-manager-abc123", "Running", True),
+                        create_mock_nfd_pod("nfd-worker-xyz789", "Pending", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nfd_subscriptions(include_nfd=True))
+                ),
+            },
+            failed_msg="NFD operator has unhealthy pods in openshift-nfd namespace:\n"
+            "  nfd-worker-xyz789 - Phase: Pending",
+        ),
+        RuleScenarioParams(
+            "NFD operator installed but containers not ready",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_nfd_pod("nfd-controller-manager-abc123", "Running", False),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nfd_subscriptions(include_nfd=True))
+                ),
+            },
+            failed_msg="NFD operator has unhealthy pods in openshift-nfd namespace:\n"
+            "  nfd-controller-manager-abc123 - Running, Not all containers ready",
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
+    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        """Test that prerequisite is not met when NFD operator is not installed."""
+        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        """Test that rule passes when all NFD pods are healthy."""
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        """Test that rule fails when NFD pods are unhealthy or missing."""
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)

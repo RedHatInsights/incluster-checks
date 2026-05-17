@@ -79,10 +79,11 @@ class OcApiUtils:
 
         Returns:
             - If single=True: Single resource object or None if not found
-            - If single=False: List of resource objects (empty list if none found or error)
+            - If single=False: List of resource objects (empty list if none found)
 
         Raises:
             ValueError: If both namespace and all_namespaces are specified
+            OpenShiftPythonException: If command fails (e.g., invalid resource type, timeout)
         """
         # Validate mutually exclusive parameters
         if namespace and all_namespaces:
@@ -104,48 +105,35 @@ class OcApiUtils:
         if global_config.debug_rule_flag:
             print(f"\n[DEBUG] Executing: {cmd_str}", flush=True)
 
-        try:
-            with oc.timeout(timeout):
-                # Build selector kwargs
-                selector_kwargs = {}
-                if labels:
-                    selector_kwargs["labels"] = labels
-                if all_namespaces:
-                    selector_kwargs["all_namespaces"] = True
+        with oc.timeout(timeout):
+            # Build selector kwargs
+            selector_kwargs = {}
+            if labels:
+                selector_kwargs["labels"] = labels
+            if all_namespaces:
+                selector_kwargs["all_namespaces"] = True
 
-                # Create selector with appropriate context
-                if namespace:
-                    with oc.project(namespace):
-                        selector = oc.selector(resource_type, **selector_kwargs)
-                        result = selector.object() if single else selector.objects()
-                else:
+            # Create selector with appropriate context
+            if namespace:
+                with oc.project(namespace):
                     selector = oc.selector(resource_type, **selector_kwargs)
-                    result = selector.object() if single else selector.objects()
+                    result = selector.object(ignore_not_found=True) if single else selector.objects()
+            else:
+                selector = oc.selector(resource_type, **selector_kwargs)
+                result = selector.object(ignore_not_found=True) if single else selector.objects()
 
-                # In debug mode, print results after execution
-                if global_config.debug_rule_flag:
-                    if single:
-                        print(f"[DEBUG] Result: {result.name() if result else 'None'}", flush=True)
-                    else:
-                        print(f"[DEBUG] Found {len(result)} resources", flush=True)
-                        if result:
-                            for obj in result:
-                                print(f"[DEBUG]   - {obj.name()}", flush=True)
-                    print("=" * 60, flush=True)
-
-                return result
-
-        except Exception as e:
-            # In debug mode, print exception with command context
+            # In debug mode, print results after execution
             if global_config.debug_rule_flag:
-                print(f"[DEBUG] Command '{cmd_str}' failed with exception: {e}", flush=True)
+                if single:
+                    print(f"[DEBUG] Result: {result.name() if result else 'None'}", flush=True)
+                else:
+                    print(f"[DEBUG] Found {len(result)} resources", flush=True)
+                    if result:
+                        for obj in result:
+                            print(f"[DEBUG]   - {obj.name()}", flush=True)
                 print("=" * 60, flush=True)
 
-            # Log error with command context
-            self.logger.error(f"Failed to execute command '{cmd_str}': {e}")
-
-            # Return appropriate empty value
-            return None if single else []
+            return result
 
     def get_pods(self, namespace: str = None, labels: dict = None, timeout: int = 30) -> list:
         """Get pods from namespace with optional label filtering.

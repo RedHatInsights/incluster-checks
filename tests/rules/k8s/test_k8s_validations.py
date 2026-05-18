@@ -1820,7 +1820,7 @@ class TestVerifyNfdOperatorHealth(RuleTestBase):
                     json.dumps(_nfd_subscriptions(include_nfd=True))
                 ),
             },
-            failed_msg="No pods found in openshift-nfd namespace. " "NFD operator may not be fully deployed.",
+            failed_msg="No pods found in openshift-nfd namespace. NFD operator may not be fully deployed.",
         ),
         RuleScenarioParams(
             "NFD operator installed but some pods are not running",

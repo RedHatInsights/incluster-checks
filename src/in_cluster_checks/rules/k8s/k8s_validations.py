@@ -984,7 +984,7 @@ class VerifyNfdOperatorHealth(OrchestratorRule):
                 return PrerequisiteResult.met()
 
         return PrerequisiteResult.not_met(
-            "NFD operator subscription not found - " "Node Feature Discovery operator is not installed on this cluster"
+            "NFD operator subscription not found - Node Feature Discovery operator is not installed on this cluster"
         )
 
     def run_rule(self):
@@ -993,7 +993,7 @@ class VerifyNfdOperatorHealth(OrchestratorRule):
 
         if not pod_objects:
             return RuleResult.failed(
-                f"No pods found in {self.NFD_NAMESPACE} namespace. " "NFD operator may not be fully deployed."
+                f"No pods found in {self.NFD_NAMESPACE} namespace. NFD operator may not be fully deployed."
             )
 
         not_ready_pods = []

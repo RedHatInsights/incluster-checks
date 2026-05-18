@@ -47,7 +47,9 @@ class DnsReachabilityCollector(DataCollector):
 
         for dns_ip in dns_servers:
             # Use dig to test DNS resolution (not just connectivity)
-            dig_cmd = SafeCmdString("dig +short +time=2 +tries=1 @{dns_ip} google.com").format(dns_ip=dns_ip)
+            dig_cmd = SafeCmdString(
+                "dig +short +time=2 +tries=1 @{dns_ip} google.com"
+            ).format(dns_ip=dns_ip)
             return_code, output, _ = self.run_cmd(dig_cmd)
 
             # Success if dig returned 0 and produced output (resolved the domain)
@@ -104,7 +106,9 @@ class VerifyDnsReachability(OrchestratorRule):
                 )
 
         # Step 2: Run DNS reachability tests on nodes
-        reachability_data = self.run_data_collector(DnsReachabilityCollector, dns_servers=dns_servers)
+        reachability_data = self.run_data_collector(
+            DnsReachabilityCollector, dns_servers=dns_servers
+        )
 
         # Check for collection failures
         exceptions = self.get_data_collector_exceptions(DnsReachabilityCollector)
@@ -166,6 +170,7 @@ class VerifyDnsReachability(OrchestratorRule):
         Returns:
             List of DNS server IP addresses
         """
+
         # Use DataCollector to read resolv.conf from one node
         class ResolvConfReader(DataCollector):
             objective_hosts = [Objectives.ALL_NODES]
@@ -202,7 +207,9 @@ class VerifyDnsReachability(OrchestratorRule):
 
         return []
 
-    def _aggregate_reachability_results(self, reachability_data: dict, source: str) -> RuleResult:
+    def _aggregate_reachability_results(
+        self, reachability_data: dict, source: str
+    ) -> RuleResult:
         """
         Aggregate DNS reachability results from all nodes.
 
@@ -227,7 +234,9 @@ class VerifyDnsReachability(OrchestratorRule):
 
             # Track per-node details
             if unreachable:
-                per_node_details.append(f"{node_name}: {len(unreachable)} unreachable - {', '.join(unreachable)}")
+                per_node_details.append(
+                    f"{node_name}: {len(unreachable)} unreachable - {', '.join(unreachable)}"
+                )
 
             # Aggregate across all nodes
             all_reachable.update(reachable)
@@ -244,4 +253,6 @@ class VerifyDnsReachability(OrchestratorRule):
 
         # All DNS servers reachable from at least one node
         reachable_list = ", ".join(sorted(all_reachable))
-        return RuleResult.passed(f"All DNS servers from {source} are reachable: {reachable_list}")
+        return RuleResult.passed(
+            f"All DNS servers from {source} are reachable: {reachable_list}"
+        )

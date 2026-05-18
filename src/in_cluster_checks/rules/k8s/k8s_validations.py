@@ -1106,6 +1106,7 @@ class VerifyAcmOperatorHealth(OrchestratorRule):
     title = "Verify ACM operator pods are healthy"
     supported_profiles = {"nokia-qa"}
     links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-ACM-operator-health",
         "https://docs.redhat.com/en/documentation/red_hat_advanced_cluster_management_for_kubernetes"
         "/2.12/html/install/installing#installing-while-connected-online",
     ]
@@ -1167,9 +1168,7 @@ class VerifyAcmOperatorHealth(OrchestratorRule):
                 not_ready_pods.append(pod_status["status_message"])
 
         if unknown_status_pods:
-            return RuleResult.failed(
-                "Failed to evaluate status for ACM pod(s):\n  " + "\n  ".join(unknown_status_pods)
-            )
+            return RuleResult.failed("Failed to evaluate status for ACM pod(s):\n  " + "\n  ".join(unknown_status_pods))
 
         if not_ready_pods:
             message = f"ACM operator has unhealthy pods in {self.ACM_NAMESPACE} namespace:\n  "

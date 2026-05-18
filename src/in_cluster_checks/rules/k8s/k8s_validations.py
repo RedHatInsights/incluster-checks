@@ -964,19 +964,21 @@ class VerifyNfdOperatorHealth(OrchestratorRule):
         Queries the cluster for a Subscription resource with the
         ``nfd`` package name.  If none is found the rule is not applicable.
         """
-        try:
-            _, subscriptions_output, _ = self.oc_api.run_oc_command(
-                "get",
-                ["subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json"],
-                timeout=45,
-            )
-        except UnExpectedSystemOutput:
-            return PrerequisiteResult.not_met("Failed to get operator subscriptions from cluster")
+        _, subscriptions_output, _ = self.oc_api.run_oc_command(
+            "get",
+            ["subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json"],
+            timeout=45,
+        )
 
         try:
             subscriptions_data = json.loads(subscriptions_output)
         except json.JSONDecodeError as e:
-            return PrerequisiteResult.not_met(f"Failed to parse operator subscriptions: {e}")
+            raise UnExpectedSystemOutput(
+                ip=self.get_host_ip(),
+                cmd="oc get subscriptions.operators.coreos.com --all-namespaces -o json",
+                output=subscriptions_output,
+                message=f"Failed to parse operator subscriptions: {e}",
+            ) from e
 
         for sub in subscriptions_data.get("items", []):
             spec = sub.get("spec", {})
@@ -997,13 +999,19 @@ class VerifyNfdOperatorHealth(OrchestratorRule):
             )
 
         not_ready_pods = []
+        unknown_status_pods = []
 
         for pod in pod_objects:
             pod_status = self.oc_api.get_pod_status(pod)
             if pod_status is None:
+                pod_name = pod.as_dict().get("metadata", {}).get("name", "unknown")
+                unknown_status_pods.append(pod_name)
                 continue
             if not pod_status["all_containers_ready"]:
                 not_ready_pods.append(pod_status["status_message"])
+
+        if unknown_status_pods:
+            return RuleResult.failed("Failed to evaluate status for NFD pod(s):\n  " + "\n  ".join(unknown_status_pods))
 
         if not_ready_pods:
             message = f"NFD operator has unhealthy pods in {self.NFD_NAMESPACE} namespace:\n  "

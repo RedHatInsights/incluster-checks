@@ -1857,6 +1857,22 @@ class TestVerifyNfdOperatorHealth(RuleTestBase):
             failed_msg="NFD operator has unhealthy pods in openshift-nfd namespace:\n"
             "  nfd-controller-manager-abc123 - Running, Not all containers ready",
         ),
+        RuleScenarioParams(
+            "NFD operator installed but pod status unknown",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_nfd_pod("nfd-controller-manager-abc123", "Succeeded", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nfd_subscriptions(include_nfd=True))
+                ),
+            },
+            failed_msg="Failed to evaluate status for NFD pod(s):\n  nfd-controller-manager-abc123",
+        ),
     ]
 
     @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)

@@ -20,6 +20,7 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     ValidateAllDaemonsetsScheduled,
     ValidateAllPoliciesCompliant,
     ValidateNamespaceStatus,
+    VerifyAcmOperatorHealth,
     VerifyClusterOperatorsAvailable,
     VerifyInternalRegistry,
     VerifyNetworkDiagnosticsDisabled,
@@ -1888,4 +1889,164 @@ class TestVerifyNfdOperatorHealth(RuleTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):
         """Test that rule fails when NFD pods are unhealthy or missing."""
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+
+def create_mock_acm_pod(name, phase, all_containers_ready=True):
+    """Create a mock ACM pod object."""
+    mock_pod = Mock()
+    container_statuses = [
+        {"ready": all_containers_ready},
+    ]
+    mock_pod.as_dict.return_value = {
+        "metadata": {"namespace": "open-cluster-management", "name": name},
+        "status": {
+            "phase": phase,
+            "containerStatuses": container_statuses,
+        },
+    }
+    return mock_pod
+
+
+def _acm_subscriptions(include_acm=True):
+    """Build a subscriptions response, optionally including the ACM subscription."""
+    items = []
+    if include_acm:
+        items.append(
+            {
+                "metadata": {"name": "acm-sub", "namespace": "open-cluster-management"},
+                "spec": {"name": "advanced-cluster-management", "source": "redhat-operators"},
+            }
+        )
+    items.append(
+        {
+            "metadata": {"name": "other-operator", "namespace": "openshift-operators"},
+            "spec": {"name": "other", "source": "redhat-operators"},
+        }
+    )
+    return {"items": items}
+
+
+class TestVerifyAcmOperatorHealth(RuleTestBase):
+    """Test VerifyAcmOperatorHealth rule."""
+
+    tested_type = VerifyAcmOperatorHealth
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "ACM operator installed and all pods are healthy",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_acm_pod("multiclusterhub-operator-abc123", "Running", True),
+                        create_mock_acm_pod("cluster-manager-xyz789", "Running", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_acm_subscriptions(include_acm=True))
+                ),
+            },
+        ),
+    ]
+
+    scenario_prerequisite_not_fulfilled = [
+        RuleScenarioParams(
+            "ACM operator subscription not found",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_acm_subscriptions(include_acm=False))
+                ),
+            },
+        ),
+        RuleScenarioParams(
+            "no subscriptions exist in cluster",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps({"items": []})
+                ),
+            },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "ACM operator installed but no pods found",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(return_value=[]),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_acm_subscriptions(include_acm=True))
+                ),
+            },
+            failed_msg="No pods found in open-cluster-management namespace. ACM operator may not be fully deployed.",
+        ),
+        RuleScenarioParams(
+            "ACM operator installed but some pods are not running",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_acm_pod("multiclusterhub-operator-abc123", "Running", True),
+                        create_mock_acm_pod("cluster-manager-xyz789", "Pending", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_acm_subscriptions(include_acm=True))
+                ),
+            },
+            failed_msg="ACM operator has unhealthy pods in open-cluster-management namespace:\n"
+            "  cluster-manager-xyz789 - Phase: Pending",
+        ),
+        RuleScenarioParams(
+            "ACM operator installed but containers not ready",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_acm_pod("multiclusterhub-operator-abc123", "Running", False),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_acm_subscriptions(include_acm=True))
+                ),
+            },
+            failed_msg="ACM operator has unhealthy pods in open-cluster-management namespace:\n"
+            "  multiclusterhub-operator-abc123 - Running, Not all containers ready",
+        ),
+        RuleScenarioParams(
+            "ACM operator installed but pod status unknown",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_acm_pod("multiclusterhub-operator-abc123", "Succeeded", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_acm_subscriptions(include_acm=True))
+                ),
+            },
+            failed_msg="Failed to evaluate status for ACM pod(s):\n  multiclusterhub-operator-abc123",
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
+    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        """Test that prerequisite is not met when ACM operator is not installed."""
+        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        """Test that rule passes when all ACM pods are healthy."""
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        """Test that rule fails when ACM pods are unhealthy or missing."""
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)

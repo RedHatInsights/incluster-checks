@@ -1090,3 +1090,90 @@ class VerifyNetworkDiagnosticsDisabled(OrchestratorRule):
             return RuleResult.failed(message)
 
         return RuleResult.passed()
+
+
+class VerifyAcmOperatorHealth(OrchestratorRule):
+    """Verify Advanced Cluster Management (ACM) operator pods are healthy.
+
+    ACM orchestrates multicluster lifecycle management on the hub cluster.
+    This rule checks that the ACM operator has been installed (Subscription
+    exists) and that every pod in the open-cluster-management namespace is
+    Running with all containers ready.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_acm_operator_health"
+    title = "Verify ACM operator pods are healthy"
+    supported_profiles = {"nokia-qa"}
+    links = [
+        "https://docs.redhat.com/en/documentation/red_hat_advanced_cluster_management_for_kubernetes"
+        "/2.12/html/install/installing#installing-while-connected-online",
+    ]
+
+    ACM_NAMESPACE = "open-cluster-management"
+
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        """Check that the ACM operator has been installed via a Subscription.
+
+        Queries the cluster for a Subscription resource with the
+        ``advanced-cluster-management`` package name.  If none is found the
+        rule is not applicable.
+        """
+        _, subscriptions_output, _ = self.oc_api.run_oc_command(
+            "get",
+            ["subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json"],
+            timeout=45,
+        )
+
+        try:
+            subscriptions_data = json.loads(subscriptions_output)
+        except json.JSONDecodeError as e:
+            raise UnExpectedSystemOutput(
+                ip=self.get_host_ip(),
+                cmd="oc get subscriptions.operators.coreos.com --all-namespaces -o json",
+                output=subscriptions_output,
+                message=f"Failed to parse operator subscriptions: {e}",
+            ) from e
+
+        for sub in subscriptions_data.get("items", []):
+            spec = sub.get("spec", {})
+            if spec.get("name") == "advanced-cluster-management":
+                return PrerequisiteResult.met()
+
+        return PrerequisiteResult.not_met(
+            "ACM operator subscription not found - "
+            "Advanced Cluster Management operator is not installed on this cluster"
+        )
+
+    def run_rule(self):
+        """Verify all pods in the open-cluster-management namespace are Running and Ready."""
+        pod_objects = self.oc_api.get_all_pods(namespace=self.ACM_NAMESPACE)
+
+        if not pod_objects:
+            return RuleResult.failed(
+                f"No pods found in {self.ACM_NAMESPACE} namespace. ACM operator may not be fully deployed."
+            )
+
+        not_ready_pods = []
+        unknown_status_pods = []
+
+        for pod in pod_objects:
+            pod_status = self.oc_api.get_pod_status(pod)
+            if pod_status is None:
+                pod_name = pod.as_dict().get("metadata", {}).get("name", "unknown")
+                unknown_status_pods.append(pod_name)
+                continue
+            if not pod_status["all_containers_ready"]:
+                not_ready_pods.append(pod_status["status_message"])
+
+        if unknown_status_pods:
+            return RuleResult.failed(
+                "Failed to evaluate status for ACM pod(s):\n  " + "\n  ".join(unknown_status_pods)
+            )
+
+        if not_ready_pods:
+            message = f"ACM operator has unhealthy pods in {self.ACM_NAMESPACE} namespace:\n  "
+            message += "\n  ".join(not_ready_pods)
+            return RuleResult.failed(message)
+
+        return RuleResult.passed()

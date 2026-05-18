@@ -9,6 +9,7 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     ValidateAllDaemonsetsScheduled,
     ValidateNamespaceStatus,
     ValidateAllPoliciesCompliant,
+    VerifyAcmOperatorHealth,
     VerifyClusterOperatorsAvailable,
     VerifyInternalRegistry,
     VerifyNetworkDiagnosticsDisabled,
@@ -28,7 +29,7 @@ def test_k8s_domain_rules():
     domain = K8sValidationDomain()
     rules = domain.get_rule_classes()
 
-    assert len(rules) == 15
+    assert len(rules) == 16
     assert AllPodsReadyAndRunning in rules
     assert NodesAreReady in rules
     assert NodesCpuAndMemoryStatus in rules
@@ -41,3 +42,4 @@ def test_k8s_domain_rules():
     assert VerifyWebConsoleDisabled in rules
     assert VerifyNetworkDiagnosticsDisabled in rules
     assert VerifyNfdOperatorHealth in rules
+    assert VerifyAcmOperatorHealth in rules

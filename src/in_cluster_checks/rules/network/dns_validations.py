@@ -6,6 +6,7 @@ and testing DNS resolution functionality using dig.
 """
 
 import json
+from collections import Counter
 from typing import ClassVar
 
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
@@ -50,18 +51,24 @@ class DnsReachabilityCollector(DataCollector):
         reachable = []
         unreachable = []
 
-        for dns_ip in dns_servers:
-            # Use dig to test DNS resolution (not just connectivity)
-            dig_cmd = SafeCmdString("dig +short +time=2 +tries=1 @{dns_ip} {domain}").format(
-                dns_ip=dns_ip, domain=test_domain
-            )
+        for dns_server in dns_servers:
+            # Parse DNS server (format: "IP" or "IP:port")
+            if ":" in dns_server:
+                dns_ip, port = dns_server.rsplit(":", 1)
+                dig_cmd = SafeCmdString("dig +short +time=2 +tries=1 -p {port} @{dns_ip} {domain}").format(
+                    port=port, dns_ip=dns_ip, domain=test_domain
+                )
+            else:
+                dig_cmd = SafeCmdString("dig +short +time=2 +tries=1 @{dns_ip} {domain}").format(
+                    dns_ip=dns_server, domain=test_domain
+                )
             return_code, output, _ = self.run_cmd(dig_cmd)
 
             # Success if dig returned 0 and produced output (resolved the domain)
             if return_code == 0 and output.strip():
-                reachable.append(dns_ip)
+                reachable.append(dns_server)
             else:
-                unreachable.append(dns_ip)
+                unreachable.append(dns_server)
 
         return {"reachable": reachable, "unreachable": unreachable}
 
@@ -81,6 +88,7 @@ class VerifyDnsReachability(OrchestratorRule):
     """
 
     objective_hosts: ClassVar[list] = [Objectives.ORCHESTRATOR]
+    supported_profiles: ClassVar[set] = {"general"}
     unique_name = "verify_dns_reachability"
     title = "Verify DNS server reachability"
     links: ClassVar[list] = [
@@ -113,9 +121,14 @@ class VerifyDnsReachability(OrchestratorRule):
 
         dig_availability = self.run_data_collector(DigChecker)
 
-        # If dig is not available on any node, prerequisite not met
-        if not any(dig_availability.values()):
-            return PrerequisiteResult.not_met("dig binary not available on nodes")
+        # Check if dig is available on all nodes
+        nodes_without_dig = [node for node, has_dig in dig_availability.items() if not has_dig]
+
+        if nodes_without_dig:
+            nodes_list = ", ".join(sorted(nodes_without_dig))
+            return PrerequisiteResult.not_met(
+                f"dig binary not available on {len(nodes_without_dig)} node(s): {nodes_list}"
+            )
 
         return PrerequisiteResult.met()
 
@@ -208,8 +221,13 @@ class VerifyDnsReachability(OrchestratorRule):
             # Only process Network type upstreams (not SystemResolvConf)
             if upstream.get("type") == "Network":
                 address = upstream.get("address")
+                port = upstream.get("port", 53)
                 if address:
-                    dns_servers.append(address)
+                    # Include port in address if non-standard
+                    if port != 53:
+                        dns_servers.append(f"{address}:{port}")
+                    else:
+                        dns_servers.append(address)
 
         return dns_servers
 
@@ -318,12 +336,21 @@ class VerifyDnsReachability(OrchestratorRule):
         # Collect from nodes
         search_data = self.run_data_collector(SearchDomainReader)
 
-        # Return search domain from first node that has one
-        for node_search_domain in search_data.values():
-            if node_search_domain:
-                return node_search_domain
+        # Get all unique non-empty search domains
+        unique_domains = {domain for domain in search_data.values() if domain}
 
-        return ""
+        # No search domain found on any node
+        if not unique_domains:
+            return ""
+
+        # All nodes have the same search domain
+        if len(unique_domains) == 1:
+            return unique_domains.pop()
+
+        # Multiple different search domains across nodes - use the most common one
+        domain_counts = Counter(domain for domain in search_data.values() if domain)
+        most_common_domain = domain_counts.most_common(1)[0][0]
+        return most_common_domain
 
     def _aggregate_reachability_results(self, reachability_data: dict, source: str) -> RuleResult:
         """

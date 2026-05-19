@@ -1060,7 +1060,8 @@ class TestValidateAllPoliciesCompliant(RuleTestBase):
 
     tested_type = ValidateAllPoliciesCompliant
 
-    # Sample policy data - all compliant
+    _POLICIES_CMD_KEY = ("get", ("policies.policy.open-cluster-management.io", "--all-namespaces", "-o", "json"))
+
     all_compliant_policies = {
         "items": [
             {
@@ -1074,7 +1075,6 @@ class TestValidateAllPoliciesCompliant(RuleTestBase):
         ]
     }
 
-    # Sample policy data - some non-compliant
     some_non_compliant_policies = {
         "items": [
             {
@@ -1092,24 +1092,22 @@ class TestValidateAllPoliciesCompliant(RuleTestBase):
         ]
     }
 
-    # No policies found
     no_policies = {"items": []}
 
-    # Scenario where all policies are compliant
     scenario_passed = [
         RuleScenarioParams(
             "all policies are compliant",
-            tested_object_mock_dict={
-                "oc_api.run_oc_command": Mock(return_value=(0, json.dumps(all_compliant_policies), ""))
+            oc_cmd_output_dict={
+                _POLICIES_CMD_KEY: CmdOutput(json.dumps(all_compliant_policies)),
             },
         ),
     ]
-    # Scenario where some policies are non-compliant
+
     scenario_failed = [
         RuleScenarioParams(
             "some policies are non-compliant",
-            tested_object_mock_dict={
-                "oc_api.run_oc_command": Mock(return_value=(0, json.dumps(some_non_compliant_policies), ""))
+            oc_cmd_output_dict={
+                _POLICIES_CMD_KEY: CmdOutput(json.dumps(some_non_compliant_policies)),
             },
             failed_msg="There are 2 non-compliant policies:\n"
             "  open-cluster-management/policy2 - NonCompliant\n"
@@ -1117,12 +1115,12 @@ class TestValidateAllPoliciesCompliant(RuleTestBase):
         ),
     ]
 
-    # Scenario where no policies are found
-    scenario_warning = [
+    scenario_prerequisite_not_fulfilled = [
         RuleScenarioParams(
-            "no policies found in cluster",
-            tested_object_mock_dict={"oc_api.run_oc_command": Mock(return_value=(0, json.dumps(no_policies), ""))},
-            failed_msg="No policies found in cluster",
+            "no policies defined in cluster",
+            oc_cmd_output_dict={
+                _POLICIES_CMD_KEY: CmdOutput(json.dumps(no_policies)),
+            },
         ),
     ]
 
@@ -1134,9 +1132,9 @@ class TestValidateAllPoliciesCompliant(RuleTestBase):
     def test_scenario_failed(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
 
-    @pytest.mark.parametrize("scenario_params", scenario_warning)
-    def test_scenario_warning(self, scenario_params, tested_object):
-        RuleTestBase.test_scenario_warning(self, scenario_params, tested_object)
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
+    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
 
 
 def create_mock_registry_pod(name, namespace, phase, all_containers_ready=True):

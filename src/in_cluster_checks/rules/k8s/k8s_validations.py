@@ -628,7 +628,6 @@ class OpenshiftOperatorStatus(OrchestratorRule):
         )
 
 
-# Rule to validate all policies are compliant
 class ValidateAllPoliciesCompliant(OrchestratorRule):
     """Validate all Open Cluster Management policies are compliant."""
 
@@ -638,34 +637,60 @@ class ValidateAllPoliciesCompliant(OrchestratorRule):
     supported_profiles = {"nokia-qa"}
     links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-policies-compliance"]
 
-    def run_rule(self):
-        """Check if all OCM policies are in Compliant state"""
+    _POLICIES_RESOURCE = "policies.policy.open-cluster-management.io"
+
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        """Check that RHACM policies are defined in the cluster.
+
+        Queries for policy resources.  If the CRD is missing (RHACM not
+        installed) or no policies are defined, the rule is not applicable.
+        """
         try:
-            # Run the oc command to get all policies from all namespaces
             _, policies_output, _ = self.oc_api.run_oc_command(
-                "get", ["policies.policy.open-cluster-management.io", "--all-namespaces", "-o", "json"], timeout=45
+                "get", [self._POLICIES_RESOURCE, "--all-namespaces", "-o", "json"], timeout=45
             )
         except UnExpectedSystemOutput:
-            return RuleResult.failed("Failed to get policies from cluster")
+            return PrerequisiteResult.not_met(
+                "RHACM policies CRD not available - "
+                "Open Cluster Management governance is not installed on this cluster"
+            )
 
         try:
             policies_data = json.loads(policies_output)
         except json.JSONDecodeError as e:
             raise UnExpectedSystemOutput(
                 ip=self.get_host_ip(),
-                cmd="oc get policies.policy.open-cluster-management.io --all-namespaces -o json",
+                cmd=f"oc get {self._POLICIES_RESOURCE} --all-namespaces -o json",
                 output=policies_output,
                 message=f"Failed to parse JSON: {e}",
+            ) from e
+
+        if not policies_data.get("items", []):
+            return PrerequisiteResult.not_met(
+                "No RHACM policies defined in cluster - governance policies are not configured"
             )
 
-        items = policies_data.get("items", [])
-        # Check if there are any policies
-        if not items:
-            return RuleResult.warning("No policies found in cluster")
+        return PrerequisiteResult.met()
+
+    def run_rule(self):
+        """Check if all OCM policies are in Compliant state."""
+        _, policies_output, _ = self.oc_api.run_oc_command(
+            "get", [self._POLICIES_RESOURCE, "--all-namespaces", "-o", "json"], timeout=45
+        )
+
+        try:
+            policies_data = json.loads(policies_output)
+        except json.JSONDecodeError as e:
+            raise UnExpectedSystemOutput(
+                ip=self.get_host_ip(),
+                cmd=f"oc get {self._POLICIES_RESOURCE} --all-namespaces -o json",
+                output=policies_output,
+                message=f"Failed to parse JSON: {e}",
+            ) from e
 
         non_compliant_policies = []
 
-        for policy in items:
+        for policy in policies_data.get("items", []):
             metadata = policy.get("metadata", {})
             name = metadata.get("name", "unknown")
             namespace = metadata.get("namespace", "unknown")

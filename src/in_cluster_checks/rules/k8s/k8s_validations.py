@@ -1104,7 +1104,7 @@ class VerifyAcmOperatorHealth(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "verify_acm_operator_health"
     title = "Verify ACM operator pods are healthy"
-    supported_profiles = {"nokia-qa"}
+    supported_profiles = {"telco-base"}
     links = [
         "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-ACM-operator-health",
         "https://docs.redhat.com/en/documentation/red_hat_advanced_cluster_management_for_kubernetes"

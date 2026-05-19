@@ -2,112 +2,68 @@
 DNS reachability validations for OpenShift clusters.
 
 Validates DNS server reachability by checking upstream DNS resolvers
-and testing connectivity via ping.
+and testing DNS resolution functionality using dig.
 """
 
 import json
+from typing import ClassVar
 
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.operations import DataCollector
 from in_cluster_checks.core.rule import OrchestratorRule, RuleResult
+from in_cluster_checks.core.rule_result import PrerequisiteResult
 from in_cluster_checks.utils.enums import Objectives
 from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 class DnsReachabilityCollector(DataCollector):
     """
-    Test DNS server reachability from each node.
+    Test DNS resolution functionality from each node.
 
-    Tests reachability of DNS servers (either from upstream config or /etc/resolv.conf)
-    by pinging each server from the node.
+    Tests DNS servers by performing actual DNS lookups using dig.
     """
 
-    objective_hosts = [Objectives.ALL_NODES]
+    objective_hosts: ClassVar[list] = [Objectives.ALL_NODES]
 
     def collect_data(self, **kwargs) -> dict:
         """
-        Test DNS server reachability.
+        Test DNS resolution functionality from each node.
 
         Args:
-            **kwargs: Optional 'upstream_dns_servers' list to test specific servers.
-                     If not provided, reads from /etc/resolv.conf.
+            **kwargs:
+                'dns_servers' (list): DNS server IPs to test.
+                'test_domain' (str): Domain name to use for DNS resolution test.
 
         Returns:
-            Dictionary with reachability results, or None if no DNS servers found
+            Dictionary with reachability results, or None if no DNS servers provided.
             Example: {
-                'source': 'upstream resolvers',
                 'reachable': ['192.168.1.1'],
                 'unreachable': ['8.8.8.8']
             }
         """
-        # Get DNS servers to test (from upstream config or /etc/resolv.conf)
-        upstream_dns_servers = kwargs.get("upstream_dns_servers")
+        dns_servers = kwargs.get("dns_servers")
+        test_domain = kwargs.get("test_domain")
 
-        if upstream_dns_servers:
-            dns_servers = upstream_dns_servers
-            source = "cluster upstream resolvers"
-        else:
-            # Read from /etc/resolv.conf
-            dns_servers = self._get_nameservers_from_resolv_conf()
-            source = "/etc/resolv.conf"
-
-        if not dns_servers:
+        if not dns_servers or not test_domain:
             return None
 
-        # Ping each DNS server
         reachable = []
         unreachable = []
 
         for dns_ip in dns_servers:
-            # Determine if IPv6 or IPv4
-            is_ipv6 = ":" in dns_ip
+            # Use dig to test DNS resolution (not just connectivity)
+            dig_cmd = SafeCmdString("dig +short +time=2 +tries=1 @{dns_ip} {domain}").format(
+                dns_ip=dns_ip, domain=test_domain
+            )
+            return_code, output, _ = self.run_cmd(dig_cmd)
 
-            # Ping the DNS server (3 packets, 2 second timeout)
-            if is_ipv6:
-                ping_cmd = SafeCmdString("ping -6 -c 3 -W 2 {ip}").format(ip=dns_ip)
-            else:
-                ping_cmd = SafeCmdString("ping -c 3 -W 2 {ip}").format(ip=dns_ip)
-
-            return_code, _, _ = self.run_cmd(ping_cmd)
-
-            if return_code == 0:
+            # Success if dig returned 0 and produced output (resolved the domain)
+            if return_code == 0 and output.strip():
                 reachable.append(dns_ip)
             else:
                 unreachable.append(dns_ip)
 
-        return {"source": source, "reachable": reachable, "unreachable": unreachable}
-
-    def _get_nameservers_from_resolv_conf(self) -> list[str]:
-        """
-        Extract nameserver entries from /etc/resolv.conf.
-
-        Returns:
-            List of DNS server IP addresses
-        """
-        resolv_conf_path = "/etc/resolv.conf"
-
-        # Check if file exists
-        if not self.file_utils.is_file_exist(resolv_conf_path):
-            return []
-
-        # Read resolv.conf
-        resolv_conf_content = self.get_output_from_run_cmd(SafeCmdString("cat {path}").format(path=resolv_conf_path))
-
-        # Extract nameserver entries
-        nameservers = []
-        for line in resolv_conf_content.splitlines():
-            line = line.strip()
-            # Skip comments and empty lines
-            if line.startswith("#") or not line:
-                continue
-            # Match nameserver lines
-            if line.startswith("nameserver"):
-                parts = line.split()
-                if len(parts) >= 2:
-                    nameserver_ip = parts[1]
-                    nameservers.append(nameserver_ip)
-
-        return nameservers
+        return {"reachable": reachable, "unreachable": unreachable}
 
 
 class VerifyDnsReachability(OrchestratorRule):
@@ -118,17 +74,42 @@ class VerifyDnsReachability(OrchestratorRule):
     1. Looks for upstream DNS resolvers in the cluster DNS operator config
     2. If found, tests those DNS servers from each node
     3. If not configured, checks /etc/resolv.conf on each node and tests those DNS servers
-    4. Reports which DNS servers are reachable/unreachable
+    4. Uses the search domain from /etc/resolv.conf for DNS resolution tests
+    5. Reports which DNS servers are reachable/unreachable
 
     Orchestrator-level validator that coordinates DNS checks across the cluster.
     """
 
-    objective_hosts = [Objectives.ORCHESTRATOR]
+    objective_hosts: ClassVar[list] = [Objectives.ORCHESTRATOR]
     unique_name = "verify_dns_reachability"
     title = "Verify DNS server reachability"
-    links = [
+    links: ClassVar[list] = [
         "https://github.com/RedHatInsights/incluster-checks/wiki/Network-%E2%80%90-Verify-DNS-reachability",
     ]
+
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        """
+        Check if dig binary is available on the nodes.
+
+        Returns:
+            PrerequisiteResult indicating if dig is available
+        """
+
+        # Check dig availability on one node
+        class DigChecker(DataCollector):
+            objective_hosts: ClassVar[list] = [Objectives.ALL_NODES]
+
+            def collect_data(self, **kwargs) -> bool:
+                return_code, _, _ = self.run_cmd("which dig")
+                return return_code == 0
+
+        dig_availability = self.run_data_collector(DigChecker)
+
+        # If dig is not available on any node, prerequisite not met
+        if not any(dig_availability.values()):
+            return PrerequisiteResult.not_met("dig binary not available on nodes")
+
+        return PrerequisiteResult.met()
 
     def run_rule(self) -> RuleResult:
         """
@@ -137,18 +118,35 @@ class VerifyDnsReachability(OrchestratorRule):
         Returns:
             RuleResult indicating DNS reachability status
         """
-        # Step 1: Try to get upstream DNS resolvers from cluster config
+        # Step 1: Try to get upstream DNS resolvers from cluster DNS operator config
         upstream_dns_servers = self._get_upstream_dns_resolvers()
 
-        # Step 2: Run DNS reachability tests on nodes
         if upstream_dns_servers:
-            # Test upstream DNS servers from all nodes
-            reachability_data = self.run_data_collector(
-                DnsReachabilityCollector, upstream_dns_servers=upstream_dns_servers
-            )
+            dns_servers = upstream_dns_servers
+            source = "DNS operator upstream resolvers"
         else:
-            # No upstream resolvers - let each node test its own /etc/resolv.conf
-            reachability_data = self.run_data_collector(DnsReachabilityCollector)
+            # Get DNS servers from /etc/resolv.conf
+            dns_servers = self._get_nameservers_from_nodes()
+            source = "/etc/resolv.conf"
+
+            if not dns_servers:
+                return RuleResult.failed(
+                    "No DNS servers found. "
+                    "Neither upstream DNS resolvers configured nor nameservers in /etc/resolv.conf."
+                )
+
+        # Step 2: Get search domain from /etc/resolv.conf for DNS resolution test
+        search_domain = self._get_search_domain_from_nodes()
+        if not search_domain:
+            # Fallback to a reasonable default if no search domain found
+            search_domain = "openshift.svc.cluster.local"
+
+        # Step 3: Run DNS reachability tests on nodes
+        reachability_data = self.run_data_collector(
+            DnsReachabilityCollector,
+            dns_servers=dns_servers,
+            test_domain=search_domain,
+        )
 
         # Check for collection failures
         exceptions = self.get_data_collector_exceptions(DnsReachabilityCollector)
@@ -159,15 +157,8 @@ class VerifyDnsReachability(OrchestratorRule):
                 f"Cannot verify DNS reachability with incomplete data."
             )
 
-        # Check if any data was collected
-        if not reachability_data:
-            return RuleResult.failed(
-                "No DNS servers found. "
-                "Neither upstream DNS resolvers configured nor nameservers in /etc/resolv.conf."
-            )
-
         # Aggregate results from all nodes
-        return self._aggregate_reachability_results(reachability_data)
+        return self._aggregate_reachability_results(reachability_data, source)
 
     def _get_upstream_dns_resolvers(self) -> list[str]:
         """
@@ -179,20 +170,26 @@ class VerifyDnsReachability(OrchestratorRule):
         Returns:
             List of DNS server IP addresses (e.g., ['192.168.1.1', '8.8.8.8'])
             Empty list if no upstream resolvers configured
-        """
-        try:
-            _, dns_config_output, _ = self.oc_api.run_oc_command(
-                "get", ["dns.operator.openshift.io/cluster", "-o", "json"], timeout=45
-            )
-        except UnExpectedSystemOutput:
-            # DNS operator might not be configured - this is OK, we'll fallback
-            return []
 
+        Raises:
+            UnExpectedSystemOutput: If DNS operator query fails with error
+        """
+        return_code, dns_config_output, stderr = self.oc_api.run_oc_command(
+            "get", ["dns.operator.openshift.io/cluster", "-o", "json"], timeout=45
+        )
+
+        # If DNS operator resource doesn't exist, return empty list (not an error)
+        if return_code != 0:
+            if "NotFound" in stderr or "not found" in stderr.lower():
+                return []
+            # Other errors should propagate
+            raise UnExpectedSystemOutput(f"Failed to query DNS operator config: {stderr}")
+
+        # Parse DNS config
         try:
             dns_config = json.loads(dns_config_output)
-        except json.JSONDecodeError:
-            # Failed to parse - fallback to resolv.conf
-            return []
+        except json.JSONDecodeError as e:
+            raise UnExpectedSystemOutput(f"Failed to parse DNS operator config JSON: {e}")
 
         spec = dns_config.get("spec", {})
         upstream_resolvers = spec.get("upstreamResolvers", {})
@@ -208,12 +205,109 @@ class VerifyDnsReachability(OrchestratorRule):
 
         return dns_servers
 
-    def _aggregate_reachability_results(self, reachability_data: dict) -> RuleResult:
+    def _get_nameservers_from_nodes(self) -> list[str]:
+        """
+        Get nameservers from /etc/resolv.conf across all nodes.
+
+        Reads /etc/resolv.conf from all nodes and aggregates unique nameserver entries.
+
+        Returns:
+            List of unique DNS server IP addresses from all nodes
+        """
+
+        # Use DataCollector to read resolv.conf from all nodes
+        class ResolvConfReader(DataCollector):
+            objective_hosts: ClassVar[list] = [Objectives.ALL_NODES]
+
+            def collect_data(self, **kwargs) -> list[str]:
+                resolv_conf_path = "/etc/resolv.conf"
+
+                if not self.file_utils.is_file_exist(resolv_conf_path):
+                    return []
+
+                resolv_conf_content = self.get_output_from_run_cmd(
+                    SafeCmdString("cat {path}").format(path=resolv_conf_path)
+                )
+
+                nameservers = []
+                for line in resolv_conf_content.splitlines():
+                    line = line.strip()
+                    if line.startswith("#") or not line:
+                        continue
+                    if line.startswith("nameserver"):
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            nameservers.append(parts[1])
+
+                return nameservers
+
+        # Collect from all nodes
+        resolv_data = self.run_data_collector(ResolvConfReader)
+
+        # Aggregate unique nameservers from all nodes
+        all_nameservers = set()
+        for node_nameservers in resolv_data.values():
+            if node_nameservers:
+                all_nameservers.update(node_nameservers)
+
+        return sorted(all_nameservers)
+
+    def _get_search_domain_from_nodes(self) -> str:
+        """
+        Get search domain from /etc/resolv.conf on nodes.
+
+        Reads /etc/resolv.conf from one node and extracts the search domain.
+        Uses the internal domain for DNS resolution tests in disconnected environments.
+
+        Returns:
+            Search domain string (e.g., 'cluster-name.base-domain.com'),
+            or empty string if not found
+        """
+
+        # Use DataCollector to read resolv.conf and extract search domain
+        class SearchDomainReader(DataCollector):
+            objective_hosts: ClassVar[list] = [Objectives.ALL_NODES]
+
+            def collect_data(self, **kwargs) -> str:
+                resolv_conf_path = "/etc/resolv.conf"
+
+                if not self.file_utils.is_file_exist(resolv_conf_path):
+                    return ""
+
+                resolv_conf_content = self.get_output_from_run_cmd(
+                    SafeCmdString("cat {path}").format(path=resolv_conf_path)
+                )
+
+                # Look for search domain line
+                for line in resolv_conf_content.splitlines():
+                    line = line.strip()
+                    if line.startswith("#") or not line:
+                        continue
+                    if line.startswith("search"):
+                        parts = line.split()
+                        # Return first search domain
+                        if len(parts) >= 2:
+                            return parts[1]
+
+                return ""
+
+        # Collect from nodes
+        search_data = self.run_data_collector(SearchDomainReader)
+
+        # Return search domain from first node that has one
+        for node_search_domain in search_data.values():
+            if node_search_domain:
+                return node_search_domain
+
+        return ""
+
+    def _aggregate_reachability_results(self, reachability_data: dict, source: str) -> RuleResult:
         """
         Aggregate DNS reachability results from all nodes.
 
         Args:
-            reachability_data: Dictionary of {node_name: {source, reachable, unreachable}}
+            reachability_data: Dictionary of {node_name: {reachable, unreachable}}
+            source: Source of DNS servers (e.g., "DNS operator upstream resolvers" or "/etc/resolv.conf")
 
         Returns:
             RuleResult indicating overall DNS reachability status
@@ -221,55 +315,49 @@ class VerifyDnsReachability(OrchestratorRule):
         # Aggregate all unique DNS servers and their status across all nodes
         all_reachable = set()
         all_unreachable = set()
-        source = None
         per_node_details = []
 
         for node_name, data in reachability_data.items():
             if not data:
                 continue
 
-            # Get source (should be same for all nodes)
-            if source is None:
-                source = data.get("source", "unknown")
-
             reachable = data.get("reachable", [])
             unreachable = data.get("unreachable", [])
 
-            # Track per-node details
+            # Track per-node details for unreachable servers
             if unreachable:
-                per_node_details.append(f"{node_name}: {len(unreachable)} unreachable - {', '.join(unreachable)}")
+                per_node_details.append(f"  - {node_name}: {', '.join(unreachable)}")
 
             # Aggregate across all nodes
             all_reachable.update(reachable)
             all_unreachable.update(unreachable)
 
-        # A DNS server is considered unreachable if it's unreachable from ANY node
-        truly_unreachable = all_unreachable - all_reachable
-        truly_reachable = all_reachable - truly_unreachable
+        # Compute three disjoint sets:
+        # - only_unreachable: unreachable from ALL nodes (intersection)
+        # - only_reachable: reachable from ALL nodes
+        # - partial: reachable from SOME nodes, unreachable from others
+        only_unreachable = all_unreachable - all_reachable
+        partial = all_reachable & all_unreachable
 
-        # Build result message
-        if truly_unreachable:
-            message = f"DNS servers from {source}:\n"
-            if truly_reachable:
-                message += f"  Reachable from all nodes ({len(truly_reachable)}):\n"
-                for dns_ip in sorted(truly_reachable):
-                    message += f"    - {dns_ip}\n"
-            message += f"\n  Unreachable from one or more nodes ({len(truly_unreachable)}):\n"
-            for dns_ip in sorted(truly_unreachable):
-                message += f"    - {dns_ip}\n"
+        # FAIL: Some DNS servers unreachable from all nodes
+        if only_unreachable:
+            unreachable_list = ", ".join(sorted(only_unreachable))
+            details = "\n".join(per_node_details) if per_node_details else ""
+            msg = f"DNS servers from {source} unreachable from all nodes: {unreachable_list}"
+            if details:
+                msg += f"\nPer-node details:\n{details}"
+            return RuleResult.failed(msg)
 
-            # Add per-node details
-            if per_node_details:
-                message += f"\n  Per-node details:\n"
-                for detail in per_node_details:
-                    message += f"    {detail}\n"
+        # WARNING: Some DNS servers have partial reachability
+        if partial:
+            partial_list = ", ".join(sorted(partial))
+            details = "\n".join(per_node_details)
+            return RuleResult.warning(
+                f"DNS servers from {source} have partial reachability: {partial_list}\n"
+                f"Reachable from some nodes but not all.\n"
+                f"Per-node details:\n{details}"
+            )
 
-            return RuleResult.failed(message.rstrip())
-
-        # All DNS servers are reachable from all nodes
-        total_dns_servers = len(truly_reachable)
-        message = f"All {total_dns_servers} DNS server(s) from {source} are reachable from all nodes:\n"
-        for dns_ip in sorted(truly_reachable):
-            message += f"  - {dns_ip}\n"
-
-        return RuleResult.passed(message.rstrip())
+        # PASS: All DNS servers reachable from all nodes
+        reachable_list = ", ".join(sorted(all_reachable))
+        return RuleResult.passed(f"All DNS servers from {source} are reachable from all nodes: {reachable_list}")

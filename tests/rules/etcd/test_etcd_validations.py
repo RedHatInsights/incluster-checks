@@ -111,6 +111,18 @@ class TestEtcdAlarmCheck(RuleTestBase):
 class TestEtcdMemberCountCheck(RuleTestBase):
     tested_type = EtcdMemberCountCheck
 
+    @staticmethod
+    def _mock_nodes(count):
+        """Create mock node objects for testing."""
+        from unittest.mock import Mock
+
+        nodes = []
+        for i in range(count):
+            node = Mock()
+            node.name.return_value = f"node-{i}"
+            nodes.append(node)
+        return nodes
+
     scenario_passed = [
         RuleScenarioParams(
             "3 members exist",
@@ -121,6 +133,7 @@ class TestEtcdMemberCountCheck(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
+                "oc_api.get_all_nodes": lambda: TestEtcdMemberCountCheck._mock_nodes(3),
             },
         ),
     ]
@@ -135,8 +148,18 @@ class TestEtcdMemberCountCheck(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
+                "oc_api.get_all_nodes": lambda: TestEtcdMemberCountCheck._mock_nodes(3),
             },
             failed_msg="Etcd does not have at least three members (found 2): master-0, master-1",
+        ),
+    ]
+
+    scenario_prerequisite_not_fulfilled = [
+        RuleScenarioParams(
+            "SNO cluster - prerequisite not fulfilled",
+            tested_object_mock_dict={
+                "oc_api.get_all_nodes": lambda: TestEtcdMemberCountCheck._mock_nodes(1),
+            },
         ),
     ]
 
@@ -147,6 +170,10 @@ class TestEtcdMemberCountCheck(RuleTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
+    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
 
 
 # EtcdLeaderCheck Tests

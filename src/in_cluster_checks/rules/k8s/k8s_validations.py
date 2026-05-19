@@ -397,6 +397,7 @@ class AllDeploymentsAvailable(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "all_deployments_available"
     title = "Verify all deployments are available"
+    supported_profiles = {"telco-base"}
     links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-deployments-availability"]
 
     def run_rule(self):
@@ -449,6 +450,7 @@ class CheckDeploymentsReplicaStatus(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "check_deployments_replica_status"
     title = "Verify deployment replica counts"
+    supported_profiles = {"telco-base"}
     links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Check-deployment-replicas-status"]
 
     def run_rule(self):
@@ -507,6 +509,7 @@ class AllStatefulsetsReady(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "all_statefulsets_ready"
     title = "Verify all statefulsets are ready"
+    supported_profiles = {"telco-base"}
     links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-statefulsets-readiness"]
 
     def run_rule(self):
@@ -632,7 +635,8 @@ class ValidateAllPoliciesCompliant(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "validate_all_policies_compliant"
     title = "Verify all policies are in compliant state"
-    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-Verify-policies-compliance"]
+    supported_profiles = {"telco-base"}
+    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-policies-compliance"]
 
     def run_rule(self):
         """Check if all OCM policies are in Compliant state"""
@@ -685,6 +689,7 @@ class VerifyInternalRegistry(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "verify_internal_registry"
     title = "Verify internal image registry is configured and available"
+    supported_profiles = {"telco-base"}
     links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-internal-image-registry"]
 
     def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
@@ -747,6 +752,121 @@ class VerifyInternalRegistry(OrchestratorRule):
         return RuleResult.passed()
 
 
+class VerifyClusterOperatorsAvailable(OrchestratorRule):
+    """Verify all cluster operators are in Available state.
+
+    Cluster operators are essential components required for the cluster to
+    function properly. This rule checks that every ClusterOperator resource
+    has its Available condition set to True and is not Degraded, ensuring
+    all critical cluster components are operational. It also warns about
+    operators that are Progressing or not Upgradeable.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_cluster_operators_available"
+    title = "Verify all cluster operators are in available state"
+    supported_profiles = {"telco-base"}
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-cluster-operators-available",
+    ]
+
+    def run_rule(self):
+        """Check cluster operator conditions: Available, Degraded, Progressing, Upgradeable."""
+        try:
+            _, operators_output, _ = self.oc_api.run_oc_command("get", ["clusteroperators", "-o", "json"], timeout=45)
+        except UnExpectedSystemOutput:
+            return RuleResult.failed("Failed to get cluster operators")
+
+        try:
+            operators_data = json.loads(operators_output)
+        except json.JSONDecodeError as e:
+            raise UnExpectedSystemOutput(
+                ip=self.get_host_ip(),
+                cmd="oc get clusteroperators -o json",
+                output=operators_output,
+                message=f"Failed to parse JSON: {e}",
+            ) from e
+
+        items = operators_data.get("items", [])
+
+        if not items:
+            return RuleResult.failed("No cluster operators found in cluster")
+
+        unavailable_operators = []
+        degraded_operators = []
+        progressing_operators = []
+        not_upgradeable_operators = []
+
+        for operator in items:
+            metadata = operator.get("metadata", {})
+            name = metadata.get("name", "unknown")
+            conditions = self._get_conditions_dict(operator)
+
+            available_condition = conditions.get("Available")
+            degraded_condition = conditions.get("Degraded")
+            progressing_condition = conditions.get("Progressing")
+            upgradeable_condition = conditions.get("Upgradeable")
+
+            if not available_condition or available_condition.get("status") != "True":
+                reason = "NoAvailableCondition"
+                message = "No Available condition found"
+                if available_condition:
+                    reason = available_condition.get("reason", "Unknown")
+                    message = available_condition.get("message", "")
+                unavailable_operators.append(f"{name} - Reason: {reason}, Message: {message}")
+
+            if degraded_condition and degraded_condition.get("status") == "True":
+                reason = degraded_condition.get("reason", "Unknown")
+                message = degraded_condition.get("message", "")
+                degraded_operators.append(f"{name} - Reason: {reason}, Message: {message}")
+
+            if progressing_condition and progressing_condition.get("status") == "True":
+                reason = progressing_condition.get("reason", "Unknown")
+                message = progressing_condition.get("message", "")
+                progressing_operators.append(f"{name} - Reason: {reason}, Message: {message}")
+
+            if upgradeable_condition and upgradeable_condition.get("status") == "False":
+                reason = upgradeable_condition.get("reason", "Unknown")
+                message = upgradeable_condition.get("message", "")
+                not_upgradeable_operators.append(f"{name} - Reason: {reason}, Message: {message}")
+
+        error_messages = []
+        warning_messages = []
+
+        if unavailable_operators:
+            error_messages.append(
+                "Following cluster operators are not available:\n  " + "\n  ".join(unavailable_operators)
+            )
+
+        if degraded_operators:
+            error_messages.append("Following cluster operators are degraded:\n  " + "\n  ".join(degraded_operators))
+
+        if error_messages:
+            return RuleResult.failed("\n\n".join(error_messages))
+
+        if progressing_operators:
+            warning_messages.append(
+                "Following cluster operators are progressing:\n  " + "\n  ".join(progressing_operators)
+            )
+
+        if not_upgradeable_operators:
+            warning_messages.append(
+                "Following cluster operators are not upgradeable:\n  " + "\n  ".join(not_upgradeable_operators)
+            )
+
+        if warning_messages:
+            return RuleResult.warning("\n\n".join(warning_messages))
+
+        return RuleResult.passed()
+
+    @staticmethod
+    def _get_conditions_dict(operator):
+        """Build a dict of condition type to condition object for an operator."""
+        status = operator.get("status", {})
+        conditions = status.get("conditions", [])
+        return {condition.get("type"): condition for condition in conditions}
+
+
 class VerifyWebConsoleDisabled(OrchestratorRule):
     """Verify OpenShift web console is disabled and no pods exist in openshift-console namespace.
 
@@ -758,6 +878,7 @@ class VerifyWebConsoleDisabled(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "verify_web_console_disabled"
     title = "Verify web console is disabled (edge/SNO clusters)"
+    supported_profiles = {"telco-base"}
     links = [
         "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-web-console-disabled",
         "https://docs.openshift.com/container-platform/latest/web_console/disabling-web-console.html",
@@ -816,6 +937,90 @@ class VerifyWebConsoleDisabled(OrchestratorRule):
         return RuleResult.passed()
 
 
+class VerifyNfdOperatorHealth(OrchestratorRule):
+    """Verify Node Feature Discovery (NFD) operator pods are healthy.
+
+    NFD sets the stage for cluster functionality by labelling nodes with
+    hardware capabilities.  This rule checks that the NFD operator has been
+    installed (Subscription exists) and that every pod in the openshift-nfd
+    namespace is Running with all containers ready.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_nfd_operator_health"
+    title = "Verify NFD operator pods are healthy"
+    supported_profiles = {"telco-base"}
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s%E2%80%90-Verify-NFD-operator-health",
+        "https://docs.openshift.com/container-platform/4.18/hardware_enablement"
+        "/psap-node-feature-discovery-operator.html",
+    ]
+
+    NFD_NAMESPACE = "openshift-nfd"
+
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        """Check that the NFD operator has been installed via a Subscription.
+
+        Queries the cluster for a Subscription resource with the
+        ``nfd`` package name.  If none is found the rule is not applicable.
+        """
+        _, subscriptions_output, _ = self.oc_api.run_oc_command(
+            "get",
+            ["subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json"],
+            timeout=45,
+        )
+
+        try:
+            subscriptions_data = json.loads(subscriptions_output)
+        except json.JSONDecodeError as e:
+            raise UnExpectedSystemOutput(
+                ip=self.get_host_ip(),
+                cmd="oc get subscriptions.operators.coreos.com --all-namespaces -o json",
+                output=subscriptions_output,
+                message=f"Failed to parse operator subscriptions: {e}",
+            ) from e
+
+        for sub in subscriptions_data.get("items", []):
+            spec = sub.get("spec", {})
+            if spec.get("name") == "nfd":
+                return PrerequisiteResult.met()
+
+        return PrerequisiteResult.not_met(
+            "NFD operator subscription not found - Node Feature Discovery operator is not installed on this cluster"
+        )
+
+    def run_rule(self):
+        """Verify all pods in the openshift-nfd namespace are Running and Ready."""
+        pod_objects = self.oc_api.get_all_pods(namespace=self.NFD_NAMESPACE)
+
+        if not pod_objects:
+            return RuleResult.failed(
+                f"No pods found in {self.NFD_NAMESPACE} namespace. NFD operator may not be fully deployed."
+            )
+
+        not_ready_pods = []
+        unknown_status_pods = []
+
+        for pod in pod_objects:
+            pod_status = self.oc_api.get_pod_status(pod)
+            if pod_status is None:
+                pod_name = pod.as_dict().get("metadata", {}).get("name", "unknown")
+                unknown_status_pods.append(pod_name)
+                continue
+            if not pod_status["all_containers_ready"]:
+                not_ready_pods.append(pod_status["status_message"])
+
+        if unknown_status_pods:
+            return RuleResult.failed("Failed to evaluate status for NFD pod(s):\n  " + "\n  ".join(unknown_status_pods))
+
+        if not_ready_pods:
+            message = f"NFD operator has unhealthy pods in {self.NFD_NAMESPACE} namespace:\n  "
+            message += "\n  ".join(not_ready_pods)
+            return RuleResult.failed(message)
+
+        return RuleResult.passed()
+
+
 class VerifyNetworkDiagnosticsDisabled(OrchestratorRule):
     """Verify no pods exist in openshift-network-diagnostics namespace when diagnostics are disabled.
 
@@ -827,6 +1032,7 @@ class VerifyNetworkDiagnosticsDisabled(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "verify_network_diagnostics_disabled"
     title = "Verify no pods in network diagnostics namespace (edge/SNO clusters)"
+    supported_profiles = {"telco-base"}
     links = [
         "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-network-diagnostics-disabled",
         "https://docs.redhat.com/en/documentation/openshift_container_platform"
@@ -882,5 +1088,94 @@ class VerifyNetworkDiagnosticsDisabled(OrchestratorRule):
             )
             message += "\n  ".join(pod_names)
             return RuleResult.failed(message)
+
+        return RuleResult.passed()
+
+
+class VerifyAcmOperatorHealth(OrchestratorRule):
+    """Verify Advanced Cluster Management (ACM) operator pods are healthy.
+
+    ACM orchestrates multicluster lifecycle management on the hub cluster.
+    This rule checks that the ACM operator has been installed (Subscription
+    exists) and that every pod in the open-cluster-management namespace is
+    Running with all containers ready.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_acm_operator_health"
+    title = "Verify ACM operator pods are healthy"
+    supported_profiles = {"telco-base"}
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-ACM-operator-health",
+        "https://docs.redhat.com/en/documentation/red_hat_advanced_cluster_management_for_kubernetes"
+        "/2.12/html/install/installing#installing-while-connected-online",
+    ]
+
+    ACM_NAMESPACE = "open-cluster-management"
+
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        """Check that the ACM operator has been installed via a Subscription.
+
+        Queries the cluster for a Subscription resource with the
+        ``advanced-cluster-management`` package name.  If none is found the
+        rule is not applicable.
+        """
+        _, subscriptions_output, _ = self.oc_api.run_oc_command(
+            "get",
+            ["subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json"],
+            timeout=45,
+        )
+
+        try:
+            subscriptions_data = json.loads(subscriptions_output)
+        except json.JSONDecodeError as e:
+            raise UnExpectedSystemOutput(
+                ip=self.get_host_ip(),
+                cmd="oc get subscriptions.operators.coreos.com --all-namespaces -o json",
+                output=subscriptions_output,
+                message=f"Failed to parse operator subscriptions: {e}",
+            ) from e
+
+        for sub in subscriptions_data.get("items", []):
+            spec = sub.get("spec", {})
+            if spec.get("name") == "advanced-cluster-management":
+                return PrerequisiteResult.met()
+
+        return PrerequisiteResult.not_met(
+            "ACM operator subscription not found - "
+            "Advanced Cluster Management operator is not installed on this cluster"
+        )
+
+    def run_rule(self):
+        """Verify all pods in the open-cluster-management namespace are Running and Ready."""
+        pod_objects = self.oc_api.get_all_pods(namespace=self.ACM_NAMESPACE)
+
+        if not pod_objects:
+            return RuleResult.failed(
+                f"No pods found in {self.ACM_NAMESPACE} namespace. ACM operator may not be fully deployed."
+            )
+
+        not_ready_pods = []
+        unknown_status_pods = []
+
+        for pod in pod_objects:
+            pod_status = self.oc_api.get_pod_status(pod)
+            if pod_status is None:
+                pod_name = pod.as_dict().get("metadata", {}).get("name", "unknown")
+                unknown_status_pods.append(pod_name)
+                continue
+            if not pod_status["all_containers_ready"]:
+                not_ready_pods.append(pod_status["status_message"])
+
+        if unknown_status_pods or not_ready_pods:
+            parts = []
+            if unknown_status_pods:
+                parts.append("Failed to evaluate status for ACM pod(s):\n  " + "\n  ".join(unknown_status_pods))
+            if not_ready_pods:
+                parts.append(
+                    f"ACM operator has unhealthy pods in {self.ACM_NAMESPACE} namespace:\n  "
+                    + "\n  ".join(not_ready_pods)
+                )
+            return RuleResult.failed("\n\n".join(parts))
 
         return RuleResult.passed()

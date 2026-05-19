@@ -15,7 +15,7 @@ from tests.pytest_tools.test_operator_base import CmdOutput
 from tests.pytest_tools.test_rule_base import RuleScenarioParams, RuleTestBase
 
 
-def _generate_cert_pem(days_until_expiry):
+def _generate_cert_pem(days_until_expiry, now):
     """Generate a self-signed certificate with specified expiry."""
     private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 
@@ -23,7 +23,6 @@ def _generate_cert_pem(days_until_expiry):
         x509.NameAttribute(NameOID.COMMON_NAME, "kube-apiserver-to-kubelet-signer"),
     ])
 
-    now = datetime.now(timezone.utc)
     cert = (
         x509.CertificateBuilder()
         .subject_name(subject)
@@ -38,9 +37,9 @@ def _generate_cert_pem(days_until_expiry):
     return cert.public_bytes(serialization.Encoding.PEM).decode('utf-8')
 
 
-def _make_kubelet_ca_secret_json(days_until_expiry):
+def _make_kubelet_ca_secret_json(days_until_expiry, now):
     """Create a mock secret JSON with a certificate."""
-    cert_pem = _generate_cert_pem(days_until_expiry)
+    cert_pem = _generate_cert_pem(days_until_expiry, now)
     cert_b64 = base64.b64encode(cert_pem.encode()).decode()
 
     secret = {
@@ -64,22 +63,16 @@ class TestKubeletCaExpiryCheck(RuleTestBase):
 
     tested_type = KubeletCaExpiryCheck
 
-    # Generate certificates and get their expiry dates for test assertions
     _valid_days = 100
     _expiring_days = 20
     _expired_days = -5
 
-    # Valid CA certificate (100 days remaining)
-    oc_get_secret_valid = _make_kubelet_ca_secret_json(days_until_expiry=_valid_days)
-
-    # CA expiring soon (20 days remaining - below 30 day threshold)
-    oc_get_secret_expiring = _make_kubelet_ca_secret_json(days_until_expiry=_expiring_days)
-
-    # CA already expired (-5 days)
-    oc_get_secret_expired = _make_kubelet_ca_secret_json(days_until_expiry=_expired_days)
-
-    # Calculate expected dates for assertions
     _now = datetime.now(timezone.utc)
+
+    oc_get_secret_valid = _make_kubelet_ca_secret_json(days_until_expiry=_valid_days, now=_now)
+    oc_get_secret_expiring = _make_kubelet_ca_secret_json(days_until_expiry=_expiring_days, now=_now)
+    oc_get_secret_expired = _make_kubelet_ca_secret_json(days_until_expiry=_expired_days, now=_now)
+
     _expiring_date = (_now + timedelta(days=_expiring_days)).strftime("%Y-%m-%d %H:%M:%S UTC")
     _expired_date = (_now + timedelta(days=_expired_days)).strftime("%Y-%m-%d %H:%M:%S UTC")
 

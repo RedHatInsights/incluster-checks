@@ -19,8 +19,11 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     ValidateAllDaemonsetsScheduled,
     ValidateAllPoliciesCompliant,
     ValidateNamespaceStatus,
+    VerifyAcmOperatorHealth,
+    VerifyClusterOperatorsAvailable,
     VerifyInternalRegistry,
     VerifyNetworkDiagnosticsDisabled,
+    VerifyNfdOperatorHealth,
     VerifyWebConsoleDisabled,
 )
 
@@ -54,7 +57,10 @@ class K8sValidationDomain(RuleDomain):
             AllStatefulsetsReady,
             OpenshiftOperatorStatus,
             ValidateAllPoliciesCompliant,
+            VerifyClusterOperatorsAvailable,
             VerifyInternalRegistry,
             VerifyWebConsoleDisabled,
             VerifyNetworkDiagnosticsDisabled,
+            VerifyNfdOperatorHealth,
+            VerifyAcmOperatorHealth,
         ]

@@ -106,9 +106,47 @@ When adding new functionality:
 - **Adding a new domain** → Create a new Domain with its rules, only if it's not covered yet
 
 
-## Adding New Rules
+## Automated Rule Creation with Claude Code
 
-To add a new rule, follow these guidelines:
+If you're using [Claude Code](https://claude.ai/code), you can automate the entire process of creating a new rule from a Jira ticket using the `/implement-rule-from-jira` skill.
+
+### Using the implement-rule-from-jira Skill
+
+This skill automates the complete workflow for implementing a new validation rule:
+
+**What it does:**
+- Fetches and validates the Jira ticket (must be a "Story" type)
+- Creates a properly named feature branch
+- Scaffolds the rule class with all required fields
+- Generates comprehensive tests
+- Registers the rule in the appropriate domain
+- Creates wiki documentation content
+- Runs all tests and pre-commit checks
+- Commits changes with proper formatting
+- Creates a pull request
+- Optionally updates the Jira ticket with implementation details
+
+**Usage:**
+```bash
+/implement-rule-from-jira PDRIVE-XXX
+```
+
+**Requirements:**
+- Access to Jira via Claude Code's Atlassian MCP integration
+- Access to GitHub for PR creation
+- Ticket must be type "Story" (for new validation rules)
+
+**Important notes:**
+- The skill validates that the ticket is a "Story" type - other issue types will be rejected
+- Wiki pages must be created manually on GitHub (skill provides the content to copy-paste)
+- You'll be asked for confirmation before committing and creating the PR
+- All code follows project guidelines and passes automated checks
+
+If you prefer manual control or need to customize the workflow, see the manual instructions below.
+
+## Adding New Rules Manually
+
+To add a new rule manually, follow these guidelines:
 
 ### 1. Create the Rule Class
 

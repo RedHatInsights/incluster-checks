@@ -60,6 +60,20 @@ All rules use the `Status` enum (`utils/enums.py`):
 **Prerequisites:**
 - Always implement `is_prerequisite_fulfilled()` when the rule depends on a specific package, binary, or system condition being present. Return `PrerequisiteResult.not_met("reason")` if the dependency is missing — the framework will mark the result as NOT_APPLICABLE.
 
+**Supported Profiles:**
+- **By default, prefer adding `supported_profiles`** to new rules to indicate which deployment profiles they apply to
+- Set `supported_profiles` as a class variable with a set of profile names (e.g., `supported_profiles = {"telco-base"}`)
+- Only omit `supported_profiles` (leaving default `{"general"}`) for truly generic rules that apply to ANY cluster type
+- Rules are automatically filtered based on the active profile — only rules matching the profile hierarchy are executed
+- Common profiles: `"general"` (default, all clusters), `"telco-base"` (telco-specific checks)
+- Example:
+  ```python
+  class VerifyNFDOperatorHealth(Rule):
+      supported_profiles = {"telco-base"}  # Only runs for telco profiles
+      title = "Verify NFD operator health"
+      # ...
+  ```
+
 **Logging:**
 - NEVER use `self.logger` in rules. Return error messages via `RuleResult.failed()` or `RuleResult.warning()` instead. The framework handles logging automatically.
 

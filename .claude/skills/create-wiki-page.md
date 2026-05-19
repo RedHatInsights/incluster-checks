@@ -60,15 +60,24 @@ The rule fails if any physical port is DOWN or has an IPv4 address.
 ```markdown
 ## Prerequisites
 
-- OpenShift cluster with <network type>
+- Network type: OVN-Kubernetes
 - Required packages: <list>
 - Commands: `command1`, `command2`
+```
+
+Or if only basic commands are needed:
+```markdown
+## Prerequisites
+
+- Commands: `df`, `crictl`
 ```
 
 **Rules:**
 - List all requirements and conditions for rule to run
 - Include when rule returns NOT_APPLICABLE (e.g., "OVN-Kubernetes networking required")
 - Be specific and complete - readers should know exactly what's needed
+- ❌ DO NOT include generic "OpenShift cluster" or "oc debug" - these are implicit for all rules
+- Only list specific requirements beyond the basic OpenShift environment
 
 ## Step 5: Write Impact, Root Cause, Diagnostics
 

@@ -20,8 +20,11 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     ValidateAllDaemonsetsScheduled,
     ValidateAllPoliciesCompliant,
     ValidateNamespaceStatus,
+    VerifyAcmOperatorHealth,
+    VerifyClusterOperatorsAvailable,
     VerifyInternalRegistry,
     VerifyNetworkDiagnosticsDisabled,
+    VerifyNfdOperatorHealth,
     VerifyWebConsoleDisabled,
 )
 from in_cluster_checks.utils.enums import Status
@@ -32,9 +35,7 @@ from tests.pytest_tools.test_rule_base import RuleScenarioParams, RuleTestBase
 def create_mock_pod(namespace, name, phase, ready_containers, total_containers):
     """Create a mock pod object."""
     mock_pod = Mock()
-    container_statuses = [
-        {"ready": i < ready_containers} for i in range(total_containers)
-    ]
+    container_statuses = [{"ready": i < ready_containers} for i in range(total_containers)]
     mock_pod.as_dict.return_value = {
         "metadata": {"namespace": namespace, "name": name},
         "status": {
@@ -222,9 +223,7 @@ class TestNodesCpuAndMemoryStatus:
 
     def test_critical_threshold_exceeded(self, tested_object):
         """Test when critical threshold is exceeded."""
-        tested_object.oc_api.run_oc_command = Mock(
-            return_value=(0, "node1    10000m  95%    2000Mi   10%", "")
-        )
+        tested_object.oc_api.run_oc_command = Mock(return_value=(0, "node1    10000m  95%    2000Mi   10%", ""))
 
         result = tested_object.run_rule()
         assert result.status == Status.FAILED
@@ -985,8 +984,7 @@ class TestAllStatefulsetsReady(RuleTestBase):
                     ]
                 )
             },
-            failed_msg="Following statefulsets are not ready:\n"
-            "  kube-system/statefulset2 - Desired: 3, Ready: 1",
+            failed_msg="Following statefulsets are not ready:\n" "  kube-system/statefulset2 - Desired: 3, Ready: 1",
         ),
         RuleScenarioParams(
             "statefulset has zero ready replicas",
@@ -1002,9 +1000,8 @@ class TestAllStatefulsetsReady(RuleTestBase):
                     ]
                 )
             },
-            failed_msg="Following statefulsets are not ready:\n"
-            "  default/statefulset1 - Desired: 3, Ready: 0",
-        ),        
+            failed_msg="Following statefulsets are not ready:\n" "  default/statefulset1 - Desired: 3, Ready: 0",
+        ),
         RuleScenarioParams(
             "statefulsets in mixed states",
             tested_object_mock_dict={
@@ -1237,7 +1234,7 @@ class TestVerifyInternalRegistry(RuleTestBase):
                 "oc_api.run_oc_command": Mock(return_value=(0, json.dumps(registry_config_managed), "")),
                 "oc_api.get_all_pods": Mock(return_value=[]),
             },
-            failed_msg="Image registry is Managed but no registry pods found in openshift-image-registry namespace.\n",            
+            failed_msg="Image registry is Managed but no registry pods found in openshift-image-registry namespace.\n",
         ),
         RuleScenarioParams(
             "registry is managed but pods are not running",
@@ -1280,6 +1277,277 @@ class TestVerifyInternalRegistry(RuleTestBase):
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
 
 
+def _make_cluster_operator(
+    name,
+    available="True",
+    degraded="False",
+    progressing="False",
+    upgradeable="True",
+    available_reason="AsExpected",
+    available_message="",
+    degraded_reason="",
+    degraded_message="",
+    progressing_reason="",
+    progressing_message="",
+    upgradeable_reason="",
+    upgradeable_message="",
+):
+    """Build a single cluster operator dict for test data."""
+    return {
+        "metadata": {"name": name},
+        "status": {
+            "conditions": [
+                {
+                    "type": "Available",
+                    "status": available,
+                    "reason": available_reason,
+                    "message": available_message,
+                },
+                {
+                    "type": "Degraded",
+                    "status": degraded,
+                    "reason": degraded_reason,
+                    "message": degraded_message,
+                },
+                {
+                    "type": "Progressing",
+                    "status": progressing,
+                    "reason": progressing_reason,
+                    "message": progressing_message,
+                },
+                {
+                    "type": "Upgradeable",
+                    "status": upgradeable,
+                    "reason": upgradeable_reason,
+                    "message": upgradeable_message,
+                },
+            ],
+        },
+    }
+
+
+def _cluster_operators_response(*operators):
+    """Build a cluster operators JSON API response."""
+    return {"items": list(operators)}
+
+
+class TestVerifyClusterOperatorsAvailable(RuleTestBase):
+    """Test VerifyClusterOperatorsAvailable rule."""
+
+    tested_type = VerifyClusterOperatorsAvailable
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "all cluster operators are available and not degraded",
+            oc_cmd_output_dict={
+                ("get", ("clusteroperators", "-o", "json")): CmdOutput(
+                    json.dumps(
+                        _cluster_operators_response(
+                            _make_cluster_operator("authentication"),
+                            _make_cluster_operator("console"),
+                            _make_cluster_operator("etcd"),
+                            _make_cluster_operator("kube-apiserver"),
+                        )
+                    )
+                ),
+            },
+        ),
+        RuleScenarioParams(
+            "single cluster operator is available",
+            oc_cmd_output_dict={
+                ("get", ("clusteroperators", "-o", "json")): CmdOutput(
+                    json.dumps(
+                        _cluster_operators_response(
+                            _make_cluster_operator("etcd"),
+                        )
+                    )
+                ),
+            },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "some cluster operators are not available",
+            oc_cmd_output_dict={
+                ("get", ("clusteroperators", "-o", "json")): CmdOutput(
+                    json.dumps(
+                        _cluster_operators_response(
+                            _make_cluster_operator("authentication"),
+                            _make_cluster_operator(
+                                "etcd",
+                                available="False",
+                                available_reason="EtcdMembersDown",
+                                available_message="1 member is not healthy",
+                            ),
+                            _make_cluster_operator("console"),
+                        )
+                    )
+                ),
+            },
+            failed_msg="Following cluster operators are not available:\n"
+            "  etcd - Reason: EtcdMembersDown, Message: 1 member is not healthy",
+        ),
+        RuleScenarioParams(
+            "cluster operator is degraded",
+            oc_cmd_output_dict={
+                ("get", ("clusteroperators", "-o", "json")): CmdOutput(
+                    json.dumps(
+                        _cluster_operators_response(
+                            _make_cluster_operator("authentication"),
+                            _make_cluster_operator(
+                                "kube-apiserver",
+                                degraded="True",
+                                degraded_reason="NodeInstallerDegraded",
+                                degraded_message="nodes are not ready",
+                            ),
+                        )
+                    )
+                ),
+            },
+            failed_msg="Following cluster operators are degraded:\n"
+            "  kube-apiserver - Reason: NodeInstallerDegraded, Message: nodes are not ready",
+        ),
+        RuleScenarioParams(
+            "cluster operator both unavailable and degraded",
+            oc_cmd_output_dict={
+                ("get", ("clusteroperators", "-o", "json")): CmdOutput(
+                    json.dumps(
+                        _cluster_operators_response(
+                            _make_cluster_operator(
+                                "etcd",
+                                available="False",
+                                available_reason="EtcdMembersDown",
+                                available_message="members are unhealthy",
+                                degraded="True",
+                                degraded_reason="UnhealthyMembers",
+                                degraded_message="etcd cluster is degraded",
+                            ),
+                            _make_cluster_operator("authentication"),
+                        )
+                    )
+                ),
+            },
+            failed_msg="Following cluster operators are not available:\n"
+            "  etcd - Reason: EtcdMembersDown, Message: members are unhealthy\n\n"
+            "Following cluster operators are degraded:\n"
+            "  etcd - Reason: UnhealthyMembers, Message: etcd cluster is degraded",
+        ),
+        RuleScenarioParams(
+            "operator has no Available condition",
+            oc_cmd_output_dict={
+                ("get", ("clusteroperators", "-o", "json")): CmdOutput(
+                    json.dumps(
+                        {
+                            "items": [
+                                {
+                                    "metadata": {"name": "broken-operator"},
+                                    "status": {
+                                        "conditions": [
+                                            {"type": "Progressing", "status": "False"},
+                                        ],
+                                    },
+                                }
+                            ]
+                        }
+                    )
+                ),
+            },
+            failed_msg="Following cluster operators are not available:\n"
+            "  broken-operator - Reason: NoAvailableCondition, Message: No Available condition found",
+        ),
+        RuleScenarioParams(
+            "no cluster operators found in cluster",
+            oc_cmd_output_dict={
+                ("get", ("clusteroperators", "-o", "json")): CmdOutput(json.dumps({"items": []})),
+            },
+            failed_msg="No cluster operators found in cluster",
+        ),
+    ]
+
+    scenario_warning = [
+        RuleScenarioParams(
+            "cluster operator is progressing",
+            oc_cmd_output_dict={
+                ("get", ("clusteroperators", "-o", "json")): CmdOutput(
+                    json.dumps(
+                        _cluster_operators_response(
+                            _make_cluster_operator("authentication"),
+                            _make_cluster_operator(
+                                "kube-apiserver",
+                                progressing="True",
+                                progressing_reason="UpdatingKubeAPIServer",
+                                progressing_message="updating to 4.16.62",
+                            ),
+                        )
+                    )
+                ),
+            },
+            failed_msg="Following cluster operators are progressing:\n"
+            "  kube-apiserver - Reason: UpdatingKubeAPIServer, Message: updating to 4.16.62",
+        ),
+        RuleScenarioParams(
+            "cluster operator is not upgradeable",
+            oc_cmd_output_dict={
+                ("get", ("clusteroperators", "-o", "json")): CmdOutput(
+                    json.dumps(
+                        _cluster_operators_response(
+                            _make_cluster_operator("authentication"),
+                            _make_cluster_operator(
+                                "machine-config",
+                                upgradeable="False",
+                                upgradeable_reason="PoolNotUpToDate",
+                                upgradeable_message="worker pool is not up to date",
+                            ),
+                        )
+                    )
+                ),
+            },
+            failed_msg="Following cluster operators are not upgradeable:\n"
+            "  machine-config - Reason: PoolNotUpToDate, Message: worker pool is not up to date",
+        ),
+        RuleScenarioParams(
+            "cluster operator is both progressing and not upgradeable",
+            oc_cmd_output_dict={
+                ("get", ("clusteroperators", "-o", "json")): CmdOutput(
+                    json.dumps(
+                        _cluster_operators_response(
+                            _make_cluster_operator(
+                                "kube-apiserver",
+                                progressing="True",
+                                progressing_reason="Updating",
+                                progressing_message="rolling out",
+                                upgradeable="False",
+                                upgradeable_reason="Pending",
+                                upgradeable_message="waiting for rollout",
+                            ),
+                        )
+                    )
+                ),
+            },
+            failed_msg="Following cluster operators are progressing:\n"
+            "  kube-apiserver - Reason: Updating, Message: rolling out\n\n"
+            "Following cluster operators are not upgradeable:\n"
+            "  kube-apiserver - Reason: Pending, Message: waiting for rollout",
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        """Test passed scenarios."""
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        """Test failed scenarios."""
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_warning)
+    def test_scenario_warning(self, scenario_params, tested_object):
+        """Test warning scenarios."""
+        RuleTestBase.test_scenario_warning(self, scenario_params, tested_object)
+
+
 def create_mock_console_pod(name):
     """Create a mock console pod object."""
     mock_pod = Mock()
@@ -1308,18 +1576,14 @@ class TestVerifyWebConsoleDisabled(RuleTestBase):
         RuleScenarioParams(
             "console is disabled (Removed) and no pods in openshift-console namespace",
             tested_object_mock_dict={
-                "oc_api.run_oc_command": Mock(
-                    return_value=(0, json.dumps(_console_config("Removed")), "")
-                ),
+                "oc_api.run_oc_command": Mock(return_value=(0, json.dumps(_console_config("Removed")), "")),
                 "oc_api.get_all_pods": Mock(return_value=[]),
             },
         ),
         RuleScenarioParams(
             "console is disabled (Unmanaged) and no pods in openshift-console namespace",
             tested_object_mock_dict={
-                "oc_api.run_oc_command": Mock(
-                    return_value=(0, json.dumps(_console_config("Unmanaged")), "")
-                ),
+                "oc_api.run_oc_command": Mock(return_value=(0, json.dumps(_console_config("Unmanaged")), "")),
                 "oc_api.get_all_pods": Mock(return_value=[]),
             },
         ),
@@ -1329,17 +1593,13 @@ class TestVerifyWebConsoleDisabled(RuleTestBase):
         RuleScenarioParams(
             "console operator is Managed (web console enabled)",
             tested_object_mock_dict={
-                "oc_api.run_oc_command": Mock(
-                    return_value=(0, json.dumps(_console_config("Managed")), "")
-                ),
+                "oc_api.run_oc_command": Mock(return_value=(0, json.dumps(_console_config("Managed")), "")),
             },
         ),
         RuleScenarioParams(
             "console operator managementState is missing",
             tested_object_mock_dict={
-                "oc_api.run_oc_command": Mock(
-                    return_value=(0, json.dumps(_console_config()), "")
-                ),
+                "oc_api.run_oc_command": Mock(return_value=(0, json.dumps(_console_config()), "")),
             },
         ),
     ]
@@ -1348,9 +1608,7 @@ class TestVerifyWebConsoleDisabled(RuleTestBase):
         RuleScenarioParams(
             "console is disabled but pods still exist in openshift-console namespace",
             tested_object_mock_dict={
-                "oc_api.run_oc_command": Mock(
-                    return_value=(0, json.dumps(_console_config("Removed")), "")
-                ),
+                "oc_api.run_oc_command": Mock(return_value=(0, json.dumps(_console_config("Removed")), "")),
                 "oc_api.get_all_pods": Mock(
                     return_value=[
                         create_mock_console_pod("console-7b4f8c6d9-abc12"),
@@ -1471,4 +1729,324 @@ class TestVerifyNetworkDiagnosticsDisabled(RuleTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):
         """Test failed scenarios."""
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+
+def create_mock_nfd_pod(name, phase, all_containers_ready=True):
+    """Create a mock NFD pod object."""
+    mock_pod = Mock()
+    container_statuses = [
+        {"ready": all_containers_ready},
+    ]
+    mock_pod.as_dict.return_value = {
+        "metadata": {"namespace": "openshift-nfd", "name": name},
+        "status": {
+            "phase": phase,
+            "containerStatuses": container_statuses,
+        },
+    }
+    return mock_pod
+
+
+def _nfd_subscriptions(include_nfd=True):
+    """Build a subscriptions response, optionally including the nfd subscription."""
+    items = []
+    if include_nfd:
+        items.append(
+            {
+                "metadata": {"name": "nfd-sub", "namespace": "openshift-nfd"},
+                "spec": {"name": "nfd", "source": "redhat-operators"},
+            }
+        )
+    items.append(
+        {
+            "metadata": {"name": "other-operator", "namespace": "openshift-operators"},
+            "spec": {"name": "other", "source": "redhat-operators"},
+        }
+    )
+    return {"items": items}
+
+
+class TestVerifyNfdOperatorHealth(RuleTestBase):
+    """Test VerifyNfdOperatorHealth rule."""
+
+    tested_type = VerifyNfdOperatorHealth
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "NFD operator installed and all pods are healthy",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_nfd_pod("nfd-controller-manager-abc123", "Running", True),
+                        create_mock_nfd_pod("nfd-worker-xyz789", "Running", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nfd_subscriptions(include_nfd=True))
+                ),
+            },
+        ),
+    ]
+
+    scenario_prerequisite_not_fulfilled = [
+        RuleScenarioParams(
+            "NFD operator subscription not found",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nfd_subscriptions(include_nfd=False))
+                ),
+            },
+        ),
+        RuleScenarioParams(
+            "no subscriptions exist in cluster",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps({"items": []})
+                ),
+            },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "NFD operator installed but no pods found",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(return_value=[]),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nfd_subscriptions(include_nfd=True))
+                ),
+            },
+            failed_msg="No pods found in openshift-nfd namespace. NFD operator may not be fully deployed.",
+        ),
+        RuleScenarioParams(
+            "NFD operator installed but some pods are not running",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_nfd_pod("nfd-controller-manager-abc123", "Running", True),
+                        create_mock_nfd_pod("nfd-worker-xyz789", "Pending", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nfd_subscriptions(include_nfd=True))
+                ),
+            },
+            failed_msg="NFD operator has unhealthy pods in openshift-nfd namespace:\n"
+            "  nfd-worker-xyz789 - Phase: Pending",
+        ),
+        RuleScenarioParams(
+            "NFD operator installed but containers not ready",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_nfd_pod("nfd-controller-manager-abc123", "Running", False),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nfd_subscriptions(include_nfd=True))
+                ),
+            },
+            failed_msg="NFD operator has unhealthy pods in openshift-nfd namespace:\n"
+            "  nfd-controller-manager-abc123 - Running, Not all containers ready",
+        ),
+        RuleScenarioParams(
+            "NFD operator installed but pod status unknown",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_nfd_pod("nfd-controller-manager-abc123", "Succeeded", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nfd_subscriptions(include_nfd=True))
+                ),
+            },
+            failed_msg="Failed to evaluate status for NFD pod(s):\n  nfd-controller-manager-abc123",
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
+    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        """Test that prerequisite is not met when NFD operator is not installed."""
+        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        """Test that rule passes when all NFD pods are healthy."""
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        """Test that rule fails when NFD pods are unhealthy or missing."""
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+
+def create_mock_acm_pod(name, phase, all_containers_ready=True):
+    """Create a mock ACM pod object."""
+    mock_pod = Mock()
+    container_statuses = [
+        {"ready": all_containers_ready},
+    ]
+    mock_pod.as_dict.return_value = {
+        "metadata": {"namespace": "open-cluster-management", "name": name},
+        "status": {
+            "phase": phase,
+            "containerStatuses": container_statuses,
+        },
+    }
+    return mock_pod
+
+
+def _acm_subscriptions(include_acm=True):
+    """Build a subscriptions response, optionally including the ACM subscription."""
+    items = []
+    if include_acm:
+        items.append(
+            {
+                "metadata": {"name": "acm-sub", "namespace": "open-cluster-management"},
+                "spec": {"name": "advanced-cluster-management", "source": "redhat-operators"},
+            }
+        )
+    items.append(
+        {
+            "metadata": {"name": "other-operator", "namespace": "openshift-operators"},
+            "spec": {"name": "other", "source": "redhat-operators"},
+        }
+    )
+    return {"items": items}
+
+
+class TestVerifyAcmOperatorHealth(RuleTestBase):
+    """Test VerifyAcmOperatorHealth rule."""
+
+    tested_type = VerifyAcmOperatorHealth
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "ACM operator installed and all pods are healthy",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_acm_pod("multiclusterhub-operator-abc123", "Running", True),
+                        create_mock_acm_pod("cluster-manager-xyz789", "Running", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_acm_subscriptions(include_acm=True))
+                ),
+            },
+        ),
+    ]
+
+    scenario_prerequisite_not_fulfilled = [
+        RuleScenarioParams(
+            "ACM operator subscription not found",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_acm_subscriptions(include_acm=False))
+                ),
+            },
+        ),
+        RuleScenarioParams(
+            "no subscriptions exist in cluster",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps({"items": []})
+                ),
+            },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "ACM operator installed but no pods found",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(return_value=[]),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_acm_subscriptions(include_acm=True))
+                ),
+            },
+            failed_msg="No pods found in open-cluster-management namespace. ACM operator may not be fully deployed.",
+        ),
+        RuleScenarioParams(
+            "ACM operator installed but some pods are not running",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_acm_pod("multiclusterhub-operator-abc123", "Running", True),
+                        create_mock_acm_pod("cluster-manager-xyz789", "Pending", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_acm_subscriptions(include_acm=True))
+                ),
+            },
+            failed_msg="ACM operator has unhealthy pods in open-cluster-management namespace:\n"
+            "  cluster-manager-xyz789 - Phase: Pending",
+        ),
+        RuleScenarioParams(
+            "ACM operator installed but containers not ready",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_acm_pod("multiclusterhub-operator-abc123", "Running", False),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_acm_subscriptions(include_acm=True))
+                ),
+            },
+            failed_msg="ACM operator has unhealthy pods in open-cluster-management namespace:\n"
+            "  multiclusterhub-operator-abc123 - Running, Not all containers ready",
+        ),
+        RuleScenarioParams(
+            "ACM operator installed but pod status unknown",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_acm_pod("multiclusterhub-operator-abc123", "Succeeded", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_acm_subscriptions(include_acm=True))
+                ),
+            },
+            failed_msg="Failed to evaluate status for ACM pod(s):\n  multiclusterhub-operator-abc123",
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
+    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        """Test that prerequisite is not met when ACM operator is not installed."""
+        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        """Test that rule passes when all ACM pods are healthy."""
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        """Test that rule fails when ACM pods are unhealthy or missing."""
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)

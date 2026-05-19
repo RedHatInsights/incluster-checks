@@ -867,6 +867,107 @@ class VerifyClusterOperatorsAvailable(OrchestratorRule):
         return {condition.get("type"): condition for condition in conditions}
 
 
+class VerifyNNCPsAvailable(OrchestratorRule):
+    """Verify all NodeNetworkConfigurationPolicies are in Available state.
+
+    NodeNetworkConfigurationPolicies (NNCP) are managed by the NMState operator
+    to declaratively configure node networking (bonds, bridges, VLANs). This rule
+    verifies that all NNCPs have been successfully applied after node reboots,
+    ensuring network configuration is healthy across the cluster.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_nncps_available"
+    title = "Verify all NodeNetworkConfigurationPolicies are available"
+    supported_profiles = {"telco-base"}
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-‐-Verify-NNCPs-available",
+    ]
+
+    def run_rule(self):
+        """Check NNCP status conditions: Available and Degraded."""
+        rc, nncps_output, err = self.oc_api.run_oc_command(
+            "get",
+            ["nodenetworkconfigurationpolicies.nmstate.io", "-A", "-o", "json"],
+            raise_on_error=False,
+            timeout=45,
+        )
+
+        if rc != 0:
+            return RuleResult.not_applicable(
+                "Unable to query NodeNetworkConfigurationPolicies. "
+                "NMState operator may not be installed on this cluster."
+            )
+
+        try:
+            nncps_data = json.loads(nncps_output)
+        except json.JSONDecodeError as e:
+            raise UnExpectedSystemOutput(
+                ip=self.get_host_ip(),
+                cmd="oc get nodenetworkconfigurationpolicies.nmstate.io -A -o json",
+                output=nncps_output,
+                message=f"Failed to parse JSON: {e}",
+            ) from e
+
+        items = nncps_data.get("items", [])
+
+        if not items:
+            return RuleResult.not_applicable(
+                "No NodeNetworkConfigurationPolicies found in cluster. " "NMState operator may not be configured."
+            )
+
+        unavailable_nncps = []
+        degraded_nncps = []
+
+        for nncp in items:
+            metadata = nncp.get("metadata", {})
+            name = metadata.get("name", "unknown")
+            namespace = metadata.get("namespace", "")
+            nncp_identifier = f"{namespace}/{name}" if namespace else name
+
+            conditions = self._get_conditions_dict(nncp)
+
+            available_condition = conditions.get("Available")
+            degraded_condition = conditions.get("Degraded")
+
+            if not available_condition or available_condition.get("status") != "True":
+                reason = "NoAvailableCondition"
+                message = "No Available condition found"
+                if available_condition:
+                    reason = available_condition.get("reason", "Unknown")
+                    message = available_condition.get("message", "")
+                unavailable_nncps.append(f"{nncp_identifier} - Reason: {reason}, Message: {message}")
+
+            if degraded_condition and degraded_condition.get("status") == "True":
+                reason = degraded_condition.get("reason", "Unknown")
+                message = degraded_condition.get("message", "")
+                degraded_nncps.append(f"{nncp_identifier} - Reason: {reason}, Message: {message}")
+
+        error_messages = []
+
+        if unavailable_nncps:
+            error_messages.append(
+                "Following NodeNetworkConfigurationPolicies are not available:\n  " + "\n  ".join(unavailable_nncps)
+            )
+
+        if degraded_nncps:
+            error_messages.append(
+                "Following NodeNetworkConfigurationPolicies are degraded:\n  " + "\n  ".join(degraded_nncps)
+            )
+
+        if error_messages:
+            return RuleResult.failed("\n\n".join(error_messages))
+
+        return RuleResult.passed()
+
+    @staticmethod
+    def _get_conditions_dict(nncp):
+        """Build a dict of condition type to condition object for an NNCP."""
+        status = nncp.get("status", {})
+        conditions = status.get("conditions", [])
+        return {condition.get("type"): condition for condition in conditions}
+
+
 class VerifyWebConsoleDisabled(OrchestratorRule):
     """Verify OpenShift web console is disabled and no pods exist in openshift-console namespace.
 

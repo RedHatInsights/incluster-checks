@@ -25,6 +25,7 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     VerifyInternalRegistry,
     VerifyNetworkDiagnosticsDisabled,
     VerifyNfdOperatorHealth,
+    VerifyNNCPsAvailable,
     VerifyWebConsoleDisabled,
 )
 from in_cluster_checks.utils.enums import Status
@@ -1331,6 +1332,47 @@ def _cluster_operators_response(*operators):
     return {"items": list(operators)}
 
 
+def _make_nncp(
+    name,
+    namespace="",
+    available="True",
+    degraded="False",
+    available_reason="SuccessfullyConfigured",
+    available_message="",
+    degraded_reason="",
+    degraded_message="",
+):
+    """Build a single NNCP dict for test data."""
+    metadata = {"name": name}
+    if namespace:
+        metadata["namespace"] = namespace
+
+    return {
+        "metadata": metadata,
+        "status": {
+            "conditions": [
+                {
+                    "type": "Available",
+                    "status": available,
+                    "reason": available_reason,
+                    "message": available_message,
+                },
+                {
+                    "type": "Degraded",
+                    "status": degraded,
+                    "reason": degraded_reason,
+                    "message": degraded_message,
+                },
+            ],
+        },
+    }
+
+
+def _nncps_response(*nncps):
+    """Build an NNCP JSON API response."""
+    return {"items": list(nncps)}
+
+
 class TestVerifyClusterOperatorsAvailable(RuleTestBase):
     """Test VerifyClusterOperatorsAvailable rule."""
 
@@ -1546,6 +1588,130 @@ class TestVerifyClusterOperatorsAvailable(RuleTestBase):
     def test_scenario_warning(self, scenario_params, tested_object):
         """Test warning scenarios."""
         RuleTestBase.test_scenario_warning(self, scenario_params, tested_object)
+
+
+class TestVerifyNNCPsAvailable(RuleTestBase):
+    """Test VerifyNNCPsAvailable rule."""
+
+    tested_type = VerifyNNCPsAvailable
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "all NNCPs are available and not degraded",
+            oc_cmd_output_dict={
+                ("get", ("nodenetworkconfigurationpolicies.nmstate.io", "-A", "-o", "json")): CmdOutput(
+                    json.dumps(
+                        _nncps_response(
+                            _make_nncp("bond-config"),
+                            _make_nncp("vlan-config", namespace="default"),
+                        )
+                    )
+                ),
+            },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "NNCP is not available",
+            oc_cmd_output_dict={
+                ("get", ("nodenetworkconfigurationpolicies.nmstate.io", "-A", "-o", "json")): CmdOutput(
+                    json.dumps(
+                        _nncps_response(
+                            _make_nncp("bond-config"),
+                            _make_nncp(
+                                "failed-config",
+                                available="False",
+                                available_reason="ConfigurationFailed",
+                                available_message="Failed to apply bond configuration",
+                            ),
+                        )
+                    )
+                ),
+            },
+            failed_msg="Following NodeNetworkConfigurationPolicies are not available:\n"
+            "  failed-config - Reason: ConfigurationFailed, Message: Failed to apply bond configuration",
+        ),
+        RuleScenarioParams(
+            "NNCP is degraded",
+            oc_cmd_output_dict={
+                ("get", ("nodenetworkconfigurationpolicies.nmstate.io", "-A", "-o", "json")): CmdOutput(
+                    json.dumps(
+                        _nncps_response(
+                            _make_nncp("bond-config"),
+                            _make_nncp(
+                                "degraded-config",
+                                degraded="True",
+                                degraded_reason="NodeNotReady",
+                                degraded_message="Node connectivity lost",
+                            ),
+                        )
+                    )
+                ),
+            },
+            failed_msg="Following NodeNetworkConfigurationPolicies are degraded:\n"
+            "  degraded-config - Reason: NodeNotReady, Message: Node connectivity lost",
+        ),
+        RuleScenarioParams(
+            "NNCP both unavailable and degraded",
+            oc_cmd_output_dict={
+                ("get", ("nodenetworkconfigurationpolicies.nmstate.io", "-A", "-o", "json")): CmdOutput(
+                    json.dumps(
+                        _nncps_response(
+                            _make_nncp(
+                                "broken-config",
+                                available="False",
+                                available_reason="ApplyFailed",
+                                available_message="Configuration cannot be applied",
+                                degraded="True",
+                                degraded_reason="RollbackFailed",
+                                degraded_message="Failed to rollback configuration",
+                            ),
+                        )
+                    )
+                ),
+            },
+            failed_msg="Following NodeNetworkConfigurationPolicies are not available:\n"
+            "  broken-config - Reason: ApplyFailed, Message: Configuration cannot be applied\n\n"
+            "Following NodeNetworkConfigurationPolicies are degraded:\n"
+            "  broken-config - Reason: RollbackFailed, Message: Failed to rollback configuration",
+        ),
+    ]
+
+    scenario_not_applicable = [
+        RuleScenarioParams(
+            "no NNCPs exist (NMState not used)",
+            oc_cmd_output_dict={
+                ("get", ("nodenetworkconfigurationpolicies.nmstate.io", "-A", "-o", "json")): CmdOutput(
+                    json.dumps({"items": []})
+                ),
+            },
+            failed_msg="No NodeNetworkConfigurationPolicies found in cluster. "
+            "NMState operator may not be configured.",
+        ),
+        RuleScenarioParams(
+            "NMState operator not installed",
+            oc_cmd_output_dict={
+                ("get", ("nodenetworkconfigurationpolicies.nmstate.io", "-A", "-o", "json")): CmdOutput(
+                    "", return_code=1
+                ),
+            },
+            failed_msg="Unable to query NodeNetworkConfigurationPolicies. "
+            "NMState operator may not be installed on this cluster.",
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_not_applicable)
+    def test_scenario_not_applicable(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_not_applicable(self, scenario_params, tested_object)
 
 
 def create_mock_console_pod(name):

@@ -1373,6 +1373,24 @@ def _nncps_response(*nncps):
     return {"items": list(nncps)}
 
 
+def _nmstate_subscriptions(include_nmstate=True):
+    """Build subscriptions API response for NMState operator."""
+    items = []
+    if include_nmstate:
+        items.append(
+            {
+                "metadata": {
+                    "name": "kubernetes-nmstate-operator",
+                    "namespace": "openshift-nmstate",
+                },
+                "spec": {
+                    "name": "kubernetes-nmstate-operator",
+                },
+            }
+        )
+    return {"items": items}
+
+
 class TestVerifyClusterOperatorsAvailable(RuleTestBase):
     """Test VerifyClusterOperatorsAvailable rule."""
 
@@ -1599,6 +1617,9 @@ class TestVerifyNNCPsAvailable(RuleTestBase):
         RuleScenarioParams(
             "all NNCPs are available and not degraded",
             oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nmstate_subscriptions(include_nmstate=True))
+                ),
                 ("get", ("nodenetworkconfigurationpolicies.nmstate.io", "-A", "-o", "json")): CmdOutput(
                     json.dumps(
                         _nncps_response(
@@ -1611,10 +1632,32 @@ class TestVerifyNNCPsAvailable(RuleTestBase):
         ),
     ]
 
+    scenario_prerequisite_not_fulfilled = [
+        RuleScenarioParams(
+            "NMState operator subscription not found",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nmstate_subscriptions(include_nmstate=False))
+                ),
+            },
+        ),
+        RuleScenarioParams(
+            "no subscriptions exist in cluster",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps({"items": []})
+                ),
+            },
+        ),
+    ]
+
     scenario_failed = [
         RuleScenarioParams(
             "NNCP is not available",
             oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nmstate_subscriptions(include_nmstate=True))
+                ),
                 ("get", ("nodenetworkconfigurationpolicies.nmstate.io", "-A", "-o", "json")): CmdOutput(
                     json.dumps(
                         _nncps_response(
@@ -1635,6 +1678,9 @@ class TestVerifyNNCPsAvailable(RuleTestBase):
         RuleScenarioParams(
             "NNCP is degraded",
             oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nmstate_subscriptions(include_nmstate=True))
+                ),
                 ("get", ("nodenetworkconfigurationpolicies.nmstate.io", "-A", "-o", "json")): CmdOutput(
                     json.dumps(
                         _nncps_response(
@@ -1655,6 +1701,9 @@ class TestVerifyNNCPsAvailable(RuleTestBase):
         RuleScenarioParams(
             "NNCP both unavailable and degraded",
             oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nmstate_subscriptions(include_nmstate=True))
+                ),
                 ("get", ("nodenetworkconfigurationpolicies.nmstate.io", "-A", "-o", "json")): CmdOutput(
                     json.dumps(
                         _nncps_response(
@@ -1680,30 +1729,27 @@ class TestVerifyNNCPsAvailable(RuleTestBase):
 
     scenario_not_applicable = [
         RuleScenarioParams(
-            "no NNCPs exist (NMState not used)",
+            "no NNCPs exist (NMState operator installed but not configured)",
             oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nmstate_subscriptions(include_nmstate=True))
+                ),
                 ("get", ("nodenetworkconfigurationpolicies.nmstate.io", "-A", "-o", "json")): CmdOutput(
                     json.dumps({"items": []})
                 ),
             },
             failed_msg="No NodeNetworkConfigurationPolicies found in cluster. "
-            "NMState operator may not be configured.",
-        ),
-        RuleScenarioParams(
-            "NMState operator not installed",
-            oc_cmd_output_dict={
-                ("get", ("nodenetworkconfigurationpolicies.nmstate.io", "-A", "-o", "json")): CmdOutput(
-                    "", return_code=1
-                ),
-            },
-            failed_msg="Unable to query NodeNetworkConfigurationPolicies. "
-            "NMState operator may not be installed on this cluster.",
+            "NMState operator is installed but no network policies are configured.",
         ),
     ]
 
     @pytest.mark.parametrize("scenario_params", scenario_passed)
     def test_scenario_passed(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
+    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
 
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):

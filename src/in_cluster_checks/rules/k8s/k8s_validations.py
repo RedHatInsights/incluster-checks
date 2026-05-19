@@ -881,23 +881,52 @@ class VerifyNNCPsAvailable(OrchestratorRule):
     title = "Verify all NodeNetworkConfigurationPolicies are available"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-‐-Verify-NNCPs-available",
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s---Verify-NNCPs-available",
     ]
 
-    def run_rule(self):
-        """Check NNCP status conditions: Available and Degraded."""
-        rc, nncps_output, err = self.oc_api.run_oc_command(
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        """Check that the NMState operator has been installed via a Subscription.
+
+        Queries the cluster for a Subscription resource with the
+        ``kubernetes-nmstate-operator`` package name. If none is found the
+        rule is not applicable.
+        """
+        _, subscriptions_output, _ = self.oc_api.run_oc_command(
             "get",
-            ["nodenetworkconfigurationpolicies.nmstate.io", "-A", "-o", "json"],
-            raise_on_error=False,
+            ["subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json"],
             timeout=45,
         )
 
-        if rc != 0:
-            return RuleResult.not_applicable(
-                "Unable to query NodeNetworkConfigurationPolicies. "
-                "NMState operator may not be installed on this cluster."
-            )
+        try:
+            subscriptions_data = json.loads(subscriptions_output)
+        except json.JSONDecodeError as e:
+            raise UnExpectedSystemOutput(
+                ip=self.get_host_ip(),
+                cmd="oc get subscriptions.operators.coreos.com --all-namespaces -o json",
+                output=subscriptions_output,
+                message=f"Failed to parse JSON: {e}",
+            ) from e
+
+        items = subscriptions_data.get("items", [])
+
+        for subscription in items:
+            spec = subscription.get("spec", {})
+            package_name = spec.get("name", "")
+            if package_name == "kubernetes-nmstate-operator":
+                return PrerequisiteResult.met()
+
+        return PrerequisiteResult.not_met(
+            "NMState operator subscription not found. "
+            "This rule only applies to clusters with NMState operator installed."
+        )
+
+    def run_rule(self):
+        """Check NNCP status conditions: Available and Degraded."""
+        _, nncps_output, _ = self.oc_api.run_oc_command(
+            "get",
+            ["nodenetworkconfigurationpolicies.nmstate.io", "-A", "-o", "json"],
+            timeout=45,
+        )
 
         try:
             nncps_data = json.loads(nncps_output)
@@ -913,7 +942,8 @@ class VerifyNNCPsAvailable(OrchestratorRule):
 
         if not items:
             return RuleResult.not_applicable(
-                "No NodeNetworkConfigurationPolicies found in cluster. " "NMState operator may not be configured."
+                "No NodeNetworkConfigurationPolicies found in cluster. "
+                "NMState operator is installed but no network policies are configured."
             )
 
         unavailable_nncps = []

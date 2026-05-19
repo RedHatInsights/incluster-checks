@@ -97,9 +97,17 @@ class VerifyDnsReachability(OrchestratorRule):
 
         # Check dig availability on one node
         class DigChecker(DataCollector):
+            """Check if dig binary is available on nodes."""
+
             objective_hosts: ClassVar[list] = [Objectives.ALL_NODES]
 
             def collect_data(self, **kwargs) -> bool:
+                """
+                Check if dig command is available.
+
+                Returns:
+                    bool: True if dig is available, False otherwise
+                """
                 return_code, _, _ = self.run_cmd("which dig")
                 return return_code == 0
 
@@ -217,9 +225,17 @@ class VerifyDnsReachability(OrchestratorRule):
 
         # Use DataCollector to read resolv.conf from all nodes
         class ResolvConfReader(DataCollector):
+            """Read nameservers from /etc/resolv.conf on all nodes."""
+
             objective_hosts: ClassVar[list] = [Objectives.ALL_NODES]
 
             def collect_data(self, **kwargs) -> list[str]:
+                """
+                Extract nameserver entries from /etc/resolv.conf.
+
+                Returns:
+                    list[str]: List of nameserver IP addresses
+                """
                 resolv_conf_path = "/etc/resolv.conf"
 
                 if not self.file_utils.is_file_exist(resolv_conf_path):
@@ -266,9 +282,17 @@ class VerifyDnsReachability(OrchestratorRule):
 
         # Use DataCollector to read resolv.conf and extract search domain
         class SearchDomainReader(DataCollector):
+            """Extract search domain from /etc/resolv.conf on nodes."""
+
             objective_hosts: ClassVar[list] = [Objectives.ALL_NODES]
 
             def collect_data(self, **kwargs) -> str:
+                """
+                Extract the search domain from /etc/resolv.conf.
+
+                Returns:
+                    str: First search domain found, or empty string if none exists
+                """
                 resolv_conf_path = "/etc/resolv.conf"
 
                 if not self.file_utils.is_file_exist(resolv_conf_path):

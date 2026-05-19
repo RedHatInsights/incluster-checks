@@ -1094,7 +1094,6 @@ class TestValidateAllPoliciesCompliant(RuleTestBase):
     # No policies found
     no_policies = {"items": []}
 
-    # Scenario where all policies are compliant
     scenario_passed = [
         RuleScenarioParams(
             "all policies are compliant",
@@ -1102,8 +1101,12 @@ class TestValidateAllPoliciesCompliant(RuleTestBase):
                 "oc_api.run_oc_command": Mock(return_value=(0, json.dumps(all_compliant_policies), ""))
             },
         ),
+        RuleScenarioParams(
+            "no policies found in cluster",
+            tested_object_mock_dict={"oc_api.run_oc_command": Mock(return_value=(0, json.dumps(no_policies), ""))},
+        ),
     ]
-    # Scenario where some policies are non-compliant
+
     scenario_failed = [
         RuleScenarioParams(
             "some policies are non-compliant",
@@ -1116,15 +1119,6 @@ class TestValidateAllPoliciesCompliant(RuleTestBase):
         ),
     ]
 
-    # Scenario where no policies are found
-    scenario_warning = [
-        RuleScenarioParams(
-            "no policies found in cluster",
-            tested_object_mock_dict={"oc_api.run_oc_command": Mock(return_value=(0, json.dumps(no_policies), ""))},
-            failed_msg="No policies found in cluster",
-        ),
-    ]
-
     @pytest.mark.parametrize("scenario_params", scenario_passed)
     def test_scenario_passed(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
@@ -1132,10 +1126,6 @@ class TestValidateAllPoliciesCompliant(RuleTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
-
-    @pytest.mark.parametrize("scenario_params", scenario_warning)
-    def test_scenario_warning(self, scenario_params, tested_object):
-        RuleTestBase.test_scenario_warning(self, scenario_params, tested_object)
 
 
 def create_mock_registry_pod(name, namespace, phase, all_containers_ready=True):

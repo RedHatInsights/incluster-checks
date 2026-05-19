@@ -661,7 +661,7 @@ class ValidateAllPoliciesCompliant(OrchestratorRule):
         items = policies_data.get("items", [])
         # Check if there are any policies
         if not items:
-            return RuleResult.warning("No policies found in cluster")
+            return RuleResult.passed()
 
         non_compliant_policies = []
 

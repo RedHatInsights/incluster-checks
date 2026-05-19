@@ -1167,12 +1167,15 @@ class VerifyAcmOperatorHealth(OrchestratorRule):
             if not pod_status["all_containers_ready"]:
                 not_ready_pods.append(pod_status["status_message"])
 
-        if unknown_status_pods:
-            return RuleResult.failed("Failed to evaluate status for ACM pod(s):\n  " + "\n  ".join(unknown_status_pods))
-
-        if not_ready_pods:
-            message = f"ACM operator has unhealthy pods in {self.ACM_NAMESPACE} namespace:\n  "
-            message += "\n  ".join(not_ready_pods)
-            return RuleResult.failed(message)
+        if unknown_status_pods or not_ready_pods:
+            parts = []
+            if unknown_status_pods:
+                parts.append("Failed to evaluate status for ACM pod(s):\n  " + "\n  ".join(unknown_status_pods))
+            if not_ready_pods:
+                parts.append(
+                    f"ACM operator has unhealthy pods in {self.ACM_NAMESPACE} namespace:\n  "
+                    + "\n  ".join(not_ready_pods)
+                )
+            return RuleResult.failed("\n\n".join(parts))
 
         return RuleResult.passed()

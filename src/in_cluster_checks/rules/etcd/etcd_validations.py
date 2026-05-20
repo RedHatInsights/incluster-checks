@@ -9,6 +9,7 @@ import json
 
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.rule import OrchestratorRule, RuleResult
+from in_cluster_checks.core.rule_result import PrerequisiteResult
 from in_cluster_checks.utils.enums import Objectives
 from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
@@ -159,11 +160,31 @@ class EtcdMemberCountCheck(EtcdRule):
 
     Ported from HealthChecks EtcdMemberNumberValidator.
     Verifies etcd has sufficient members for quorum.
+
+    Not applicable to SNO (Single Node OpenShift) clusters which run with a single etcd member by design.
     """
 
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "etcd_has_three_members"
     title = "Check if there are at least 3 etcd members"
+
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        """
+        Check if this rule is applicable.
+
+        Returns:
+            PrerequisiteResult.not_met if cluster is SNO (single node),
+            PrerequisiteResult.met otherwise
+        """
+        nodes = self.oc_api.get_all_nodes()
+        node_count = len(nodes)
+
+        if node_count == 1:
+            return PrerequisiteResult.not_met(
+                "SNO cluster detected (1 node) - etcd member count check not applicable for single-node deployments"
+            )
+
+        return PrerequisiteResult.met()
 
     def run_rule(self):
         """

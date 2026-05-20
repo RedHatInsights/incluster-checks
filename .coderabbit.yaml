@@ -1,0 +1,115 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+
+language: en
+
+reviews:
+  auto_review:
+    enabled: true
+    drafts: false
+  request_changes_workflow: true
+
+  instructions: |
+    This is a Python framework for running health check rules on OpenShift clusters.
+    Prioritize these review concerns:
+
+    **Code cleanliness:**
+    - Flag any unnecessary code, dead code, or code that can be removed without affecting functionality.
+    - Flag redundant if-statements inside blocks that already guarantee the condition.
+    - If a function is too long, it should be broken into smaller, focused functions.
+    - Avoid unnecessary or fragmented quotation marks in log/error messages and comments.
+
+    **Logic correctness:**
+    - Verify set operations, conditional branches, and aggregation logic handle all cases including
+      edge cases and partial states.
+    - Verify docstrings and comments accurately reflect the actual implementation (e.g., if code uses
+      "dig", don't say "ping").
+    - Verify success/failure messages accurately reflect what was checked (e.g., "reachable from at least
+      one node" vs "reachable from all nodes").
+
+    **Error handling:**
+    - Do NOT silently catch and ignore exceptions. Prefer raising UnExpectedSystemOutput so the framework
+      can mark the result as SKIP with full details.
+    - Flag broad try/except blocks that return empty/default values and mask real failures.
+    - When catching specific exceptions (UnExpectedSystemOutput, JSONDecodeError), verify the code either
+      re-raises with context or has a strong reason to return a fallback value.
+
+    **Code reuse:**
+    - No duplicated logic. Check if similar code already exists elsewhere in the project before
+      adding new code. If the same or very similar logic exists, flag it and suggest reusing
+      the existing implementation.
+
+    **Error messages:**
+    - Error messages must be clear and informative so the end user can understand what went wrong.
+
+    **Link validation:**
+    - Verify that all links (wiki pages, documentation, external references) are valid and accessible and link content is relevant for the rule.
+
+  path_instructions:
+    - path: "src/in_cluster_checks/rules/**/*.py"
+      instructions: |
+        When reviewing rule implementations:
+
+        **Prerequisites:**
+        - Every rule that depends on a binary, package, or system condition MUST implement
+          is_prerequisite_fulfilled() returning PrerequisiteResult.not_met("reason") when missing.
+        - If a rule is profile-specific, it must declare supported_profiles = {"profile-name"}.
+
+        **Aggregation logic:**
+        - When aggregating results across nodes, verify the set math handles partial state correctly.
+          For example, `unreachable - reachable` silently masks the case where a resource is
+          healthy on some nodes but not others. Flag any set subtraction that could hide partial failures.
+        - When aggregating data from multiple nodes, verify ALL nodes' data is used, not just the first
+          successful one. Flag code that returns early with the first non-empty result (e.g., returning
+          the first node's /etc/resolv.conf instead of collecting from all nodes).
+        - For multi-node validation, verify messages clearly distinguish between:
+          * "reachable from all nodes" (universal - every node succeeded)
+          * "reachable from at least one node" (partial - some nodes succeeded)
+          * "unreachable from all nodes" (total failure - no nodes succeeded)
+          * "unreachable from any node" (partial failure - at least one node failed)
+
+        **Data sourcing and parameter passing:**
+        - Data should be defined and sourced at the right level. If data is available in run_rule(),
+          pass it as a parameter to helper methods rather than embedding data collection in lower-level methods.
+        - If a helper method needs configuration (e.g., list of DNS servers to check), pass it as a parameter
+          rather than having the helper discover it. This makes data flow explicit and testable.
+        - Avoid having data collectors read their configuration from nested helper calls. The orchestrating
+          rule should determine what to check and pass it down.
+
+        **Error handling:**
+        - Do NOT silently catch UnExpectedSystemOutput and return empty lists/dicts. Let it propagate so
+          the framework marks the result as SKIP with full context.
+        - Do NOT catch JSONDecodeError and return empty/default values. Raise UnExpectedSystemOutput with
+          the raw output and error details so users can diagnose the issue.
+        - Flag broad try/except blocks that mask real failures by returning fallback values.
+        - When catching specific exceptions, verify the code either re-raises with context or has a
+          documented reason to return a fallback value.
+
+        **Functional validation:**
+        - Verify the rule actually validates functionality, not just connectivity or presence.
+          For example, DNS checks should verify resolution works (nslookup/dig), not just reachability (ping).
+        - When checking resource health conditions (e.g., cluster operators), verify all relevant
+          conditions are covered, not just the primary one.
+
+        **Code cleanliness:**
+        - Rules must NOT use self.logger. Return messages via RuleResult.failed() or RuleResult.warning().
+        - Flag redundant if-statements inside blocks that already guarantee the condition.
+        - Flag variables or code paths that are defined but never used or can be removed.
+
+    - path: "tests/**/*.py"
+      instructions: |
+        When reviewing tests:
+        - DataCollectorScenarioParams uses the correct field names: cmd_input_output_dict (NOT cmd_to_output),
+          scenario_res (NOT expected_data). collect_data_kwargs is NOT a valid field.
+        - Prefer comprehensive test coverage. Check that tests cover all meaningful scenarios including
+          edge cases, partial state, empty output, and missing resources.
+        - When a new rule is added, the corresponding domain test must have an updated rule count.
+
+knowledge_base:
+  opt_out: false
+  learnings:
+    scope: auto
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - "**/CLAUDE.md"
+      - ".claude/rules/*.md"

@@ -80,14 +80,27 @@ if zone_type_lines is None or not zone_type_lines:
 
 So checking `is None` separately is redundant unless you specifically need to distinguish between `None` and empty collections.
 
+## Avoid Redundant Checks After Prerequisites
+
+**If `is_prerequisite_fulfilled()` already verifies a condition, don't check it again in `run_rule()`.**
+
+When a prerequisite verifies that data is available or a command succeeds, the rule can assume that condition holds. Avoid re-checking the same condition in the rule logic.
+
+**Pattern:**
+- Helper methods should raise `UnExpectedSystemOutput` if they fail
+- Prerequisites catch these exceptions and return `PrerequisiteResult.not_met()`
+- Rule logic calls the helper directly without checking for None/empty
+
 ## DRY Principle: Avoid Code Duplication
 
 **NEVER duplicate logic across multiple files or functions.** Follow the DRY (Don't Repeat Yourself) principle.
 
 When you find the same or very similar code in multiple places:
 1. Identify the common logic
-2. Extract it to a single location
+2. Extract it to a single location (shared base class, utility method, or helper function)
 3. Have all callers use the shared implementation
+
+When multiple rules share prerequisites or validation patterns, extract to a shared base class.
 
 **Benefits:**
 - Changes to logic only need to be made in one place
@@ -177,3 +190,7 @@ def has_resource(self) -> bool:
 **When tuples are OK:**
 - Tightly coupled values: `(success: bool, error_msg: str)`
 - Standard patterns: `run_cmd()` returns `(rc, out, err)`
+
+## Prefer Utility Functions
+
+**Check `src/in_cluster_checks/utils` for suitable functions before executing shell commands or implementing new logic.**

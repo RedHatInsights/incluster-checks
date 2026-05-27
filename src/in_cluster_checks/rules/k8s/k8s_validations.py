@@ -962,7 +962,37 @@ class VerifyWebConsoleDisabled(OrchestratorRule):
         return RuleResult.passed()
 
 
-class VerifyNfdOperatorHealth(OrchestratorRule):
+class SubscriptionOperatorRule(OrchestratorRule):
+    """Base class for operator health validation rules that check OLM subscriptions.
+
+    Subclasses must define:
+        operator_subscription_name (str): The operator package name in the Subscription (e.g., "nfd")
+        operator_display_name (str): Human-readable operator name for error messages (e.g., "Node Feature Discovery")
+    """
+
+    operator_subscription_name: str = NotImplemented
+    operator_display_name: str = NotImplemented
+
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        """Check that the operator has been installed via a Subscription.
+
+        Queries the cluster for a Subscription resource with the
+        operator_subscription_name package.  If none is found the rule is not applicable.
+        """
+        subscriptions_data = self.oc_api.get_operator_subscriptions()
+
+        for sub in subscriptions_data.get("items", []):
+            spec = sub.get("spec", {})
+            if spec.get("name") == self.operator_subscription_name:
+                return PrerequisiteResult.met()
+
+        return PrerequisiteResult.not_met(
+            f"{self.operator_subscription_name} operator subscription not found - "
+            f"{self.operator_display_name} operator is not installed on this cluster"
+        )
+
+
+class VerifyNfdOperatorHealth(SubscriptionOperatorRule):
     """Verify Node Feature Discovery (NFD) operator pods are healthy.
 
     NFD sets the stage for cluster functionality by labelling nodes with
@@ -981,38 +1011,10 @@ class VerifyNfdOperatorHealth(OrchestratorRule):
         "/psap-node-feature-discovery-operator.html",
     ]
 
+    operator_subscription_name = "nfd"
+    operator_display_name = "Node Feature Discovery"
+
     NFD_NAMESPACE = "openshift-nfd"
-
-    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
-        """Check that the NFD operator has been installed via a Subscription.
-
-        Queries the cluster for a Subscription resource with the
-        ``nfd`` package name.  If none is found the rule is not applicable.
-        """
-        _, subscriptions_output, _ = self.oc_api.run_oc_command(
-            "get",
-            ["subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json"],
-            timeout=45,
-        )
-
-        try:
-            subscriptions_data = json.loads(subscriptions_output)
-        except json.JSONDecodeError as e:
-            raise UnExpectedSystemOutput(
-                ip=self.get_host_ip(),
-                cmd="oc get subscriptions.operators.coreos.com --all-namespaces -o json",
-                output=subscriptions_output,
-                message=f"Failed to parse operator subscriptions: {e}",
-            ) from e
-
-        for sub in subscriptions_data.get("items", []):
-            spec = sub.get("spec", {})
-            if spec.get("name") == "nfd":
-                return PrerequisiteResult.met()
-
-        return PrerequisiteResult.not_met(
-            "NFD operator subscription not found - Node Feature Discovery operator is not installed on this cluster"
-        )
 
     def run_rule(self):
         """Verify all pods in the openshift-nfd namespace are Running and Ready."""
@@ -1117,7 +1119,7 @@ class VerifyNetworkDiagnosticsDisabled(OrchestratorRule):
         return RuleResult.passed()
 
 
-class VerifyAcmOperatorHealth(OrchestratorRule):
+class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
     """Verify Advanced Cluster Management (ACM) operator pods are healthy.
 
     ACM orchestrates multicluster lifecycle management on the hub cluster.
@@ -1136,40 +1138,10 @@ class VerifyAcmOperatorHealth(OrchestratorRule):
         "/2.12/html/install/installing#installing-while-connected-online",
     ]
 
+    operator_subscription_name = "advanced-cluster-management"
+    operator_display_name = "Advanced Cluster Management"
+
     ACM_NAMESPACE = "open-cluster-management"
-
-    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
-        """Check that the ACM operator has been installed via a Subscription.
-
-        Queries the cluster for a Subscription resource with the
-        ``advanced-cluster-management`` package name.  If none is found the
-        rule is not applicable.
-        """
-        _, subscriptions_output, _ = self.oc_api.run_oc_command(
-            "get",
-            ["subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json"],
-            timeout=45,
-        )
-
-        try:
-            subscriptions_data = json.loads(subscriptions_output)
-        except json.JSONDecodeError as e:
-            raise UnExpectedSystemOutput(
-                ip=self.get_host_ip(),
-                cmd="oc get subscriptions.operators.coreos.com --all-namespaces -o json",
-                output=subscriptions_output,
-                message=f"Failed to parse operator subscriptions: {e}",
-            ) from e
-
-        for sub in subscriptions_data.get("items", []):
-            spec = sub.get("spec", {})
-            if spec.get("name") == "advanced-cluster-management":
-                return PrerequisiteResult.met()
-
-        return PrerequisiteResult.not_met(
-            "ACM operator subscription not found - "
-            "Advanced Cluster Management operator is not installed on this cluster"
-        )
 
     def run_rule(self):
         """Verify all pods in the open-cluster-management namespace are Running and Ready."""
@@ -1199,6 +1171,64 @@ class VerifyAcmOperatorHealth(OrchestratorRule):
             if not_ready_pods:
                 parts.append(
                     f"ACM operator has unhealthy pods in {self.ACM_NAMESPACE} namespace:\n  "
+                    + "\n  ".join(not_ready_pods)
+                )
+            return RuleResult.failed("\n\n".join(parts))
+
+        return RuleResult.passed()
+
+
+class VerifyFarOperatorHealth(SubscriptionOperatorRule):
+    """Verify Fence Agents Remediation (FAR) operator pods are healthy.
+
+    FAR provides automatic node fencing and recovery for hardware failures.
+    This rule checks that the FAR operator has been installed (Subscription
+    exists) and that every pod in the openshift-workload-availability namespace
+    is Running with all containers ready.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_far_operator_health"
+    title = "Verify FAR operator pods are healthy"
+    supported_profiles = {"telco-base"}
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-FAR-operator-health",
+        "https://docs.openshift.com/container-platform/4.18/nodes/nodes/eco-fence-agents-remediation-operator.html",
+    ]
+
+    operator_subscription_name = "fence-agents-remediation"
+    operator_display_name = "Fence Agents Remediation"
+
+    FAR_NAMESPACE = "openshift-workload-availability"
+
+    def run_rule(self):
+        """Verify all pods in the openshift-workload-availability namespace are Running and Ready."""
+        pod_objects = self.oc_api.get_all_pods(namespace=self.FAR_NAMESPACE)
+
+        if not pod_objects:
+            return RuleResult.failed(
+                f"No pods found in {self.FAR_NAMESPACE} namespace. FAR operator may not be fully deployed."
+            )
+
+        not_ready_pods = []
+        unknown_status_pods = []
+
+        for pod in pod_objects:
+            pod_status = self.oc_api.get_pod_status(pod)
+            if pod_status is None:
+                pod_name = pod.as_dict().get("metadata", {}).get("name", "unknown")
+                unknown_status_pods.append(pod_name)
+                continue
+            if not pod_status["all_containers_ready"]:
+                not_ready_pods.append(pod_status["status_message"])
+
+        if unknown_status_pods or not_ready_pods:
+            parts = []
+            if unknown_status_pods:
+                parts.append("Failed to evaluate status for FAR pod(s):\n  " + "\n  ".join(unknown_status_pods))
+            if not_ready_pods:
+                parts.append(
+                    f"FAR operator has unhealthy pods in {self.FAR_NAMESPACE} namespace:\n  "
                     + "\n  ".join(not_ready_pods)
                 )
             return RuleResult.failed("\n\n".join(parts))

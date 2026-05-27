@@ -103,9 +103,9 @@ nameserver 8.8.8.8
             scenario_title="all_dns_servers_reachable_from_resolv_conf",
             tested_object_mock_dict={
                 "get_data_from_collector": Mock(return_value=[]),
-                "file_utils.is_file_exist": Mock(return_value=True),
             },
             cmd_input_output_dict={
+                "ls /etc/resolv.conf": CmdOutput("/etc/resolv.conf"),
                 "cat /etc/resolv.conf": CmdOutput(resolv_conf_content),
                 "dig +short +time=2 +tries=1 @192.168.1.1 cluster.local": CmdOutput("10.0.0.1\n"),
                 "dig +short +time=2 +tries=1 @8.8.8.8 cluster.local": CmdOutput("10.0.0.1\n"),
@@ -129,9 +129,10 @@ nameserver 8.8.8.8
             scenario_title="no_dns_servers_found",
             tested_object_mock_dict={
                 "get_data_from_collector": Mock(return_value=[]),
-                "file_utils.is_file_exist": Mock(return_value=False),
             },
-            cmd_input_output_dict={},
+            cmd_input_output_dict={
+                "ls /etc/resolv.conf": CmdOutput("", return_code=2),  # File not found
+            },
             failed_msg="No DNS servers found",
         ),
     ]

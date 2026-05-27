@@ -32,7 +32,9 @@ class DnsOperatorConfigCollector(OrchestratorDataCollector):
 
         # If DNS operator resource doesn't exist, return empty list
         if return_code != 0:
-            if "NotFound" in stderr or "not found" in stderr.lower():
+            # Check both stdout and stderr for NotFound (can appear in either)
+            combined_output = f"{dns_config_output} {stderr}"
+            if "NotFound" in combined_output or "not found" in combined_output.lower():
                 return []
             # Other errors should propagate
             raise UnExpectedSystemOutput(f"Failed to query DNS operator config: {stderr}")

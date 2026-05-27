@@ -55,8 +55,9 @@ reviews:
         When reviewing rule implementations:
 
         **Prerequisites:**
-        - Every rule that depends on a binary, package, or system condition MUST implement
-          is_prerequisite_fulfilled() returning PrerequisiteResult.not_met("reason") when missing.
+        - is_prerequisite_fulfilled() is ONLY required when checking optional packages, binaries, or
+          system conditions that may not exist. NOT required for core K8s resources (Nodes, Pods, etc).
+        - Base class default returns PrerequisiteResult.met() - only override when truly needed.
         - If a rule is profile-specific, it must declare supported_profiles = {"profile-name"}.
         - When checking if a prerequisite is met across multiple nodes, use all() not any().
           The rule should fail if ANY node lacks the required binary/condition, not just if ALL nodes lack it.

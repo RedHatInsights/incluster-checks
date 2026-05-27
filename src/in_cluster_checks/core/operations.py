@@ -507,5 +507,6 @@ class OrchestratorDataCollector(DataCollector):
         raise NotImplementedError(
             f"run_cmd('{cmd}', timeout={timeout}) is not available for "
             f"OrchestratorDataCollector ({self.__class__.__name__}). "
-            f"Use self.oc_api.run_rsh_cmd(namespace, pod, command) instead."
+            f"Use self.oc_api.run_oc_command(command, args) for oc commands, "
+            f"or self.oc_api.run_rsh_cmd(namespace, pod, command) for commands in pods."
         )

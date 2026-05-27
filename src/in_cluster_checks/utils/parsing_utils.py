@@ -5,6 +5,7 @@ Adapted from support/HealthChecks/tools/python_utils.py
 """
 
 import json
+import re
 from datetime import datetime
 from typing import Any, Dict, Union
 
@@ -126,3 +127,69 @@ def get_dict_from_string(text: str, delimiter: str = None) -> Dict[str, Union[st
             result[key] = value
 
     return result
+
+
+def format_memory(value: str) -> str:
+    """Convert Kubernetes memory value to human-readable format (1-4 digits).
+
+    Args:
+        value: Memory value with unit (e.g., "527554188Ki", "25047Mi", "191655242229B")
+
+    Returns:
+        Human-readable value in binary units (e.g., "503Gi", "24Gi", "178Gi")
+    """
+    match = re.match(r"^(\d+(?:\.\d+)?)\s*([A-Za-z]+)$", value)
+    if not match:
+        return value
+
+    num, unit = float(match.group(1)), match.group(2)
+
+    # Binary units (Ki, Mi, Gi, Ti) - Kubernetes standard
+    binary_units = {"B": 1, "Ki": 1024, "Mi": 1024**2, "Gi": 1024**3, "Ti": 1024**4}
+
+    if unit not in binary_units:
+        return value
+
+    bytes_value = num * binary_units[unit]
+
+    # Find best binary unit (1-4 digits)
+    for unit_name, divisor in sorted(binary_units.items(), key=lambda x: x[1], reverse=True):
+        if unit_name == "B":
+            continue
+        converted = bytes_value / divisor
+        if 1 <= converted < 10000:
+            # Format with 1 decimal, then strip .0 if present
+            formatted = f"{converted:.1f}"
+            if formatted.endswith(".0"):
+                formatted = formatted[:-2]
+            return f"{formatted}{unit_name}"
+
+    return value
+
+
+def format_cpu(value: str) -> str:
+    """Convert Kubernetes CPU value to human-readable format.
+
+    Args:
+        value: CPU value with unit (e.g., "8 cores", "7500m", "15500m")
+
+    Returns:
+        Human-readable value (e.g., "8 cores", "7 cores", "15.5 cores")
+    """
+    match = re.match(r"^(\d+(?:\.\d+)?)\s*([A-Za-z]+)$", value)
+    if not match:
+        return value
+
+    num, unit = float(match.group(1)), match.group(2)
+
+    if unit == "cores":
+        return value
+    if unit == "m" and num >= 1000:
+        cores = num / 1000
+        # Format with 1 decimal, then strip .0 if present
+        formatted = f"{cores:.1f}"
+        if formatted.endswith(".0"):
+            formatted = formatted[:-2]
+        return f"{formatted} cores"
+
+    return value

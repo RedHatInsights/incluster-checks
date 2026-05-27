@@ -26,6 +26,7 @@ class RuleScenarioParams(ScenarioParams):
         library_mocks_dict: dict = None,
         tested_object_mock_dict: dict = None,
         failed_msg: str = None,
+        info_msg: str | None = None
     ):
         """
         Initialize rule scenario parameters.
@@ -39,6 +40,7 @@ class RuleScenarioParams(ScenarioParams):
             library_mocks_dict: Map of {module_path: Mock}
             tested_object_mock_dict: Map of {method_name: Mock}
             failed_msg: Expected failure message (for failed scenarios)
+            info_msg: Expected info message (for info rule)
         """
         super().__init__(
             scenario_title,
@@ -50,6 +52,7 @@ class RuleScenarioParams(ScenarioParams):
             tested_object_mock_dict,
         )
         self.failed_msg = failed_msg
+        self.info_msg = info_msg
 
 
 class RuleTestBase(OperatorTestBase):
@@ -61,6 +64,7 @@ class RuleTestBase(OperatorTestBase):
     - scenario_passed: List of RuleScenarioParams for passing tests
     - scenario_failed: List of RuleScenarioParams for failing tests (FAILED status)
     - scenario_warning: List of RuleScenarioParams for warning tests (WARNING status)
+    - scenario_info: List of RuleScenarioParams for info tests (INFO status)
     - scenario_not_applicable: List of RuleScenarioParams for NOT_APPLICABLE tests
     - scenario_unexpected_system_output: List of RuleScenarioParams that should raise UnExpectedSystemOutput
     """
@@ -68,6 +72,7 @@ class RuleTestBase(OperatorTestBase):
     scenario_passed = []
     scenario_failed = []
     scenario_warning = []
+    scenario_info = []
     scenario_not_applicable = []
     scenario_unexpected_system_output = []
 
@@ -274,6 +279,29 @@ class RuleTestBase(OperatorTestBase):
             # Check message if specified
             if scenario_params.failed_msg is not None:
                 self._assert_message_match(result.message, scenario_params.failed_msg)
+
+    @pytest.mark.parametrize("scenario_params", scenario_info)
+    def test_scenario_info(self, scenario_params, tested_object):
+        """
+        Test that rule returns INFO status for given scenario.
+
+        Args:
+            scenario_params: RuleScenarioParams with test data
+            tested_object: Rule instance (from fixture)
+        """
+        self._init_validation_object(tested_object, scenario_params)
+
+        with self._apply_patches(scenario_params, tested_object):
+            result = tested_object.run_rule()
+
+            # Should be INFO status
+            assert result.status == Status.INFO, (
+                f"Expected INFO status, got {result.status} for scenario: {scenario_params.scenario_title}"
+            )
+
+            # Check message if specified
+            if scenario_params.info_msg is not None:
+                self._assert_message_match(result.message, scenario_params.info_msg)
 
     @pytest.mark.parametrize("scenario_params", scenario_unexpected_system_output)
     def test_scenario_unexpected_system_output(self, scenario_params, tested_object):

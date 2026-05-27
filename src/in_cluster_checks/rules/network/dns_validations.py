@@ -2,14 +2,14 @@ import json
 from typing import ClassVar
 
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
-from in_cluster_checks.core.operations import DataCollector
+from in_cluster_checks.core.operations import OrchestratorDataCollector
 from in_cluster_checks.core.rule import Rule, RuleResult
 from in_cluster_checks.core.rule_result import PrerequisiteResult
 from in_cluster_checks.utils.enums import Objectives
 from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
-class DnsOperatorConfigCollector(DataCollector):
+class DnsOperatorConfigCollector(OrchestratorDataCollector):
     """
     Fetch upstream DNS servers from DNS operator configuration.
 

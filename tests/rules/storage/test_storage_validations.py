@@ -646,6 +646,87 @@ class TestOrphanCsiVolumes(RuleTestBase):
 
     tested_type = OrphanCsiVolumes
 
+    scenario_prerequisite_not_fulfilled = [
+        RuleScenarioParams(
+            "cephfs filesystem not found",
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-xyz", "ceph fs ls -f json"): CmdOutput(
+                    out='[{"name": "other-filesystem"}]', return_code=0
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
+                "oc_api.select_resources": Mock(return_value=Mock()),
+            },
+        ),
+        RuleScenarioParams(
+            "csi subvolume group does not exist",
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-xyz", "ceph fs ls -f json"): CmdOutput(
+                    out='[{"name": "ocs-storagecluster-cephfilesystem"}]', return_code=0
+                ),
+                (
+                    "openshift-storage",
+                    "rook-ceph-tools-xyz",
+                    "ceph fs subvolumegroup ls ocs-storagecluster-cephfilesystem -f json",
+                ): CmdOutput(out='[{"name": "other-group"}]', return_code=0),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
+                "oc_api.select_resources": Mock(return_value=Mock()),
+            },
+        ),
+        RuleScenarioParams(
+            "cannot query ceph filesystems",
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-xyz", "ceph fs ls -f json"): CmdOutput(
+                    out="", err="connection refused", return_code=1
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
+                "oc_api.select_resources": Mock(return_value=Mock()),
+            },
+        ),
+        RuleScenarioParams(
+            "cannot query subvolume groups",
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-xyz", "ceph fs ls -f json"): CmdOutput(
+                    out='[{"name": "ocs-storagecluster-cephfilesystem"}]', return_code=0
+                ),
+                (
+                    "openshift-storage",
+                    "rook-ceph-tools-xyz",
+                    "ceph fs subvolumegroup ls ocs-storagecluster-cephfilesystem -f json",
+                ): CmdOutput(out="", err="timeout", return_code=1),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
+                "oc_api.select_resources": Mock(return_value=Mock()),
+            },
+        ),
+    ]
+
+    scenario_prerequisite_fulfilled = [
+        RuleScenarioParams(
+            "cephfs and csi subvolume group exist",
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-xyz", "ceph fs ls -f json"): CmdOutput(
+                    out='[{"name": "ocs-storagecluster-cephfilesystem"}]', return_code=0
+                ),
+                (
+                    "openshift-storage",
+                    "rook-ceph-tools-xyz",
+                    "ceph fs subvolumegroup ls ocs-storagecluster-cephfilesystem -f json",
+                ): CmdOutput(out='[{"name": "csi"}]', return_code=0),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
+                "oc_api.select_resources": Mock(return_value=Mock()),
+            },
+        ),
+    ]
+
     scenario_passed = [
         RuleScenarioParams(
             "no orphaned volumes",
@@ -655,6 +736,14 @@ class TestOrphanCsiVolumes(RuleTestBase):
                 ),
             },
             rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-xyz", "ceph fs ls -f json"): CmdOutput(
+                    out='[{"name": "ocs-storagecluster-cephfilesystem"}]', return_code=0
+                ),
+                (
+                    "openshift-storage",
+                    "rook-ceph-tools-xyz",
+                    "ceph fs subvolumegroup ls ocs-storagecluster-cephfilesystem -f json",
+                ): CmdOutput(out='[{"name": "csi"}]', return_code=0),
                 (
                     "openshift-storage",
                     "rook-ceph-tools-xyz",
@@ -663,6 +752,59 @@ class TestOrphanCsiVolumes(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
+                "oc_api.select_resources": Mock(return_value=Mock()),
+            },
+        ),
+        RuleScenarioParams(
+            "no subvolumes exist yet - empty result",
+            oc_cmd_output_dict={
+                ("get", ("pv", "-o", "jsonpath={.items[*].spec.csi.volumeAttributes.subvolumeName}")): CmdOutput(""),
+            },
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-xyz", "ceph fs ls -f json"): CmdOutput(
+                    out='[{"name": "ocs-storagecluster-cephfilesystem"}]', return_code=0
+                ),
+                (
+                    "openshift-storage",
+                    "rook-ceph-tools-xyz",
+                    "ceph fs subvolumegroup ls ocs-storagecluster-cephfilesystem -f json",
+                ): CmdOutput(out='[{"name": "csi"}]', return_code=0),
+                (
+                    "openshift-storage",
+                    "rook-ceph-tools-xyz",
+                    "ceph fs subvolume ls ocs-storagecluster-cephfilesystem csi -f json",
+                ): CmdOutput("[]"),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
+                "oc_api.select_resources": Mock(return_value=Mock()),
+            },
+        ),
+        RuleScenarioParams(
+            "subvolume group exists but ENOENT error - graceful fallback",
+            oc_cmd_output_dict={
+                ("get", ("pv", "-o", "jsonpath={.items[*].spec.csi.volumeAttributes.subvolumeName}")): CmdOutput(""),
+            },
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-xyz", "ceph fs ls -f json"): CmdOutput(
+                    out='[{"name": "ocs-storagecluster-cephfilesystem"}]', return_code=0
+                ),
+                (
+                    "openshift-storage",
+                    "rook-ceph-tools-xyz",
+                    "ceph fs subvolumegroup ls ocs-storagecluster-cephfilesystem -f json",
+                ): CmdOutput(out='[{"name": "csi"}]', return_code=0),
+                (
+                    "openshift-storage",
+                    "rook-ceph-tools-xyz",
+                    "ceph fs subvolume ls ocs-storagecluster-cephfilesystem csi -f json",
+                ): CmdOutput(
+                    "", return_code=2, err="Error ENOENT: subvolume group 'csi' does not exist"
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
+                "oc_api.select_resources": Mock(return_value=Mock()),
             },
         ),
     ]
@@ -676,6 +818,14 @@ class TestOrphanCsiVolumes(RuleTestBase):
                 ),
             },
             rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-xyz", "ceph fs ls -f json"): CmdOutput(
+                    out='[{"name": "ocs-storagecluster-cephfilesystem"}]', return_code=0
+                ),
+                (
+                    "openshift-storage",
+                    "rook-ceph-tools-xyz",
+                    "ceph fs subvolumegroup ls ocs-storagecluster-cephfilesystem -f json",
+                ): CmdOutput(out='[{"name": "csi"}]', return_code=0),
                 (
                     "openshift-storage",
                     "rook-ceph-tools-xyz",
@@ -684,6 +834,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
+                "oc_api.select_resources": Mock(return_value=Mock()),
             },
         ),
         RuleScenarioParams(
@@ -694,6 +845,14 @@ class TestOrphanCsiVolumes(RuleTestBase):
                 ),
             },
             rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-xyz", "ceph fs ls -f json"): CmdOutput(
+                    out='[{"name": "ocs-storagecluster-cephfilesystem"}]', return_code=0
+                ),
+                (
+                    "openshift-storage",
+                    "rook-ceph-tools-xyz",
+                    "ceph fs subvolumegroup ls ocs-storagecluster-cephfilesystem -f json",
+                ): CmdOutput(out='[{"name": "csi"}]', return_code=0),
                 (
                     "openshift-storage",
                     "rook-ceph-tools-xyz",
@@ -702,6 +861,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
+                "oc_api.select_resources": Mock(return_value=Mock()),
             },
         ),
     ]
@@ -715,6 +875,14 @@ class TestOrphanCsiVolumes(RuleTestBase):
                 ),
             },
             rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-xyz", "ceph fs ls -f json"): CmdOutput(
+                    out='[{"name": "ocs-storagecluster-cephfilesystem"}]', return_code=0
+                ),
+                (
+                    "openshift-storage",
+                    "rook-ceph-tools-xyz",
+                    "ceph fs subvolumegroup ls ocs-storagecluster-cephfilesystem -f json",
+                ): CmdOutput(out='[{"name": "csi"}]', return_code=0),
                 (
                     "openshift-storage",
                     "rook-ceph-tools-xyz",
@@ -723,6 +891,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
+                "oc_api.select_resources": Mock(return_value=Mock()),
             },
         ),
         RuleScenarioParams(
@@ -733,6 +902,14 @@ class TestOrphanCsiVolumes(RuleTestBase):
                 ),
             },
             rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-xyz", "ceph fs ls -f json"): CmdOutput(
+                    out='[{"name": "ocs-storagecluster-cephfilesystem"}]', return_code=0
+                ),
+                (
+                    "openshift-storage",
+                    "rook-ceph-tools-xyz",
+                    "ceph fs subvolumegroup ls ocs-storagecluster-cephfilesystem -f json",
+                ): CmdOutput(out='[{"name": "csi"}]', return_code=0),
                 (
                     "openshift-storage",
                     "rook-ceph-tools-xyz",
@@ -743,6 +920,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
+                "oc_api.select_resources": Mock(return_value=Mock()),
             },
         ),
         RuleScenarioParams(
@@ -751,6 +929,14 @@ class TestOrphanCsiVolumes(RuleTestBase):
                 ("get", ("pv", "-o", "jsonpath={.items[*].spec.csi.volumeAttributes.subvolumeName}")): CmdOutput(""),
             },
             rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-xyz", "ceph fs ls -f json"): CmdOutput(
+                    out='[{"name": "ocs-storagecluster-cephfilesystem"}]', return_code=0
+                ),
+                (
+                    "openshift-storage",
+                    "rook-ceph-tools-xyz",
+                    "ceph fs subvolumegroup ls ocs-storagecluster-cephfilesystem -f json",
+                ): CmdOutput(out='[{"name": "csi"}]', return_code=0),
                 (
                     "openshift-storage",
                     "rook-ceph-tools-xyz",
@@ -759,6 +945,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
+                "oc_api.select_resources": Mock(return_value=Mock()),
             },
         ),
         RuleScenarioParams(
@@ -769,6 +956,14 @@ class TestOrphanCsiVolumes(RuleTestBase):
                 ),
             },
             rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-xyz", "ceph fs ls -f json"): CmdOutput(
+                    out='[{"name": "ocs-storagecluster-cephfilesystem"}]', return_code=0
+                ),
+                (
+                    "openshift-storage",
+                    "rook-ceph-tools-xyz",
+                    "ceph fs subvolumegroup ls ocs-storagecluster-cephfilesystem -f json",
+                ): CmdOutput(out='[{"name": "csi"}]', return_code=0),
                 (
                     "openshift-storage",
                     "rook-ceph-tools-xyz",
@@ -777,29 +972,19 @@ class TestOrphanCsiVolumes(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
+                "oc_api.select_resources": Mock(return_value=Mock()),
             },
             failed_msg="Failed to list CSI subvolumes from Ceph.\nError: Error: unable to connect to ceph cluster",
         ),
-        RuleScenarioParams(
-            "ceph empty output",
-            oc_cmd_output_dict={
-                ("get", ("pv", "-o", "jsonpath={.items[*].spec.csi.volumeAttributes.subvolumeName}")): CmdOutput(
-                    "csi-vol-abc123"
-                ),
-            },
-            rsh_cmd_output_dict={
-                (
-                    "openshift-storage",
-                    "rook-ceph-tools-xyz",
-                    "ceph fs subvolume ls ocs-storagecluster-cephfilesystem csi -f json",
-                ): CmdOutput(""),
-            },
-            tested_object_mock_dict={
-                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
-            },
-            failed_msg="Empty results from ceph fs subvolume ls command",
-        ),
     ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
+    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_fulfilled)
+    def test_prerequisite_fulfilled(self, scenario_params, tested_object):
+        RuleTestBase.test_prerequisite_fulfilled(self, scenario_params, tested_object)
 
     @pytest.mark.parametrize("scenario_params", scenario_passed)
     def test_scenario_passed(self, scenario_params, tested_object):

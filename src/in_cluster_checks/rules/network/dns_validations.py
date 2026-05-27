@@ -26,9 +26,17 @@ class DnsOperatorConfigCollector(OrchestratorDataCollector):
         Returns:
             List of DNS server IP addresses or empty list if not configured
         """
-        return_code, dns_config_output, stderr = self.oc_api.run_oc_command(
-            "get", ["dns.operator.openshift.io/cluster", "-o", "json"], timeout=45
-        )
+        try:
+            return_code, dns_config_output, stderr = self.oc_api.run_oc_command(
+                "get", ["dns.operator.openshift.io/cluster", "-o", "json"], timeout=45
+            )
+        except UnExpectedSystemOutput as e:
+            # DNS operator might not exist - check if it's a NotFound error
+            error_msg = str(e).lower()
+            if "notfound" in error_msg or "not found" in error_msg:
+                return []
+            # Other errors should propagate
+            raise
 
         # If DNS operator resource doesn't exist, return empty list
         if return_code != 0:

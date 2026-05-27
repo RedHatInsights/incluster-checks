@@ -95,6 +95,8 @@ nameserver 8.8.8.8
                 "get_data_from_collector": Mock(return_value=["192.168.1.1", "8.8.8.8"]),
             },
             cmd_input_output_dict={
+                "ls /etc/resolv.conf": CmdOutput("/etc/resolv.conf"),
+                "cat /etc/resolv.conf": CmdOutput("search openshift.svc.cluster.local\n"),
                 "dig +short +time=2 +tries=1 @192.168.1.1 openshift.svc.cluster.local": CmdOutput("10.0.0.1\n"),
                 "dig +short +time=2 +tries=1 @8.8.8.8 openshift.svc.cluster.local": CmdOutput("10.0.0.1\n"),
             },
@@ -120,6 +122,8 @@ nameserver 8.8.8.8
                 "get_data_from_collector": Mock(return_value=["192.168.1.1", "8.8.8.8"]),
             },
             cmd_input_output_dict={
+                "ls /etc/resolv.conf": CmdOutput("/etc/resolv.conf"),
+                "cat /etc/resolv.conf": CmdOutput("search openshift.svc.cluster.local\n"),
                 "dig +short +time=2 +tries=1 @192.168.1.1 openshift.svc.cluster.local": CmdOutput("10.0.0.1\n"),
                 "dig +short +time=2 +tries=1 @8.8.8.8 openshift.svc.cluster.local": CmdOutput("", return_code=1),
             },

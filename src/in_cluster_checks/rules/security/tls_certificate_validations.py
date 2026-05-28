@@ -90,8 +90,10 @@ class TlsCertificateExpiry(OrchestratorRule):
     def _build_result(self, expired, expiring_soon, valid, errors, system_info):
         if expired:
             names = [f"{c['namespace']}/{c['name']}" for c in expired]
+            message = f"Found {len(expired)} expired TLS certificate(s):\n"
+            message += "\n".join(f"  - {n}" for n in names)
             return RuleResult.failed(
-                f"Found {len(expired)} expired TLS certificate(s): {names}",
+                message,
                 system_info=system_info,
             )
 

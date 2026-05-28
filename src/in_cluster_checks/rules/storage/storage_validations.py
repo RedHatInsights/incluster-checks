@@ -434,6 +434,48 @@ class OrphanCsiVolumes(CephRule):
     unique_name = "orphan_csi_volumes"
     title = "Check for orphaned Ceph CSI volumes"
 
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        """
+        Check if CephFS CSI subvolume group exists.
+
+        Returns:
+            PrerequisiteResult indicating if CSI storage is configured
+        """
+        # First check base Ceph prerequisites (namespace, operator, tools)
+        base_result = super().is_prerequisite_fulfilled()
+        if not base_result.met:
+            return base_result
+
+        # Check if ceph filesystem exists
+        cmd = SafeCmdString("ceph fs ls -f json")
+        return_code, stdout, _ = self._run_ceph_cmd(cmd)
+
+        if return_code != 0:
+            return PrerequisiteResult.not_met("Cannot query Ceph filesystems")
+
+        filesystems = parse_json(stdout, cmd, self.get_host_ip())
+        has_cephfs = any(fs.get("name") == "ocs-storagecluster-cephfilesystem" for fs in filesystems)
+
+        if not has_cephfs:
+            return PrerequisiteResult.not_met("CephFS filesystem 'ocs-storagecluster-cephfilesystem' not found")
+
+        # Check if CSI subvolume group exists
+        cmd = SafeCmdString("ceph fs subvolumegroup ls ocs-storagecluster-cephfilesystem -f json")
+        return_code, stdout, stderr = self._run_ceph_cmd(cmd)
+
+        if return_code != 0:
+            return PrerequisiteResult.not_met(f"Cannot query Ceph subvolume groups: {stderr}")
+
+        groups = parse_json(stdout, cmd, self.get_host_ip())
+        has_csi_group = any(group.get("name") == "csi" for group in groups)
+
+        if not has_csi_group:
+            return PrerequisiteResult.not_met(
+                "CSI subvolume group does not exist. No CephFS PVCs have been created yet."
+            )
+
+        return PrerequisiteResult.met()
+
     def run_rule(self) -> RuleResult:
         pv_subvolumes = self._get_pv_subvolume_names()
 
@@ -485,11 +527,17 @@ class OrphanCsiVolumes(CephRule):
         return_code, stdout, stderr = self._run_ceph_cmd(cmd)
 
         if return_code != 0:
+            # Check if error is "subvolume group does not exist"
+            if "does not exist" in stderr or "ENOENT" in stderr:
+                # This should be caught by prerequisite, but handle gracefully if it reaches here
+                return []
+
             error_msg = self.build_cmd_error_message("Failed to list CSI subvolumes from Ceph.", stdout, stderr)
             return RuleResult.failed(error_msg)
 
-        if not stdout:
-            return RuleResult.failed("Empty results from ceph fs subvolume ls command")
+        # Empty or [] is valid - no subvolumes exist yet
+        if not stdout or stdout.strip() in ("", "[]"):
+            return []
 
         subvolumes_data = parse_json(stdout, cmd, self.get_host_ip())
 

@@ -87,6 +87,7 @@ class VerifyDnsReachability(Rule):
     links: ClassVar[list] = [
         "https://github.com/RedHatInsights/incluster-checks/wiki/Network-%E2%80%90-Verify-DNS-reachability",
     ]
+    RESOLV_CONF_PATH = "/etc/resolv.conf"
 
     def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
         """
@@ -158,12 +159,12 @@ class VerifyDnsReachability(Rule):
         Returns:
             List of nameserver IP addresses
         """
-        resolv_conf_path = "/etc/resolv.conf"
-
-        if not self.file_utils.is_file_exist(resolv_conf_path):
+        if not self.file_utils.is_file_exist(self.RESOLV_CONF_PATH):
             return []
 
-        resolv_conf_content = self.get_output_from_run_cmd(SafeCmdString("cat {path}").format(path=resolv_conf_path))
+        resolv_conf_content = self.get_output_from_run_cmd(
+            SafeCmdString("cat {path}").format(path=self.RESOLV_CONF_PATH)
+        )
 
         nameservers = []
         for line in resolv_conf_content.splitlines():
@@ -188,12 +189,12 @@ class VerifyDnsReachability(Rule):
         Returns:
             First search domain found, or empty string
         """
-        resolv_conf_path = "/etc/resolv.conf"
-
-        if not self.file_utils.is_file_exist(resolv_conf_path):
+        if not self.file_utils.is_file_exist(self.RESOLV_CONF_PATH):
             return ""
 
-        resolv_conf_content = self.get_output_from_run_cmd(SafeCmdString("cat {path}").format(path=resolv_conf_path))
+        resolv_conf_content = self.get_output_from_run_cmd(
+            SafeCmdString("cat {path}").format(path=self.RESOLV_CONF_PATH)
+        )
 
         for line in resolv_conf_content.splitlines():
             line = line.strip()

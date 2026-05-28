@@ -22,6 +22,7 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     ValidateNamespaceStatus,
     VerifyAcmOperatorHealth,
     VerifyClusterOperatorsAvailable,
+    VerifyFarOperatorHealth,
     VerifyInternalRegistry,
     VerifyNetworkDiagnosticsDisabled,
     VerifyNfdOperatorHealth,
@@ -2047,4 +2048,196 @@ class TestVerifyAcmOperatorHealth(RuleTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):
         """Test that rule fails when ACM pods are unhealthy or missing."""
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+
+def create_mock_far_pod(name, phase, all_containers_ready=True):
+    """Create a mock FAR pod object."""
+    mock_pod = Mock()
+    container_statuses = [
+        {"ready": all_containers_ready},
+    ]
+    mock_pod.as_dict.return_value = {
+        "metadata": {"namespace": "openshift-workload-availability", "name": name},
+        "status": {
+            "phase": phase,
+            "containerStatuses": container_statuses,
+        },
+    }
+    return mock_pod
+
+
+def _far_subscriptions(include_far=True):
+    """Build a subscriptions response, optionally including the FAR subscription."""
+    items = []
+    if include_far:
+        items.append(
+            {
+                "metadata": {"name": "far-sub", "namespace": "openshift-workload-availability"},
+                "spec": {"name": "fence-agents-remediation", "source": "redhat-operators"},
+            }
+        )
+    return {"items": items}
+
+
+class TestVerifyFarOperatorHealth(RuleTestBase):
+    """Tests for VerifyFarOperatorHealth rule."""
+
+    tested_type = VerifyFarOperatorHealth
+
+    scenario_prerequisite_fulfilled = [
+        RuleScenarioParams(
+            "FAR operator subscription found",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscriptions(include_far=True))
+                ),
+            },
+        ),
+    ]
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "FAR operator installed and all pods healthy",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_far_pod("fence-agents-remediation-controller-manager-abc123", "Running", True),
+                        create_mock_far_pod("fence-agents-remediation-worker-xyz789", "Running", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscriptions(include_far=True))
+                ),
+            },
+        ),
+    ]
+
+    scenario_prerequisite_not_fulfilled = [
+        RuleScenarioParams(
+            "FAR operator subscription not found",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscriptions(include_far=False))
+                ),
+            },
+        ),
+        RuleScenarioParams(
+            "no subscriptions exist in cluster",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps({"items": []})
+                ),
+            },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "FAR operator installed but no pods found",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(return_value=[]),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscriptions(include_far=True))
+                ),
+            },
+            failed_msg="No pods found in openshift-workload-availability namespace."
+            " FAR operator may not be fully deployed.",
+        ),
+        RuleScenarioParams(
+            "FAR operator installed but some pods are not running",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_far_pod("fence-agents-remediation-controller-manager-abc123", "Running", True),
+                        create_mock_far_pod("fence-agents-remediation-worker-xyz789", "Pending", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscriptions(include_far=True))
+                ),
+            },
+            failed_msg="FAR operator has unhealthy pods in openshift-workload-availability namespace:\n"
+            "  fence-agents-remediation-worker-xyz789 - Phase: Pending",
+        ),
+        RuleScenarioParams(
+            "FAR operator installed but containers not ready",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_far_pod("fence-agents-remediation-controller-manager-abc123", "Running", False),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscriptions(include_far=True))
+                ),
+            },
+            failed_msg="FAR operator has unhealthy pods in openshift-workload-availability namespace:\n"
+            "  fence-agents-remediation-controller-manager-abc123 - Running, Not all containers ready",
+        ),
+        RuleScenarioParams(
+            "FAR operator installed but pod status unknown",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_far_pod("fence-agents-remediation-controller-manager-abc123", "Succeeded", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscriptions(include_far=True))
+                ),
+            },
+            failed_msg="Failed to evaluate status for FAR pod(s):\n"
+            "  fence-agents-remediation-controller-manager-abc123",
+        ),
+        RuleScenarioParams(
+            "FAR operator installed with unknown and unhealthy pods",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_far_pod("fence-agents-remediation-controller-manager-abc123", "Succeeded", True),
+                        create_mock_far_pod("fence-agents-remediation-worker-xyz789", "Running", False),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscriptions(include_far=True))
+                ),
+            },
+            failed_msg="Failed to evaluate status for FAR pod(s):\n"
+            "  fence-agents-remediation-controller-manager-abc123\n\n"
+            "FAR operator has unhealthy pods in openshift-workload-availability namespace:\n"
+            "  fence-agents-remediation-worker-xyz789 - Running, Not all containers ready",
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_fulfilled)
+    def test_prerequisite_fulfilled(self, scenario_params, tested_object):
+        """Test that prerequisite is met when FAR operator is installed."""
+        RuleTestBase.test_prerequisite_fulfilled(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
+    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        """Test that prerequisite is not met when FAR operator is not installed."""
+        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        """Test that rule passes when all FAR pods are healthy."""
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        """Test that rule fails when FAR pods are unhealthy or missing."""
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)

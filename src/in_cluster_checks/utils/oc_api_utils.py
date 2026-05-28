@@ -21,12 +21,13 @@ Usage:
 """
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import openshift_client as oc
 
 from in_cluster_checks import global_config
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
+from in_cluster_checks.utils.parsing_utils import parse_json
 from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
@@ -368,3 +369,26 @@ class OcApiUtils:
             "all_containers_ready": phase == "Running" and all_ready,
             "status_message": status_message,
         }
+
+    def get_operator_subscriptions(self, namespace: Optional[str] = None) -> dict:
+        """Fetch operator Subscription resources from the cluster.
+
+        Args:
+            namespace: Optional namespace to query. Defaults to --all-namespaces.
+
+        Returns:
+            Parsed JSON dict of the subscriptions response.
+
+        Raises:
+            UnExpectedSystemOutput: If the command fails or JSON output cannot be parsed.
+        """
+        if namespace:
+            args = ["subscriptions.operators.coreos.com", "-n", namespace, "-o", "json"]
+            cmd_desc = f"oc get subscriptions.operators.coreos.com -n {namespace} -o json"
+        else:
+            args = ["subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json"]
+            cmd_desc = "oc get subscriptions.operators.coreos.com --all-namespaces -o json"
+
+        _, subscriptions_output, _ = self.run_oc_command("get", args, timeout=45)
+
+        return parse_json(subscriptions_output, cmd_desc, self.operator.get_host_ip())

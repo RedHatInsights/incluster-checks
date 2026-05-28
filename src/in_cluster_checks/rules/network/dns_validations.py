@@ -127,6 +127,8 @@ class VerifyDnsReachability(Rule):
         search_domain = self._get_local_search_domain()
         if not search_domain:
             search_domain = "openshift.svc.cluster.local"
+        else:
+            search_domain = self._validate_and_fix_domain(search_domain)
 
         # Test DNS resolution for each server
         reachable = []
@@ -147,7 +149,7 @@ class VerifyDnsReachability(Rule):
         # Return result for this node
         if unreachable:
             unreachable_list = ", ".join(unreachable)
-            return RuleResult.failed(f"DNS servers from {source} unreachable: {unreachable_list}")
+            return RuleResult.failed(f"Following DNS servers from {source} unreachable: {unreachable_list}")
 
         reachable_list = ", ".join(reachable)
         return RuleResult.passed(f"All DNS servers from {source} are reachable: {reachable_list}")
@@ -202,3 +204,51 @@ class VerifyDnsReachability(Rule):
                     return parts[1]
 
         return ""
+
+    def _get_cluster_name(self) -> str:
+        """
+        Get cluster infrastructure name from OpenShift.
+
+        Returns:
+            Cluster name or empty string if not found
+        """
+        try:
+            return_code, cluster_name, _ = self.oc_api.run_oc_command(
+                "get",
+                ["infrastructure", "cluster", "-o", "jsonpath={.status.infrastructureName}"],
+                timeout=30,
+            )
+            if return_code == 0 and cluster_name:
+                return cluster_name.strip()
+        except Exception:
+            pass
+        return ""
+
+    def _validate_and_fix_domain(self, domain: str) -> str:
+        """
+        Strip localhost or cluster name prefix from search domain.
+
+        Examples:
+            localhost.cluster.local -> cluster.local
+            mycluster-abc.svc.cluster.local -> svc.cluster.local
+
+        Returns:
+            Validated domain without localhost/cluster prefix
+        """
+        if not domain:
+            return domain
+
+        # Strip localhost prefix
+        if domain.lower().startswith("localhost."):
+            parts = domain.split(".", 1)
+            if len(parts) > 1:
+                return parts[1]
+
+        # Strip cluster name prefix
+        cluster_name = self._get_cluster_name()
+        if cluster_name and domain.lower().startswith(f"{cluster_name.lower()}."):
+            parts = domain.split(".", 1)
+            if len(parts) > 1:
+                return parts[1]
+
+        return domain

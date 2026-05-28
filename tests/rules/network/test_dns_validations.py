@@ -100,6 +100,11 @@ nameserver 8.8.8.8
                 "dig +short +time=2 +tries=1 @192.168.1.1 openshift.svc.cluster.local": CmdOutput("10.0.0.1\n"),
                 "dig +short +time=2 +tries=1 @8.8.8.8 openshift.svc.cluster.local": CmdOutput("10.0.0.1\n"),
             },
+            oc_cmd_output_dict={
+                ("get", ("infrastructure", "cluster", "-o", "jsonpath={.status.infrastructureName}")): CmdOutput(
+                    "test-cluster"
+                )
+            },
         ),
         RuleScenarioParams(
             scenario_title="all_dns_servers_reachable_from_resolv_conf",
@@ -111,6 +116,11 @@ nameserver 8.8.8.8
                 "cat /etc/resolv.conf": CmdOutput(resolv_conf_content),
                 "dig +short +time=2 +tries=1 @192.168.1.1 cluster.local": CmdOutput("10.0.0.1\n"),
                 "dig +short +time=2 +tries=1 @8.8.8.8 cluster.local": CmdOutput("10.0.0.1\n"),
+            },
+            oc_cmd_output_dict={
+                ("get", ("infrastructure", "cluster", "-o", "jsonpath={.status.infrastructureName}")): CmdOutput(
+                    "test-cluster"
+                )
             },
         ),
     ]
@@ -127,7 +137,12 @@ nameserver 8.8.8.8
                 "dig +short +time=2 +tries=1 @192.168.1.1 openshift.svc.cluster.local": CmdOutput("10.0.0.1\n"),
                 "dig +short +time=2 +tries=1 @8.8.8.8 openshift.svc.cluster.local": CmdOutput("", return_code=1),
             },
-            failed_msg="DNS servers from DNS operator upstream resolvers unreachable: 8.8.8.8",
+            oc_cmd_output_dict={
+                ("get", ("infrastructure", "cluster", "-o", "jsonpath={.status.infrastructureName}")): CmdOutput(
+                    "test-cluster"
+                )
+            },
+            failed_msg="Following DNS servers from DNS operator upstream resolvers unreachable: 8.8.8.8",
         ),
         RuleScenarioParams(
             scenario_title="no_dns_servers_found",

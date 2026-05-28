@@ -136,10 +136,10 @@ class VerifyDnsReachability(Rule):
             dig_cmd = SafeCmdString("dig +short +time=2 +tries=1 @{dns_ip} {domain}").format(
                 dns_ip=dns_server, domain=search_domain
             )
-            return_code, output, _ = self.run_cmd(dig_cmd)
+            return_code, _, _ = self.run_cmd(dig_cmd)
 
-            # Success if dig returned 0 and produced output
-            if return_code == 0 and output.strip():
+            # Success if dig returned 0 (DNS server responded)
+            if return_code == 0:
                 reachable.append(dns_server)
             else:
                 unreachable.append(dns_server)

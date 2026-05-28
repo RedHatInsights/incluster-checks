@@ -174,11 +174,7 @@ class VerifyDnsReachability(Rule):
             if line.startswith("nameserver"):
                 parts = line.split()
                 if len(parts) >= 2:
-                    # Get everything after "nameserver" keyword
-                    dns_part = " ".join(parts[1:])
-                    # Handle both comma and space separators
-                    dns_ips = dns_part.replace(",", " ").split()
-                    nameservers.extend(dns_ips)
+                    nameservers.append(parts[1])
 
         return nameservers
 

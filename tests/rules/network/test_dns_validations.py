@@ -4,12 +4,55 @@ from unittest.mock import Mock
 import pytest
 
 from in_cluster_checks.rules.network.dns_validations import (
+    ClusterNameCollector,
     DnsOperatorConfigCollector,
     VerifyDnsReachability,
 )
 from tests.pytest_tools.test_data_collector_base import DataCollectorScenarioParams, DataCollectorTestBase
 from tests.pytest_tools.test_operator_base import CmdOutput
 from tests.pytest_tools.test_rule_base import RuleScenarioParams, RuleTestBase
+
+
+class TestClusterNameCollector(DataCollectorTestBase):
+    """Tests for ClusterNameCollector data collector."""
+
+    tested_type = ClusterNameCollector
+
+    scenarios = [
+        DataCollectorScenarioParams(
+            "cluster_name_found",
+            {},
+            scenario_res="test-cluster",
+            oc_cmd_output_dict={
+                (
+                    "get",
+                    ("infrastructure", "cluster", "-o", "jsonpath={.status.infrastructureName}"),
+                ): CmdOutput("test-cluster")
+            },
+        ),
+        DataCollectorScenarioParams(
+            "cluster_name_not_found",
+            {},
+            scenario_res="",
+            oc_cmd_output_dict={
+                (
+                    "get",
+                    ("infrastructure", "cluster", "-o", "jsonpath={.status.infrastructureName}"),
+                ): CmdOutput("", return_code=1, err="NotFound")
+            },
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenarios)
+    def test_collect_data(self, scenario_params, tested_object):
+        """Test collect_data returns cluster name."""
+        self._init_data_collector_object(tested_object, scenario_params)
+        result = tested_object.collect_data()
+        assert result == scenario_params.scenario_res, (
+            f"Data collector result mismatch for scenario: {scenario_params.scenario_title}\n"
+            f"Expected: {scenario_params.scenario_res}\n"
+            f"Got: {result}"
+        )
 
 
 class TestDnsOperatorConfigCollector(DataCollectorTestBase):
@@ -92,7 +135,13 @@ nameserver 8.8.8.8
         RuleScenarioParams(
             scenario_title="all_dns_servers_reachable_from_operator",
             tested_object_mock_dict={
-                "get_data_from_collector": Mock(return_value=["192.168.1.1", "8.8.8.8"]),
+                "get_data_from_collector": Mock(
+                    side_effect=lambda collector_type: (
+                        ["192.168.1.1", "8.8.8.8"]
+                        if collector_type == DnsOperatorConfigCollector
+                        else "test-cluster"
+                    )
+                ),
             },
             cmd_input_output_dict={
                 "ls /etc/resolv.conf": CmdOutput("/etc/resolv.conf"),
@@ -100,27 +149,21 @@ nameserver 8.8.8.8
                 "dig +short +time=2 +tries=1 @192.168.1.1 openshift.svc.cluster.local": CmdOutput("10.0.0.1\n"),
                 "dig +short +time=2 +tries=1 @8.8.8.8 openshift.svc.cluster.local": CmdOutput("10.0.0.1\n"),
             },
-            oc_cmd_output_dict={
-                ("get", ("infrastructure", "cluster", "-o", "jsonpath={.status.infrastructureName}")): CmdOutput(
-                    "test-cluster"
-                )
-            },
         ),
         RuleScenarioParams(
             scenario_title="all_dns_servers_reachable_from_resolv_conf",
             tested_object_mock_dict={
-                "get_data_from_collector": Mock(return_value=[]),
+                "get_data_from_collector": Mock(
+                    side_effect=lambda collector_type: (
+                        [] if collector_type == DnsOperatorConfigCollector else "test-cluster"
+                    )
+                ),
             },
             cmd_input_output_dict={
                 "ls /etc/resolv.conf": CmdOutput("/etc/resolv.conf"),
                 "cat /etc/resolv.conf": CmdOutput(resolv_conf_content),
                 "dig +short +time=2 +tries=1 @192.168.1.1 cluster.local": CmdOutput("10.0.0.1\n"),
                 "dig +short +time=2 +tries=1 @8.8.8.8 cluster.local": CmdOutput("10.0.0.1\n"),
-            },
-            oc_cmd_output_dict={
-                ("get", ("infrastructure", "cluster", "-o", "jsonpath={.status.infrastructureName}")): CmdOutput(
-                    "test-cluster"
-                )
             },
         ),
     ]
@@ -129,7 +172,13 @@ nameserver 8.8.8.8
         RuleScenarioParams(
             scenario_title="some_dns_servers_unreachable",
             tested_object_mock_dict={
-                "get_data_from_collector": Mock(return_value=["192.168.1.1", "8.8.8.8"]),
+                "get_data_from_collector": Mock(
+                    side_effect=lambda collector_type: (
+                        ["192.168.1.1", "8.8.8.8"]
+                        if collector_type == DnsOperatorConfigCollector
+                        else "test-cluster"
+                    )
+                ),
             },
             cmd_input_output_dict={
                 "ls /etc/resolv.conf": CmdOutput("/etc/resolv.conf"),
@@ -137,17 +186,16 @@ nameserver 8.8.8.8
                 "dig +short +time=2 +tries=1 @192.168.1.1 openshift.svc.cluster.local": CmdOutput("10.0.0.1\n"),
                 "dig +short +time=2 +tries=1 @8.8.8.8 openshift.svc.cluster.local": CmdOutput("", return_code=1),
             },
-            oc_cmd_output_dict={
-                ("get", ("infrastructure", "cluster", "-o", "jsonpath={.status.infrastructureName}")): CmdOutput(
-                    "test-cluster"
-                )
-            },
             failed_msg="Following DNS servers from DNS operator upstream resolvers unreachable: 8.8.8.8",
         ),
         RuleScenarioParams(
             scenario_title="no_dns_servers_found",
             tested_object_mock_dict={
-                "get_data_from_collector": Mock(return_value=[]),
+                "get_data_from_collector": Mock(
+                    side_effect=lambda collector_type: (
+                        [] if collector_type == DnsOperatorConfigCollector else "test-cluster"
+                    )
+                ),
             },
             cmd_input_output_dict={
                 "ls /etc/resolv.conf": CmdOutput("", return_code=2),  # File not found

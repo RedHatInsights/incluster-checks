@@ -9,6 +9,43 @@ from in_cluster_checks.utils.enums import Objectives
 from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
+class ClusterNameCollector(OrchestratorDataCollector):
+    """Fetch cluster infrastructure name from OpenShift."""
+
+    objective_hosts: ClassVar[list] = [Objectives.ORCHESTRATOR]
+
+    def collect_data(self, **kwargs) -> str:
+        """
+        Get cluster infrastructure name.
+
+        Returns:
+            Cluster name or empty string if not found
+        """
+        try:
+            return_code, cluster_name, stderr = self.oc_api.run_oc_command(
+                "get",
+                ["infrastructure", "cluster", "-o", "jsonpath={.status.infrastructureName}"],
+                timeout=30,
+            )
+        except UnExpectedSystemOutput as e:
+            # Infrastructure resource might not exist
+            error_msg = str(e).lower()
+            if "notfound" in error_msg or "not found" in error_msg:
+                return ""
+            raise
+
+        if return_code != 0:
+            combined_output = f"{cluster_name} {stderr}"
+            if "NotFound" in combined_output or "not found" in combined_output.lower():
+                return ""
+            raise UnExpectedSystemOutput(f"Failed to query cluster infrastructure: {stderr}")
+
+        if cluster_name:
+            return cluster_name.strip()
+
+        return ""
+
+
 class DnsOperatorConfigCollector(OrchestratorDataCollector):
     """
     Fetch upstream DNS servers from DNS operator configuration.
@@ -212,17 +249,7 @@ class VerifyDnsReachability(Rule):
         Returns:
             Cluster name or empty string if not found
         """
-        try:
-            return_code, cluster_name, _ = self.oc_api.run_oc_command(
-                "get",
-                ["infrastructure", "cluster", "-o", "jsonpath={.status.infrastructureName}"],
-                timeout=30,
-            )
-            if return_code == 0 and cluster_name:
-                return cluster_name.strip()
-        except Exception:
-            pass
-        return ""
+        return self.get_data_from_collector(ClusterNameCollector)
 
     def _validate_and_fix_domain(self, domain: str) -> str:
         """

@@ -1,4 +1,3 @@
-import json
 from typing import ClassVar
 
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
@@ -6,6 +5,7 @@ from in_cluster_checks.core.operations import OrchestratorDataCollector
 from in_cluster_checks.core.rule import Rule, RuleResult
 from in_cluster_checks.core.rule_result import PrerequisiteResult
 from in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks.utils.parsing_utils import parse_json
 from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
@@ -85,10 +85,11 @@ class DnsOperatorConfigCollector(OrchestratorDataCollector):
             raise UnExpectedSystemOutput(f"Failed to query DNS operator config: {stderr}")
 
         # Parse DNS config
-        try:
-            dns_config = json.loads(dns_config_output)
-        except json.JSONDecodeError as e:
-            raise UnExpectedSystemOutput(f"Failed to parse DNS operator config JSON: {e}")
+        dns_config = parse_json(
+            dns_config_output,
+            "oc get dns.operator.openshift.io/cluster -o json",
+            self.get_host_ip(),
+        )
 
         spec = dns_config.get("spec", {})
         upstream_resolvers = spec.get("upstreamResolvers", {})
@@ -155,7 +156,7 @@ class VerifyDnsReachability(Rule):
         else:
             # Read DNS servers from local /etc/resolv.conf on this node
             dns_servers = self._get_local_nameservers()
-            source = "/etc/resolv.conf"
+            source = self.RESOLV_CONF_PATH
 
         if not dns_servers:
             return RuleResult.failed("No DNS servers found")
@@ -195,8 +196,11 @@ class VerifyDnsReachability(Rule):
         """
         Read nameservers from /etc/resolv.conf on this node.
 
+        Excludes the node's own IP addresses from the list, as they would
+        be self-referential and not useful for DNS reachability testing.
+
         Returns:
-            List of nameserver IP addresses
+            List of nameserver IP addresses excluding node's own IPs
         """
         if not self.file_utils.is_file_exist(self.RESOLV_CONF_PATH):
             return []
@@ -204,6 +208,9 @@ class VerifyDnsReachability(Rule):
         resolv_conf_content = self.get_output_from_run_cmd(
             SafeCmdString("cat {path}").format(path=self.RESOLV_CONF_PATH)
         )
+
+        # Get node's own IP addresses to exclude them
+        node_ips = self._get_node_ips()
 
         nameservers = []
         for line in resolv_conf_content.splitlines():
@@ -213,9 +220,26 @@ class VerifyDnsReachability(Rule):
             if line.startswith("nameserver"):
                 parts = line.split()
                 if len(parts) >= 2:
-                    nameservers.append(parts[1])
+                    nameserver_ip = parts[1]
+                    # Exclude node's own IP addresses
+                    if nameserver_ip not in node_ips:
+                        nameservers.append(nameserver_ip)
 
         return nameservers
+
+    def _get_node_ips(self) -> list[str]:
+        """
+        Get all IP addresses of this node.
+
+        Returns:
+            List of IP addresses for this node
+        """
+        return_code, output, _ = self.run_cmd(SafeCmdString("hostname -I"))
+        if return_code != 0 or not output:
+            return []
+
+        # hostname -I returns space-separated IPs
+        return output.strip().split()
 
     def _get_local_search_domain(self) -> str:
         """

@@ -162,6 +162,7 @@ nameserver 8.8.8.8
             cmd_input_output_dict={
                 "ls /etc/resolv.conf": CmdOutput("/etc/resolv.conf"),
                 "cat /etc/resolv.conf": CmdOutput(resolv_conf_content),
+                "hostname -I": CmdOutput("10.0.0.10 10.0.0.11\n"),  # Node IPs (different from DNS servers)
                 "dig +short +time=2 +tries=1 @192.168.1.1 cluster.local": CmdOutput("10.0.0.1\n"),
                 "dig +short +time=2 +tries=1 @8.8.8.8 cluster.local": CmdOutput("10.0.0.1\n"),
             },

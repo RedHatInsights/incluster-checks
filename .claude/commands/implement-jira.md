@@ -134,7 +134,7 @@ After PR creation, offer to update the Jira ticket with implementation details:
 - If the ticket number is invalid or not found, inform the user and exit
 - If git operations fail (e.g., upstream remote doesn't exist), show the error and ask how to proceed
 - If the branch already exists, ask the user if they want to switch to it or create a different branch
-- If `upstream` remote is not configured, suggest adding it with: `git remote add upstream git@github.com:sprizend-rh/in-cluster-checks.git`
+- If `upstream` remote is not configured, suggest adding it with: `git remote add upstream git@github.com:RedHatInsights/incluster-checks.git` 
 
 ## Examples
 

@@ -8,6 +8,7 @@ Based on support/HealthChecks/flows/Network/network_flows_openshift.py
 from typing import List
 
 from in_cluster_checks.core.domain import RuleDomain
+from in_cluster_checks.rules.network.dns_validations import VerifyDnsReachability
 from in_cluster_checks.rules.network.node_connectivity_validations import (
     AreAllNodesConnected,
     BondDnsServersComparison,
@@ -62,6 +63,7 @@ class NetworkValidationDomain(RuleDomain):
             BondDnsServersComparison,
             AreAllNodesConnected,
             VerifyBondedInterfacesUp,
+            VerifyDnsReachability,
             NodesHaveOvnkubeNodePod,
             LogicalSwitchNodeValidator,
             MTUOverlayInterfaces,

@@ -1,3 +1,8 @@
+---
+name: implement-jira
+description: Use when user provides a Jira ticket number and wants to implement it - fetches ticket, creates branch, guides implementation, and handles PR creation
+---
+
 Fetch a Jira ticket, create a branch, and help implement it.
 
 **Args**: Jira ticket number (e.g., PDRIVE-123)

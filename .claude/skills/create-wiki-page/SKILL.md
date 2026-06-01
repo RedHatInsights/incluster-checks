@@ -1,3 +1,8 @@
+---
+name: create-wiki-page
+description: Use when creating wiki documentation for an in-cluster-checks validation rule - follows 7-section template with proper formatting
+---
+
 Create a wiki page for an in-cluster-checks validation rule.
 
 $ARGUMENTS

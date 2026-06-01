@@ -1,3 +1,8 @@
+---
+name: release
+description: Use when preparing a new version release - generates changelog, updates version, creates tags and GitHub release
+---
+
 Create release notes and prepare for a new version release.
 
 $ARGUMENTS

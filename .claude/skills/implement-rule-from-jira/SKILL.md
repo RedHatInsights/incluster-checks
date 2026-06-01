@@ -1,3 +1,8 @@
+---
+name: implement-rule-from-jira
+description: Use when user wants to create a new validation rule from a Jira ticket (Story type only) - validates ticket, scaffolds rule with tests and wiki docs
+---
+
 Create a new in-cluster validation rule from a Jira ticket.
 
 **Args**: Jira ticket number (e.g., PDRIVE-123)

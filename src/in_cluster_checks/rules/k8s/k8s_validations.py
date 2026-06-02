@@ -1250,6 +1250,7 @@ class VerifyFarContainerNonRoot(OrchestratorRule):
     title = "Verify FAR container runs as non-root user"
     supported_profiles = {"telco-base"}
     links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-FAR-container-non-root",
         "https://docs.openshift.com/container-platform/4.18/nodes/pods/nodes-pods-configuring.html",
     ]
 
@@ -1259,14 +1260,11 @@ class VerifyFarContainerNonRoot(OrchestratorRule):
 
     def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
         """Check if FAR operator is installed via OLM subscription."""
-        try:
-            _, subscriptions_output, _ = self.oc_api.run_oc_command(
-                "get",
-                ["subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json"],
-                timeout=45,
-            )
-        except UnExpectedSystemOutput:
-            return PrerequisiteResult.not_met("Failed to get OLM subscriptions")
+        _, subscriptions_output, _ = self.oc_api.run_oc_command(
+            "get",
+            ["subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json"],
+            timeout=45,
+        )
 
         subscriptions_data = parse_json(
             subscriptions_output,
@@ -1275,9 +1273,8 @@ class VerifyFarContainerNonRoot(OrchestratorRule):
         )
 
         for item in subscriptions_data.get("items", []):
-            metadata = item.get("metadata", {})
-            name = metadata.get("name", "")
-            if self.FAR_SUBSCRIPTION_NAME in name:
+            spec = item.get("spec", {})
+            if spec.get("name") == self.FAR_SUBSCRIPTION_NAME:
                 return PrerequisiteResult.met()
 
         return PrerequisiteResult.not_met(
@@ -1312,10 +1309,12 @@ class VerifyFarContainerNonRoot(OrchestratorRule):
                 )
 
             containers = spec.get("containers", [])
-            if not containers:
+            init_containers = spec.get("initContainers", [])
+            all_containers = containers + init_containers
+            if not all_containers:
                 error_messages.append(f"Pod {pod_name} has no containers")
             else:
-                for i, container in enumerate(containers):
+                for i, container in enumerate(all_containers):
                     container_sc = container.get("securityContext")
                     if container_sc is not None:
                         run_as_user = container_sc.get("runAsUser")

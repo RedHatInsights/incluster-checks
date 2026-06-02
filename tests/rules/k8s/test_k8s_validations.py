@@ -2257,6 +2257,18 @@ def _far_subscription_response(has_far=True):
     return {"items": items}
 
 
+def _far_subscription_response_custom_name():
+    """Build OLM subscription list with custom metadata.name but correct spec.name."""
+    return {
+        "items": [
+            {
+                "metadata": {"name": "my-custom-far-sub", "namespace": "openshift-workload-availability"},
+                "spec": {"name": "fence-agents-remediation"},
+            }
+        ]
+    }
+
+
 def _create_far_pod(
     name,
     run_as_non_root=True,
@@ -2264,6 +2276,7 @@ def _create_far_pod(
     has_security_context=True,
     has_run_as_non_root=True,
     has_containers=True,
+    init_containers_run_as_user=None,
 ):
     """Create a mock FAR pod object for security context tests.
 
@@ -2274,6 +2287,7 @@ def _create_far_pod(
         has_security_context: Whether pod has a securityContext at all
         has_run_as_non_root: Whether runAsNonRoot is present in securityContext
         has_containers: Whether the pod has containers
+        init_containers_run_as_user: List of runAsUser values per init container (None means no initContainers)
     """
     mock_pod = Mock()
     spec = {}
@@ -2300,6 +2314,17 @@ def _create_far_pod(
         spec["containers"] = containers
     else:
         spec["containers"] = []
+
+    if init_containers_run_as_user is not None:
+        init_containers = []
+        for uid in init_containers_run_as_user:
+            ic = {"name": f"init-container-{uid}"}
+            if uid is not None:
+                ic["securityContext"] = {"runAsUser": uid}
+            else:
+                ic["securityContext"] = None
+            init_containers.append(ic)
+        spec["initContainers"] = init_containers
 
     mock_pod.as_dict.return_value = {
         "metadata": {"name": name, "namespace": "openshift-workload-availability"},
@@ -2370,6 +2395,14 @@ class TestVerifyFarContainerNonRoot(RuleTestBase):
             oc_cmd_output_dict={
                 ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
                     json.dumps(_far_subscription_response(has_far=True))
+                ),
+            },
+        ),
+        RuleScenarioParams(
+            "FAR subscription with custom metadata.name but correct spec.name",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscription_response_custom_name())
                 ),
             },
         ),
@@ -2469,6 +2502,28 @@ class TestVerifyFarContainerNonRoot(RuleTestBase):
             },
             failed_msg="Testing user running FAR container failed due to:\n"
             "- Incorrect user running container [0] in pod far-pod-1, expected non 0, found: 0\n",
+        ),
+        RuleScenarioParams(
+            "FAR init container runs as root (runAsUser=0)",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscription_response(has_far=True))
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pods": Mock(
+                    return_value=[
+                        _create_far_pod(
+                            "far-pod-1",
+                            run_as_non_root=True,
+                            containers_run_as_user=[1000],
+                            init_containers_run_as_user=[0],
+                        ),
+                    ]
+                ),
+            },
+            failed_msg="Testing user running FAR container failed due to:\n"
+            "- Incorrect user running container [1] in pod far-pod-1, expected non 0, found: 0\n",
         ),
         RuleScenarioParams(
             "mixed failures - nil SecurityContext and root container",

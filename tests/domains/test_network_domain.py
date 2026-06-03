@@ -7,6 +7,7 @@ from unittest.mock import Mock
 import pytest
 
 from in_cluster_checks.domains.network_domain import NetworkValidationDomain
+from in_cluster_checks.rules.network.nmstate_validations import VerifyAllNNCPsAvailable
 from in_cluster_checks.rules.network.node_connectivity_validations import (
     AreAllNodesConnected,
     BondDnsServersComparison,
@@ -67,7 +68,7 @@ class TestNetworkRuleDomain:
         rules = domain.get_rule_classes()
 
         assert isinstance(rules, list)
-        assert len(rules) == 16
+        assert len(rules) == 17
         assert OvsInterfaceAndPortFound in rules
         assert OvsPhysicalPortHealthCheck in rules
         assert OvsBridgeInterfaceHealthCheck in rules
@@ -80,6 +81,7 @@ class TestNetworkRuleDomain:
         assert NodesHaveOvnkubeNodePod in rules
         assert LogicalSwitchNodeValidator in rules
         assert MTUOverlayInterfaces in rules
+        assert VerifyAllNNCPsAvailable in rules
         assert WhereaboutsDuplicateIPAddresses in rules
         assert WhereaboutsMissingPodrefs in rules
         assert WhereaboutsMissingAllocations in rules

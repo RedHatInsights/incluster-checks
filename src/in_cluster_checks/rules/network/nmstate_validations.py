@@ -7,6 +7,7 @@ after cluster operations like node reboots.
 
 from typing import Dict, List
 
+from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.rule import OrchestratorRule, PrerequisiteResult, RuleResult
 from in_cluster_checks.utils.enums import Objectives
 
@@ -52,7 +53,7 @@ class VerifyAllNNCPsAvailable(OrchestratorRule):
             error_msg = str(e).lower()
             if "not found" in error_msg or "no matches for kind" in error_msg:
                 return PrerequisiteResult.not_met("NMState operator is not installed (NNCP CRD not found)")
-            return PrerequisiteResult.not_met(f"Cannot check for NNCP resources: {e}")
+            raise UnExpectedSystemOutput(f"Cannot check for NNCP resources: {e}")
 
     def run_rule(self) -> RuleResult:
         """

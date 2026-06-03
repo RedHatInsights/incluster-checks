@@ -24,7 +24,7 @@ class VerifyAllNNCPsAvailable(OrchestratorRule):
     configurations have been properly applied.
 
     Reference:
-        https://github.com/rh-ecosystem-edge/eco-gotests/blob/main/tests/system-tests/rdscore/internal/rdscorecommon/nmstate-validation.go
+        eco-gotests rdscore/internal/rdscorecommon/nmstate-validation.go
     """
 
     unique_name = "verify_all_nncps_available"
@@ -33,7 +33,7 @@ class VerifyAllNNCPsAvailable(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     links = [
         "https://github.com/RedHatInsights/incluster-checks/wiki/"
-        "Network-‐-Verify-all-NodeNetworkConfigurationPolicies-are-Available",
+        "Network-%E2%80%90-Verify-all-NodeNetworkConfigurationPolicies-are-Available",
     ]
 
     def is_prerequisite_fulfilled(self) -> PrerequisiteResult:

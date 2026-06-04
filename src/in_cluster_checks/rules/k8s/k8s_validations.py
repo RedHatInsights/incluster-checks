@@ -10,7 +10,6 @@ from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.rule import OrchestratorRule
 from in_cluster_checks.core.rule_result import PrerequisiteResult, RuleResult
 from in_cluster_checks.utils.enums import Objectives, Status
-from in_cluster_checks.utils.parsing_utils import parse_json
 
 
 class AllPodsReadyAndRunning(OrchestratorRule):
@@ -1237,7 +1236,7 @@ class VerifyFarOperatorHealth(SubscriptionOperatorRule):
         return RuleResult.passed()
 
 
-class VerifyFarContainerNonRoot(OrchestratorRule):
+class VerifyFarContainerNonRoot(SubscriptionOperatorRule):
     """Verify FAR (Fence Agents Remediation) container runs as non-root user.
 
     Checks that FAR operator pods have proper security context:
@@ -1254,32 +1253,44 @@ class VerifyFarContainerNonRoot(OrchestratorRule):
         "https://docs.openshift.com/container-platform/4.18/nodes/pods/nodes-pods-configuring.html",
     ]
 
-    FAR_SUBSCRIPTION_NAME = "fence-agents-remediation"
+    operator_subscription_name = "fence-agents-remediation"
+    operator_display_name = "Fence Agents Remediation"
+
     FAR_POD_LABEL_KEY = "app.kubernetes.io/name"
     FAR_POD_LABEL_VALUE = "fence-agents-remediation-operator"
 
-    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
-        """Check if FAR operator is installed via OLM subscription."""
-        _, subscriptions_output, _ = self.oc_api.run_oc_command(
-            "get",
-            ["subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json"],
-            timeout=45,
-        )
+    @staticmethod
+    def _check_pod_security_context(pod_name, security_context):
+        """Validate pod-level security context has runAsNonRoot set to true."""
+        errors = []
+        if security_context is None:
+            errors.append(f"Pod {pod_name} has nil SecurityContext")
+        elif security_context.get("runAsNonRoot") is None:
+            errors.append(f"Pod {pod_name} has nil runAsNonRoot")
+        elif not security_context.get("runAsNonRoot"):
+            errors.append(
+                f"Incorrect runAsNonRoot for pod {pod_name}. "
+                f"Expected true, found: {security_context.get('runAsNonRoot')}"
+            )
+        return errors
 
-        subscriptions_data = parse_json(
-            subscriptions_output,
-            "oc get subscriptions.operators.coreos.com --all-namespaces -o json",
-            self.get_host_ip(),
-        )
-
-        for item in subscriptions_data.get("items", []):
-            spec = item.get("spec", {})
-            if spec.get("name") == self.FAR_SUBSCRIPTION_NAME:
-                return PrerequisiteResult.met()
-
-        return PrerequisiteResult.not_met(
-            f"FAR operator subscription '{self.FAR_SUBSCRIPTION_NAME}' not found - operator is not installed"
-        )
+    @staticmethod
+    def _check_containers_non_root(pod_name, all_containers):
+        """Validate no container runs as root (runAsUser != 0)."""
+        errors = []
+        if not all_containers:
+            errors.append(f"Pod {pod_name} has no containers")
+            return errors
+        for i, container in enumerate(all_containers):
+            container_sc = container.get("securityContext")
+            if container_sc is not None:
+                run_as_user = container_sc.get("runAsUser")
+                if run_as_user is not None and run_as_user == 0:
+                    errors.append(
+                        f"Incorrect user running container [{i}] in pod {pod_name}, "
+                        f"expected non 0, found: {run_as_user}"
+                    )
+        return errors
 
     def run_rule(self):
         """Check if FAR pods run as non-root user with proper security context."""
@@ -1293,36 +1304,13 @@ class VerifyFarContainerNonRoot(OrchestratorRule):
         error_messages = []
 
         for pod in pod_objects:
-            pod_data = pod.as_dict()
-            pod_name = pod_data["metadata"]["name"]
-            spec = pod_data.get("spec", {})
+            pod_name = pod.name()
+            spec = pod.as_dict().get("spec", {})
 
-            security_context = spec.get("securityContext")
-            if security_context is None:
-                error_messages.append(f"Pod {pod_name} has nil SecurityContext")
-            elif security_context.get("runAsNonRoot") is None:
-                error_messages.append(f"Pod {pod_name} has nil runAsNonRoot")
-            elif not security_context.get("runAsNonRoot"):
-                error_messages.append(
-                    f"Incorrect runAsNonRoot for pod {pod_name}. "
-                    f"Expected true, found: {security_context.get('runAsNonRoot')}"
-                )
+            error_messages.extend(self._check_pod_security_context(pod_name, spec.get("securityContext")))
 
-            containers = spec.get("containers", [])
-            init_containers = spec.get("initContainers", [])
-            all_containers = containers + init_containers
-            if not all_containers:
-                error_messages.append(f"Pod {pod_name} has no containers")
-            else:
-                for i, container in enumerate(all_containers):
-                    container_sc = container.get("securityContext")
-                    if container_sc is not None:
-                        run_as_user = container_sc.get("runAsUser")
-                        if run_as_user is not None and run_as_user == 0:
-                            error_messages.append(
-                                f"Incorrect user running container [{i}] in pod {pod_name}, "
-                                f"expected non 0, found: {run_as_user}"
-                            )
+            all_containers = spec.get("containers", []) + spec.get("initContainers", [])
+            error_messages.extend(self._check_containers_non_root(pod_name, all_containers))
 
         if error_messages:
             message = "Testing user running FAR container failed due to:\n"

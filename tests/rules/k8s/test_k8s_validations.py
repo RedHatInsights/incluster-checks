@@ -2326,6 +2326,7 @@ def _create_far_pod(
             init_containers.append(ic)
         spec["initContainers"] = init_containers
 
+    mock_pod.name.return_value = name
     mock_pod.as_dict.return_value = {
         "metadata": {"name": name, "namespace": "openshift-workload-availability"},
         "spec": spec,

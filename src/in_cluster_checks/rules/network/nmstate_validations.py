@@ -7,6 +7,8 @@ after cluster operations like node reboots.
 
 from typing import Dict, List
 
+import openshift_client as oc
+
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.rule import OrchestratorRule, PrerequisiteResult, RuleResult
 from in_cluster_checks.utils.enums import Objectives
@@ -49,11 +51,12 @@ class VerifyAllNNCPsAvailable(OrchestratorRule):
             self.oc_api.select_resources("nodenetworkconfigurationpolicies", all_namespaces=True, timeout=30)
             # If select_resources succeeds, CRD exists (even if no instances found)
             return PrerequisiteResult.met()
-        except Exception as e:
+        except oc.OpenShiftPythonException as e:
             error_msg = str(e).lower()
             if "not found" in error_msg or "no matches for kind" in error_msg:
                 return PrerequisiteResult.not_met("NMState operator is not installed (NNCP CRD not found)")
-            raise UnExpectedSystemOutput(f"Cannot check for NNCP resources: {e}")
+            # Re-raise other OpenShift errors (timeouts, RBAC, etc.) to propagate naturally
+            raise
 
     def run_rule(self) -> RuleResult:
         """
@@ -62,22 +65,18 @@ class VerifyAllNNCPsAvailable(OrchestratorRule):
         Returns:
             RuleResult indicating NNCP health status
         """
-        try:
-            nncps = self.oc_api.select_resources("nodenetworkconfigurationpolicies", all_namespaces=True, timeout=60)
+        nncps = self.oc_api.select_resources("nodenetworkconfigurationpolicies", all_namespaces=True, timeout=60)
 
-            if not nncps:
-                return RuleResult.not_applicable("No NodeNetworkConfigurationPolicies found")
+        if not nncps:
+            return RuleResult.not_applicable("No NodeNetworkConfigurationPolicies found")
 
-            failed_nncps = self._check_nncp_conditions(nncps)
+        failed_nncps = self._check_nncp_conditions(nncps)
 
-            if failed_nncps:
-                message = "NodeNetworkConfigurationPolicies are not healthy:\n" + "\n".join(failed_nncps)
-                return RuleResult.failed(message)
+        if failed_nncps:
+            message = "NodeNetworkConfigurationPolicies are not healthy:\n" + "\n".join(failed_nncps)
+            return RuleResult.failed(message)
 
-            return RuleResult.passed(f"All {len(nncps)} NodeNetworkConfigurationPolicies are healthy")
-
-        except Exception as e:
-            return RuleResult.skip(f"Failed to check NNCP status: {e}")
+        return RuleResult.passed(f"All {len(nncps)} NodeNetworkConfigurationPolicies are healthy")
 
     def _check_nncp_conditions(self, nncps: List) -> List[str]:
         """
@@ -92,6 +91,16 @@ class VerifyAllNNCPsAvailable(OrchestratorRule):
         failed_checks = []
 
         for nncp in nncps:
+            # Validate required metadata field
+            if not hasattr(nncp, "model") or not hasattr(nncp.model, "metadata"):
+                raise UnExpectedSystemOutput(
+                    f"NNCP object missing required 'model.metadata' structure: {nncp}"
+                )
+            if not hasattr(nncp.model.metadata, "name"):
+                raise UnExpectedSystemOutput(
+                    f"NNCP object missing required 'model.metadata.name' field: {nncp.model.metadata}"
+                )
+
             nncp_name = nncp.model.metadata.name
             conditions = self._get_conditions(nncp)
 
@@ -115,12 +124,9 @@ class VerifyAllNNCPsAvailable(OrchestratorRule):
         Returns:
             List of condition dictionaries
         """
-        try:
-            if hasattr(nncp.model, "status") and hasattr(nncp.model.status, "conditions"):
-                return nncp.model.status.conditions or []
-            return []
-        except Exception:
-            return []
+        if hasattr(nncp.model, "status") and hasattr(nncp.model.status, "conditions"):
+            return nncp.model.status.conditions or []
+        return []
 
     def _validate_conditions(self, nncp_name: str, conditions: List[Dict]) -> List[str]:
         """
@@ -134,7 +140,19 @@ class VerifyAllNNCPsAvailable(OrchestratorRule):
             List of failure messages
         """
         failures = []
-        condition_map = {cond.type: cond for cond in conditions}
+
+        # Build condition map and validate structure
+        condition_map = {}
+        for cond in conditions:
+            if not hasattr(cond, "type"):
+                raise UnExpectedSystemOutput(
+                    f"NNCP {nncp_name} condition missing required 'type' field: {cond}"
+                )
+            if not hasattr(cond, "status"):
+                raise UnExpectedSystemOutput(
+                    f"NNCP {nncp_name} condition missing required 'status' field: {cond}"
+                )
+            condition_map[cond.type] = cond
 
         # Check Available condition
         available_cond = condition_map.get("Available")

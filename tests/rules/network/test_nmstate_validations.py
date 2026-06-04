@@ -6,6 +6,7 @@ Tests for VerifyAllNNCPsAvailable rule.
 
 from unittest.mock import Mock
 
+import openshift_client as oc
 import pytest
 
 from in_cluster_checks.rules.network.nmstate_validations import VerifyAllNNCPsAvailable
@@ -62,7 +63,9 @@ class TestVerifyAllNNCPsAvailable(RuleTestBase):
             "NMState operator not installed - CRD not found",
             tested_object_mock_dict={
                 "oc_api": Mock(
-                    select_resources=Mock(side_effect=Exception("no matches for kind"))
+                    select_resources=Mock(
+                        side_effect=oc.OpenShiftPythonException("no matches for kind")
+                    )
                 )
             },
         ),
@@ -71,7 +74,7 @@ class TestVerifyAllNNCPsAvailable(RuleTestBase):
             tested_object_mock_dict={
                 "oc_api": Mock(
                     select_resources=Mock(
-                        side_effect=Exception(
+                        side_effect=oc.OpenShiftPythonException(
                             "nodenetworkconfigurationpolicies.nmstate.io not found"
                         )
                     )

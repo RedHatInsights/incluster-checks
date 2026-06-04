@@ -1250,7 +1250,7 @@ class VerifyFarContainerNonRoot(OrchestratorRule):
     title = "Verify FAR container runs as non-root user"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-FAR-container-non-root",
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-FAR-container-non%E2%80%90root",
         "https://docs.openshift.com/container-platform/4.18/nodes/pods/nodes-pods-configuring.html",
     ]
 

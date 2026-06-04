@@ -1302,6 +1302,66 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
         return None
 
 
+class VerifyNmoOperatorHealth(SubscriptionOperatorRule):
+    """Verify Node Maintenance Operator (NMO) pods are healthy.
+
+    NMO provides declarative node maintenance for OpenShift clusters,
+    enabling administrators to cordon and drain nodes safely.  This rule
+    checks that the NMO operator has been installed (Subscription exists)
+    and that every pod in the openshift-workload-availability namespace
+    is Running with all containers ready.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_nmo_operator_health"
+    title = "Verify NMO operator pods are healthy"
+    supported_profiles = {"telco-base"}
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-NMO-operator-health",
+        "https://docs.redhat.com/en/documentation/workload_availability_for_red_hat_openshift"
+        "/24.1/html/remediation_fencing_and_maintenance/node-maintenance-operator",
+    ]
+
+    operator_subscription_name = "node-maintenance-operator"
+    operator_display_name = "Node Maintenance Operator"
+
+    NMO_NAMESPACE = "openshift-workload-availability"
+
+    def run_rule(self):
+        """Verify all pods in the openshift-workload-availability namespace are Running and Ready."""
+        pod_objects = self.oc_api.get_all_pods(namespace=self.NMO_NAMESPACE)
+
+        if not pod_objects:
+            return RuleResult.failed(
+                f"No pods found in {self.NMO_NAMESPACE} namespace. NMO operator may not be fully deployed."
+            )
+
+        not_ready_pods = []
+        unknown_status_pods = []
+
+        for pod in pod_objects:
+            pod_status = self.oc_api.get_pod_status(pod)
+            if pod_status is None:
+                pod_name = pod.as_dict().get("metadata", {}).get("name", "unknown")
+                unknown_status_pods.append(pod_name)
+                continue
+            if not pod_status["all_containers_ready"]:
+                not_ready_pods.append(pod_status["status_message"])
+
+        if unknown_status_pods or not_ready_pods:
+            parts = []
+            if unknown_status_pods:
+                parts.append("Failed to evaluate status for NMO pod(s):\n  " + "\n  ".join(unknown_status_pods))
+            if not_ready_pods:
+                parts.append(
+                    f"NMO operator has unhealthy pods in {self.NMO_NAMESPACE} namespace:\n  "
+                    + "\n  ".join(not_ready_pods)
+                )
+            return RuleResult.failed("\n\n".join(parts))
+
+        return RuleResult.passed()
+
+
 class VerifyFarOperatorHealth(SubscriptionOperatorRule):
     """Verify Fence Agents Remediation (FAR) operator pods are healthy.
 

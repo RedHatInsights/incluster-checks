@@ -27,6 +27,7 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     VerifyInternalRegistry,
     VerifyNetworkDiagnosticsDisabled,
     VerifyNfdOperatorHealth,
+    VerifyNmoOperatorHealth,
     VerifyWebConsoleDisabled,
 )
 from in_cluster_checks.utils.enums import Status
@@ -2706,4 +2707,195 @@ class TestVerifyFarContainerNonRoot(RuleTestBase):
 
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+
+def create_mock_nmo_pod(name, phase, all_containers_ready=True):
+    """Create a mock NMO pod object."""
+    mock_pod = Mock()
+    container_statuses = [
+        {"ready": all_containers_ready},
+    ]
+    mock_pod.as_dict.return_value = {
+        "metadata": {"namespace": "openshift-workload-availability", "name": name},
+        "status": {
+            "phase": phase,
+            "containerStatuses": container_statuses,
+        },
+    }
+    return mock_pod
+
+
+def _nmo_subscriptions(include_nmo=True):
+    """Build a subscriptions response, optionally including the NMO subscription."""
+    items = []
+    if include_nmo:
+        items.append(
+            {
+                "metadata": {"name": "nmo-sub", "namespace": "openshift-workload-availability"},
+                "spec": {"name": "node-maintenance-operator", "source": "redhat-operators"},
+            }
+        )
+    return {"items": items}
+
+
+class TestVerifyNmoOperatorHealth(RuleTestBase):
+    """Tests for VerifyNmoOperatorHealth rule."""
+
+    tested_type = VerifyNmoOperatorHealth
+
+    scenario_prerequisite_fulfilled = [
+        RuleScenarioParams(
+            "NMO operator subscription found",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nmo_subscriptions(include_nmo=True))
+                ),
+            },
+        ),
+    ]
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "NMO operator installed and all pods healthy",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_nmo_pod("node-maintenance-operator-controller-manager-abc123", "Running", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nmo_subscriptions(include_nmo=True))
+                ),
+            },
+        ),
+    ]
+
+    scenario_prerequisite_not_fulfilled = [
+        RuleScenarioParams(
+            "NMO operator subscription not found",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nmo_subscriptions(include_nmo=False))
+                ),
+            },
+        ),
+        RuleScenarioParams(
+            "no subscriptions exist in cluster",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps({"items": []})
+                ),
+            },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "NMO operator installed but no pods found",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(return_value=[]),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nmo_subscriptions(include_nmo=True))
+                ),
+            },
+            failed_msg="No pods found in openshift-workload-availability namespace."
+            " NMO operator may not be fully deployed.",
+        ),
+        RuleScenarioParams(
+            "NMO operator installed but some pods are not running",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_nmo_pod("node-maintenance-operator-controller-manager-abc123", "Running", True),
+                        create_mock_nmo_pod("node-maintenance-operator-worker-xyz789", "Pending", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nmo_subscriptions(include_nmo=True))
+                ),
+            },
+            failed_msg="NMO operator has unhealthy pods in openshift-workload-availability namespace:\n"
+            "  node-maintenance-operator-worker-xyz789 - Phase: Pending",
+        ),
+        RuleScenarioParams(
+            "NMO operator installed but containers not ready",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_nmo_pod("node-maintenance-operator-controller-manager-abc123", "Running", False),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nmo_subscriptions(include_nmo=True))
+                ),
+            },
+            failed_msg="NMO operator has unhealthy pods in openshift-workload-availability namespace:\n"
+            "  node-maintenance-operator-controller-manager-abc123 - Running, Not all containers ready",
+        ),
+        RuleScenarioParams(
+            "NMO operator installed but pod status unknown",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_nmo_pod("node-maintenance-operator-controller-manager-abc123", "Succeeded", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nmo_subscriptions(include_nmo=True))
+                ),
+            },
+            failed_msg="Failed to evaluate status for NMO pod(s):\n"
+            "  node-maintenance-operator-controller-manager-abc123",
+        ),
+        RuleScenarioParams(
+            "NMO operator installed with unknown and unhealthy pods",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_nmo_pod("node-maintenance-operator-controller-manager-abc123", "Succeeded", True),
+                        create_mock_nmo_pod("node-maintenance-operator-worker-xyz789", "Running", False),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_nmo_subscriptions(include_nmo=True))
+                ),
+            },
+            failed_msg="Failed to evaluate status for NMO pod(s):\n"
+            "  node-maintenance-operator-controller-manager-abc123\n\n"
+            "NMO operator has unhealthy pods in openshift-workload-availability namespace:\n"
+            "  node-maintenance-operator-worker-xyz789 - Running, Not all containers ready",
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_fulfilled)
+    def test_prerequisite_fulfilled(self, scenario_params, tested_object):
+        """Test that prerequisite is met when NMO operator is installed."""
+        RuleTestBase.test_prerequisite_fulfilled(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
+    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        """Test that prerequisite is not met when NMO operator is not installed."""
+        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        """Test that rule passes when all NMO pods are healthy."""
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        """Test that rule fails when NMO pods are unhealthy or missing."""
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)

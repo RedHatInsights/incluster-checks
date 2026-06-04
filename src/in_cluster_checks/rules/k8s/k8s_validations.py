@@ -1260,8 +1260,16 @@ class VerifyFarContainerNonRoot(SubscriptionOperatorRule):
     FAR_POD_LABEL_VALUE = "fence-agents-remediation-operator"
 
     @staticmethod
-    def _check_pod_security_context(pod_name, security_context):
-        """Validate pod-level security context has runAsNonRoot set to true."""
+    def _check_pod_security_context(pod_name: str, security_context: dict[str, object] | None) -> list[str]:
+        """Validate pod-level security context has runAsNonRoot set to true.
+
+        Args:
+            pod_name: Pod name.
+            security_context: Pod-level security context.
+
+        Returns:
+            List of validation error messages.
+        """
         errors = []
         if security_context is None:
             errors.append(f"Pod {pod_name} has nil SecurityContext")
@@ -1275,8 +1283,16 @@ class VerifyFarContainerNonRoot(SubscriptionOperatorRule):
         return errors
 
     @staticmethod
-    def _check_containers_non_root(pod_name, all_containers):
-        """Validate no container runs as root (runAsUser != 0)."""
+    def _check_containers_non_root(pod_name: str, all_containers: list[dict[str, object]]) -> list[str]:
+        """Validate no container runs as root (runAsUser != 0).
+
+        Args:
+            pod_name: Pod name.
+            all_containers: Combined containers and initContainers list.
+
+        Returns:
+            List of validation error messages.
+        """
         errors = []
         if not all_containers:
             errors.append(f"Pod {pod_name} has no containers")

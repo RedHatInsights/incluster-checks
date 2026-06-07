@@ -991,6 +991,53 @@ class SubscriptionOperatorRule(OrchestratorRule):
             f"{self.operator_display_name} operator is not installed on this cluster"
         )
 
+    def _check_pod_security_context(self, pod_name: str, security_context: dict[str, object] | None) -> list[str]:
+        """Validate pod-level security context has runAsNonRoot set to true.
+
+        Args:
+            pod_name: Pod name.
+            security_context: Pod-level security context.
+
+        Returns:
+            List of validation error messages.
+        """
+        errors = []
+        if security_context is None:
+            errors.append(f"Pod {pod_name} has nil SecurityContext")
+        elif security_context.get("runAsNonRoot") is None:
+            errors.append(f"Pod {pod_name} has nil runAsNonRoot")
+        elif not security_context.get("runAsNonRoot"):
+            errors.append(
+                f"Incorrect runAsNonRoot for pod {pod_name}. "
+                f"Expected true, found: {security_context.get('runAsNonRoot')}"
+            )
+        return errors
+
+    def _check_containers_non_root(self, pod_name: str, all_containers: list[dict[str, object]]) -> list[str]:
+        """Validate no container runs as root (runAsUser != 0).
+
+        Args:
+            pod_name: Pod name.
+            all_containers: Combined containers and initContainers list.
+
+        Returns:
+            List of validation error messages.
+        """
+        errors = []
+        if not all_containers:
+            errors.append(f"Pod {pod_name} has no containers")
+            return errors
+        for i, container in enumerate(all_containers):
+            container_sc = container.get("securityContext")
+            if container_sc is not None:
+                run_as_user = container_sc.get("runAsUser")
+                if run_as_user is not None and run_as_user == 0:
+                    errors.append(
+                        f"Incorrect user running container [{i}] in pod {pod_name}, "
+                        f"expected non 0, found: {run_as_user}"
+                    )
+        return errors
+
 
 class VerifyNfdOperatorHealth(SubscriptionOperatorRule):
     """Verify Node Feature Discovery (NFD) operator pods are healthy.
@@ -1258,55 +1305,6 @@ class VerifyFarContainerNonRoot(SubscriptionOperatorRule):
 
     FAR_POD_LABEL_KEY = "app.kubernetes.io/name"
     FAR_POD_LABEL_VALUE = "fence-agents-remediation-operator"
-
-    @staticmethod
-    def _check_pod_security_context(pod_name: str, security_context: dict[str, object] | None) -> list[str]:
-        """Validate pod-level security context has runAsNonRoot set to true.
-
-        Args:
-            pod_name: Pod name.
-            security_context: Pod-level security context.
-
-        Returns:
-            List of validation error messages.
-        """
-        errors = []
-        if security_context is None:
-            errors.append(f"Pod {pod_name} has nil SecurityContext")
-        elif security_context.get("runAsNonRoot") is None:
-            errors.append(f"Pod {pod_name} has nil runAsNonRoot")
-        elif not security_context.get("runAsNonRoot"):
-            errors.append(
-                f"Incorrect runAsNonRoot for pod {pod_name}. "
-                f"Expected true, found: {security_context.get('runAsNonRoot')}"
-            )
-        return errors
-
-    @staticmethod
-    def _check_containers_non_root(pod_name: str, all_containers: list[dict[str, object]]) -> list[str]:
-        """Validate no container runs as root (runAsUser != 0).
-
-        Args:
-            pod_name: Pod name.
-            all_containers: Combined containers and initContainers list.
-
-        Returns:
-            List of validation error messages.
-        """
-        errors = []
-        if not all_containers:
-            errors.append(f"Pod {pod_name} has no containers")
-            return errors
-        for i, container in enumerate(all_containers):
-            container_sc = container.get("securityContext")
-            if container_sc is not None:
-                run_as_user = container_sc.get("runAsUser")
-                if run_as_user is not None and run_as_user == 0:
-                    errors.append(
-                        f"Incorrect user running container [{i}] in pod {pod_name}, "
-                        f"expected non 0, found: {run_as_user}"
-                    )
-        return errors
 
     def run_rule(self):
         """Check if FAR pods run as non-root user with proper security context."""

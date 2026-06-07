@@ -1321,11 +1321,11 @@ class VerifyFarContainerNonRoot(SubscriptionOperatorRule):
 
         for pod in pod_objects:
             pod_name = pod.name()
-            spec = pod.model.spec
+            spec = pod.as_dict().get("spec", {})
 
-            error_messages.extend(self._check_pod_security_context(pod_name, spec.securityContext))
+            error_messages.extend(self._check_pod_security_context(pod_name, spec.get("securityContext")))
 
-            all_containers = (spec.containers or []) + (spec.initContainers or [])
+            all_containers = spec.get("containers", []) + spec.get("initContainers", [])
             error_messages.extend(self._check_containers_non_root(pod_name, all_containers))
 
         if error_messages:

@@ -2436,7 +2436,7 @@ class TestVerifyFarContainerNonRoot(RuleTestBase):
                     ]
                 ),
             },
-            failed_msg="Testing user running FAR container failed due to:\n- Pod far-pod-1 has nil SecurityContext\n",
+            failed_msg="FAR operator pods doesn't have proper security context:\n- Pod far-pod-1 has nil SecurityContext\n",
         ),
         RuleScenarioParams(
             "FAR pod has nil runAsNonRoot",
@@ -2452,7 +2452,7 @@ class TestVerifyFarContainerNonRoot(RuleTestBase):
                     ]
                 ),
             },
-            failed_msg="Testing user running FAR container failed due to:\n- Pod far-pod-1 has nil runAsNonRoot\n",
+            failed_msg="FAR operator pods doesn't have proper security context:\n- Pod far-pod-1 has nil runAsNonRoot\n",
         ),
         RuleScenarioParams(
             "FAR pod has runAsNonRoot set to false",
@@ -2468,7 +2468,7 @@ class TestVerifyFarContainerNonRoot(RuleTestBase):
                     ]
                 ),
             },
-            failed_msg="Testing user running FAR container failed due to:\n"
+            failed_msg="FAR operator pods doesn't have proper security context:\n"
             "- Incorrect runAsNonRoot for pod far-pod-1. Expected true, found: False\n",
         ),
         RuleScenarioParams(
@@ -2485,7 +2485,7 @@ class TestVerifyFarContainerNonRoot(RuleTestBase):
                     ]
                 ),
             },
-            failed_msg="Testing user running FAR container failed due to:\n- Pod far-pod-1 has no containers\n",
+            failed_msg="FAR operator pods doesn't have proper security context:\n- Pod far-pod-1 has no containers\n",
         ),
         RuleScenarioParams(
             "FAR container runs as root (runAsUser=0)",
@@ -2501,8 +2501,8 @@ class TestVerifyFarContainerNonRoot(RuleTestBase):
                     ]
                 ),
             },
-            failed_msg="Testing user running FAR container failed due to:\n"
-            "- Incorrect user running container [0] in pod far-pod-1, expected non 0, found: 0\n",
+            failed_msg="FAR operator pods doesn't have proper security context:\n"
+            "- Container 'container-0' in pod far-pod-1 runs as root (runAsUser=0)\n",
         ),
         RuleScenarioParams(
             "FAR init container runs as root (runAsUser=0)",
@@ -2523,8 +2523,8 @@ class TestVerifyFarContainerNonRoot(RuleTestBase):
                     ]
                 ),
             },
-            failed_msg="Testing user running FAR container failed due to:\n"
-            "- Incorrect user running container [1] in pod far-pod-1, expected non 0, found: 0\n",
+            failed_msg="FAR operator pods doesn't have proper security context:\n"
+            "- Container 'init-container-0' in pod far-pod-1 runs as root (runAsUser=0)\n",
         ),
         RuleScenarioParams(
             "mixed failures - nil SecurityContext and root container",
@@ -2541,9 +2541,26 @@ class TestVerifyFarContainerNonRoot(RuleTestBase):
                     ]
                 ),
             },
-            failed_msg="Testing user running FAR container failed due to:\n"
+            failed_msg="FAR operator pods doesn't have proper security context:\n"
             "- Pod far-pod-1 has nil SecurityContext\n"
-            "- Incorrect user running container [0] in pod far-pod-2, expected non 0, found: 0\n",
+            "- Container 'container-0' in pod far-pod-2 runs as root (runAsUser=0)\n",
+        ),
+        RuleScenarioParams(
+            "FAR container has invalid runAsUser (negative value)",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscription_response(has_far=True))
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pods": Mock(
+                    return_value=[
+                        _create_far_pod("far-pod-1", run_as_non_root=True, containers_run_as_user=[-1]),
+                    ]
+                ),
+            },
+            failed_msg="FAR operator pods doesn't have proper security context:\n"
+            "- Container 'container--1' in pod far-pod-1 has invalid runAsUser: -1\n",
         ),
     ]
 

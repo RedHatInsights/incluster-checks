@@ -1027,15 +1027,18 @@ class SubscriptionOperatorRule(OrchestratorRule):
         if not all_containers:
             errors.append(f"Pod {pod_name} has no containers")
             return errors
-        for i, container in enumerate(all_containers):
+        for container in all_containers:
+            container_name = container.get("name", "unknown")
             container_sc = container.get("securityContext")
             if container_sc is not None:
                 run_as_user = container_sc.get("runAsUser")
-                if run_as_user is not None and run_as_user == 0:
-                    errors.append(
-                        f"Incorrect user running container [{i}] in pod {pod_name}, "
-                        f"expected non 0, found: {run_as_user}"
-                    )
+                if run_as_user is not None:
+                    if not isinstance(run_as_user, int) or run_as_user < 0:
+                        errors.append(
+                            f"Container '{container_name}' in pod {pod_name} has invalid runAsUser: {run_as_user}"
+                        )
+                    elif run_as_user == 0:
+                        errors.append(f"Container '{container_name}' in pod {pod_name} runs as root (runAsUser=0)")
         return errors
 
 
@@ -1327,7 +1330,7 @@ class VerifyFarContainerNonRoot(SubscriptionOperatorRule):
             error_messages.extend(self._check_containers_non_root(pod_name, all_containers))
 
         if error_messages:
-            message = "Testing user running FAR container failed due to:\n"
+            message = "FAR operator pods doesn't have proper security context:\n"
             for msg in error_messages:
                 message += f"- {msg}\n"
             return RuleResult.failed(message)

@@ -10,6 +10,7 @@ from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.rule import OrchestratorRule
 from in_cluster_checks.core.rule_result import PrerequisiteResult, RuleResult
 from in_cluster_checks.utils.enums import Objectives, Status
+from in_cluster_checks.utils.parsing_utils import parse_json
 
 
 class AllPodsReadyAndRunning(OrchestratorRule):
@@ -991,6 +992,56 @@ class SubscriptionOperatorRule(OrchestratorRule):
             f"{self.operator_display_name} operator is not installed on this cluster"
         )
 
+    def _check_pod_security_context(self, pod_name: str, security_context: dict[str, object] | None) -> list[str]:
+        """Validate pod-level security context has runAsNonRoot set to true.
+
+        Args:
+            pod_name: Pod name.
+            security_context: Pod-level security context.
+
+        Returns:
+            List of validation error messages.
+        """
+        errors = []
+        if security_context is None:
+            errors.append(f"Pod {pod_name} has nil SecurityContext")
+        elif security_context.get("runAsNonRoot") is None:
+            errors.append(f"Pod {pod_name} has nil runAsNonRoot")
+        elif not security_context.get("runAsNonRoot"):
+            errors.append(
+                f"Incorrect runAsNonRoot for pod {pod_name}. "
+                f"Expected true, found: {security_context.get('runAsNonRoot')}"
+            )
+        return errors
+
+    def _check_containers_non_root(self, pod_name: str, all_containers: list[dict[str, object]]) -> list[str]:
+        """Validate no container runs as root (runAsUser != 0).
+
+        Args:
+            pod_name: Pod name.
+            all_containers: Combined containers and initContainers list.
+
+        Returns:
+            List of validation error messages.
+        """
+        errors = []
+        if not all_containers:
+            errors.append(f"Pod {pod_name} has no containers")
+            return errors
+        for container in all_containers:
+            container_name = container.get("name", "unknown")
+            container_sc = container.get("securityContext")
+            if container_sc is not None:
+                run_as_user = container_sc.get("runAsUser")
+                if run_as_user is not None:
+                    if not isinstance(run_as_user, int) or run_as_user < 0:
+                        errors.append(
+                            f"Container '{container_name}' in pod {pod_name} has invalid runAsUser: {run_as_user}"
+                        )
+                    elif run_as_user == 0:
+                        errors.append(f"Container '{container_name}' in pod {pod_name} runs as root (runAsUser=0)")
+        return errors
+
 
 class VerifyNfdOperatorHealth(SubscriptionOperatorRule):
     """Verify Node Feature Discovery (NFD) operator pods are healthy.
@@ -1124,8 +1175,9 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
 
     ACM orchestrates multicluster lifecycle management on the hub cluster.
     This rule checks that the ACM operator has been installed (Subscription
-    exists) and that every pod in the open-cluster-management namespace is
-    Running with all containers ready.
+    exists), that the ClusterServiceVersion is in Succeeded phase, and that
+    every pod in the open-cluster-management namespace is Running with all
+    containers ready.
     """
 
     objective_hosts = [Objectives.ORCHESTRATOR]
@@ -1142,15 +1194,64 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
     operator_display_name = "Advanced Cluster Management"
 
     ACM_NAMESPACE = "open-cluster-management"
+    ACM_CSV_PATTERN = "advanced-cluster-management"
 
     def run_rule(self):
-        """Verify all pods in the open-cluster-management namespace are Running and Ready."""
+        """Verify ACM CSV is Succeeded and all pods in the namespace are Running and Ready."""
+        csv_error = self._verify_csv_status()
+        pod_error = self._verify_pods_status()
+
+        errors = [e for e in (csv_error, pod_error) if e]
+        if errors:
+            return RuleResult.failed("\n\n".join(errors))
+
+        return RuleResult.passed()
+
+    def _verify_csv_status(self):
+        """Check that the ACM ClusterServiceVersion is in Succeeded phase.
+
+        Returns:
+            Error message string if CSV check fails, None if successful.
+        """
+        _, csv_output, _ = self.oc_api.run_oc_command(
+            "get", ["csv", "-n", self.ACM_NAMESPACE, "-o", "json"], timeout=45
+        )
+        csv_data = parse_json(csv_output, f"oc get csv -n {self.ACM_NAMESPACE} -o json", self.get_host_ip())
+
+        acm_csvs = [
+            csv for csv in csv_data.get("items", []) if self.ACM_CSV_PATTERN in csv.get("metadata", {}).get("name", "")
+        ]
+
+        if not acm_csvs:
+            return (
+                f"No ClusterServiceVersion matching '{self.ACM_CSV_PATTERN}' "
+                f"found in {self.ACM_NAMESPACE} namespace"
+            )
+
+        not_succeeded = []
+        for csv in acm_csvs:
+            name = csv.get("metadata", {}).get("name", "unknown")
+            phase = csv.get("status", {}).get("phase", "Unknown")
+            if phase != "Succeeded":
+                reason = csv.get("status", {}).get("reason", "Unknown")
+                message = csv.get("status", {}).get("message", "")
+                not_succeeded.append(f"{name} - Phase: {phase}, Reason: {reason}, Message: {message}")
+
+        if not_succeeded:
+            return "ACM ClusterServiceVersion is not in Succeeded phase:\n  " + "\n  ".join(not_succeeded)
+
+        return None
+
+    def _verify_pods_status(self):
+        """Check that all pods in the ACM namespace are Running and Ready.
+
+        Returns:
+            Error message string if pod check fails, None if successful.
+        """
         pod_objects = self.oc_api.get_all_pods(namespace=self.ACM_NAMESPACE)
 
         if not pod_objects:
-            return RuleResult.failed(
-                f"No pods found in {self.ACM_NAMESPACE} namespace. ACM operator may not be fully deployed."
-            )
+            return f"No pods found in {self.ACM_NAMESPACE} namespace. ACM operator may not be fully deployed."
 
         not_ready_pods = []
         unknown_status_pods = []
@@ -1173,9 +1274,9 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
                     f"ACM operator has unhealthy pods in {self.ACM_NAMESPACE} namespace:\n  "
                     + "\n  ".join(not_ready_pods)
                 )
-            return RuleResult.failed("\n\n".join(parts))
+            return "\n\n".join(parts)
 
-        return RuleResult.passed()
+        return None
 
 
 class VerifyFarOperatorHealth(SubscriptionOperatorRule):
@@ -1232,5 +1333,57 @@ class VerifyFarOperatorHealth(SubscriptionOperatorRule):
                     + "\n  ".join(not_ready_pods)
                 )
             return RuleResult.failed("\n\n".join(parts))
+
+        return RuleResult.passed()
+
+
+class VerifyFarContainerNonRoot(SubscriptionOperatorRule):
+    """Verify FAR (Fence Agents Remediation) container runs as non-root user.
+
+    Checks that FAR operator pods have proper security context:
+    - Pod-level runAsNonRoot is set to true
+    - No container runs as root (runAsUser != 0)
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_far_container_non_root"
+    title = "Verify FAR container runs as non-root user"
+    supported_profiles = {"telco-base"}
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-FAR-container-non%E2%80%90root",
+        "https://docs.openshift.com/container-platform/4.18/nodes/pods/nodes-pods-configuring.html",
+    ]
+
+    operator_subscription_name = "fence-agents-remediation"
+    operator_display_name = "Fence Agents Remediation"
+
+    FAR_POD_LABEL_KEY = "app.kubernetes.io/name"
+    FAR_POD_LABEL_VALUE = "fence-agents-remediation-operator"
+
+    def run_rule(self):
+        """Check if FAR pods run as non-root user with proper security context."""
+        pod_objects = self.oc_api.get_pods(labels={self.FAR_POD_LABEL_KEY: self.FAR_POD_LABEL_VALUE})
+
+        if not pod_objects:
+            return RuleResult.failed(
+                f"No FAR pods found with label {self.FAR_POD_LABEL_KEY}={self.FAR_POD_LABEL_VALUE}"
+            )
+
+        error_messages = []
+
+        for pod in pod_objects:
+            pod_name = pod.name()
+            spec = pod.as_dict().get("spec", {})
+
+            error_messages.extend(self._check_pod_security_context(pod_name, spec.get("securityContext")))
+
+            all_containers = spec.get("containers", []) + spec.get("initContainers", [])
+            error_messages.extend(self._check_containers_non_root(pod_name, all_containers))
+
+        if error_messages:
+            message = "FAR operator pods doesn't have proper security context:\n"
+            for msg in error_messages:
+                message += f"- {msg}\n"
+            return RuleResult.failed(message)
 
         return RuleResult.passed()

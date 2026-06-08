@@ -1470,3 +1470,90 @@ class VerifyFarContainerNonRoot(SubscriptionOperatorRule):
             return RuleResult.failed(message)
 
         return RuleResult.passed()
+class VerifyMdrOperatorHealth(OrchestratorRule):
+    """Verify Machine Deletion Remediation (MDR) operator pods are healthy.
+
+    MDR is part of Red Hat Workload Availability (RHWA) and provides automated
+    machine deletion remediation for unhealthy nodes. This rule checks that the
+    MDR operator has been installed (Subscription exists) and that every pod in
+    the openshift-workload-availability namespace is Running with all containers ready.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_mdr_operator_health"
+    title = "Verify MDR operator pods are healthy"
+    supported_profiles = {"telco-base"}
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-MDR-operator-health",
+        "https://docs.redhat.com/en/documentation/workload_availability_for_red_hat_openshift"
+        "/23.3/html/remediation_fencing_and_maintenance/machine-deletion-remediation-operator-remediate-nodes",
+    ]
+
+    MDR_NAMESPACE = "openshift-workload-availability"
+
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        """Check that the MDR operator has been installed via a Subscription.
+
+        Queries the cluster for a Subscription resource with the
+        ``openshift-workload-availability`` package name. If none is found the
+        rule is not applicable.
+        """
+        _, subscriptions_output, _ = self.oc_api.run_oc_command(
+            "get",
+            ["subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json"],
+            timeout=45,
+        )
+
+        try:
+            subscriptions_data = json.loads(subscriptions_output)
+        except json.JSONDecodeError as e:
+            raise UnExpectedSystemOutput(
+                ip=self.get_host_ip(),
+                cmd="oc get subscriptions.operators.coreos.com --all-namespaces -o json",
+                output=subscriptions_output,
+                message=f"Failed to parse operator subscriptions: {e}",
+            ) from e
+
+        for sub in subscriptions_data.get("items", []):
+            spec = sub.get("spec", {})
+            if spec.get("name") == "openshift-workload-availability":
+                return PrerequisiteResult.met()
+
+        return PrerequisiteResult.not_met(
+            "MDR operator subscription not found - "
+            "Machine Deletion Remediation operator is not installed on this cluster"
+        )
+
+    def run_rule(self):
+        """Verify all pods in the openshift-workload-availability namespace are Running and Ready."""
+        pod_objects = self.oc_api.get_all_pods(namespace=self.MDR_NAMESPACE)
+
+        if not pod_objects:
+            return RuleResult.failed(
+                f"No pods found in {self.MDR_NAMESPACE} namespace. MDR operator may not be fully deployed."
+            )
+
+        not_ready_pods = []
+        unknown_status_pods = []
+
+        for pod in pod_objects:
+            pod_status = self.oc_api.get_pod_status(pod)
+            if pod_status is None:
+                pod_name = pod.as_dict().get("metadata", {}).get("name", "unknown")
+                unknown_status_pods.append(pod_name)
+                continue
+            if not pod_status["all_containers_ready"]:
+                not_ready_pods.append(pod_status["status_message"])
+
+        if unknown_status_pods or not_ready_pods:
+            parts = []
+            if unknown_status_pods:
+                parts.append("Failed to evaluate status for MDR pod(s):\n  " + "\n  ".join(unknown_status_pods))
+            if not_ready_pods:
+                parts.append(
+                    f"MDR operator has unhealthy pods in {self.MDR_NAMESPACE} namespace:\n  "
+                    + "\n  ".join(not_ready_pods)
+                )
+            return RuleResult.failed("\n\n".join(parts))
+
+        return RuleResult.passed()

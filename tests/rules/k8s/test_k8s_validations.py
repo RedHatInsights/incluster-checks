@@ -2899,3 +2899,161 @@ class TestVerifyNmoOperatorHealth(RuleTestBase):
     def test_scenario_failed(self, scenario_params, tested_object):
         """Test that rule fails when NMO pods are unhealthy or missing."""
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+def create_mock_mdr_pod(name, phase, all_containers_ready=True):
+    """Create a mock MDR pod object."""
+    mock_pod = Mock()
+    container_statuses = [
+        {"ready": all_containers_ready},
+    ]
+    mock_pod.as_dict.return_value = {
+        "metadata": {"namespace": "openshift-workload-availability", "name": name},
+        "status": {
+            "phase": phase,
+            "containerStatuses": container_statuses,
+        },
+    }
+    return mock_pod
+
+
+def _mdr_subscriptions(include_mdr=True):
+    """Build a subscriptions response, optionally including the MDR subscription."""
+    items = []
+    if include_mdr:
+        items.append(
+            {
+                "metadata": {"name": "mdr-sub", "namespace": "openshift-workload-availability"},
+                "spec": {"name": "openshift-workload-availability", "source": "redhat-operators"},
+            }
+        )
+    items.append(
+        {
+            "metadata": {"name": "other-operator", "namespace": "openshift-operators"},
+            "spec": {"name": "other", "source": "redhat-operators"},
+        }
+    )
+    return {"items": items}
+
+
+class TestVerifyMdrOperatorHealth(RuleTestBase):
+    """Test VerifyMdrOperatorHealth rule."""
+
+    tested_type = VerifyMdrOperatorHealth
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "MDR operator installed and all pods are healthy",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_mdr_pod("mdr-controller-manager-abc123", "Running", True),
+                        create_mock_mdr_pod("mdr-worker-xyz789", "Running", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_mdr_subscriptions(include_mdr=True))
+                ),
+            },
+        ),
+    ]
+
+    scenario_prerequisite_not_fulfilled = [
+        RuleScenarioParams(
+            "MDR operator subscription not found",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_mdr_subscriptions(include_mdr=False))
+                ),
+            },
+        ),
+        RuleScenarioParams(
+            "no subscriptions exist in cluster",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps({"items": []})
+                ),
+            },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "MDR operator installed but no pods found",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(return_value=[]),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_mdr_subscriptions(include_mdr=True))
+                ),
+            },
+            failed_msg="No pods found in openshift-workload-availability namespace. MDR operator may not be fully deployed.",
+        ),
+        RuleScenarioParams(
+            "MDR operator installed but some pods are not running",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_mdr_pod("mdr-controller-manager-abc123", "Running", True),
+                        create_mock_mdr_pod("mdr-worker-xyz789", "Pending", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_mdr_subscriptions(include_mdr=True))
+                ),
+            },
+            failed_msg="MDR operator has unhealthy pods in openshift-workload-availability namespace:\n"
+            "  mdr-worker-xyz789 - Phase: Pending",
+        ),
+        RuleScenarioParams(
+            "MDR operator installed but containers not ready",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_mdr_pod("mdr-controller-manager-abc123", "Running", False),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_mdr_subscriptions(include_mdr=True))
+                ),
+            },
+            failed_msg="MDR operator has unhealthy pods in openshift-workload-availability namespace:\n"
+            "  mdr-controller-manager-abc123 - Running, Not all containers ready",
+        ),
+        RuleScenarioParams(
+            "MDR operator installed but pod status unknown",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_mdr_pod("mdr-controller-manager-abc123", "Succeeded", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_mdr_subscriptions(include_mdr=True))
+                ),
+            },
+            failed_msg="Failed to evaluate status for MDR pod(s):\n  mdr-controller-manager-abc123",
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
+    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        """Test that prerequisite is not met when MDR operator is not installed."""
+        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        """Test that rule passes when all MDR pods are healthy."""
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        """Test that rule fails when MDR pods are unhealthy or missing."""
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)

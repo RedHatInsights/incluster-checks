@@ -165,7 +165,10 @@ class TestVerifyAllNNCPsAvailable(RuleTestBase):
                     )
                 )
             },
-            failed_msg="NodeNetworkConfigurationPolicies are not healthy:\n  - br-ex-nncp: Not Available - Reason: ConfigurationFailed, Message: Configuration failed",
+            failed_msg=(
+                "NodeNetworkConfigurationPolicies are not healthy:\n"
+                "  - br-ex-nncp: Not Available - Reason: ConfigurationFailed, Message: Configuration failed"
+            ),
         ),
         RuleScenarioParams(
             "NNCP degraded",
@@ -208,7 +211,8 @@ class TestVerifyAllNNCPsAvailable(RuleTestBase):
             },
             failed_msg=(
                 "NodeNetworkConfigurationPolicies are not healthy:\n"
-                "  - br-ex-nncp: Not Available - Reason: ConfigurationFailed, Message: Configuration failed\n"
+                "  - br-ex-nncp: Not Available - Reason: ConfigurationFailed, "
+                "Message: Configuration failed\n"
                 "  - worker-bond-nncp: Degraded (Degraded state detected)\n"
                 "  - vlan-nncp: Still Progressing (Configuration in progress)"
             ),
@@ -224,7 +228,10 @@ class TestVerifyAllNNCPsAvailable(RuleTestBase):
                     )
                 )
             },
-            failed_msg="NodeNetworkConfigurationPolicies are not healthy:\n  - br-ex-nncp: Not Upgradeable - Reason: UpgradeBlocked, Message: Upgrade blocked",
+            failed_msg=(
+                "NodeNetworkConfigurationPolicies are not healthy:\n"
+                "  - br-ex-nncp: Not Upgradeable - Reason: UpgradeBlocked, Message: Upgrade blocked"
+            ),
         ),
         RuleScenarioParams(
             "NNCP with no conditions",

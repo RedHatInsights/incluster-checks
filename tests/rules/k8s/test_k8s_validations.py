@@ -2988,7 +2988,8 @@ class TestVerifyMdrOperatorHealth(RuleTestBase):
                     json.dumps(_mdr_subscriptions(include_mdr=True))
                 ),
             },
-            failed_msg="No pods found in openshift-workload-availability namespace. MDR operator may not be fully deployed.",
+            failed_msg="No pods found in openshift-workload-availability namespace. "
+            "Machine Deletion Remediation operator may not be fully deployed.",
         ),
         RuleScenarioParams(
             "MDR operator installed but some pods are not running",
@@ -3005,7 +3006,7 @@ class TestVerifyMdrOperatorHealth(RuleTestBase):
                     json.dumps(_mdr_subscriptions(include_mdr=True))
                 ),
             },
-            failed_msg="MDR operator has unhealthy pods in openshift-workload-availability namespace:\n"
+            failed_msg="Machine Deletion Remediation operator has unhealthy pods in openshift-workload-availability namespace:\n"
             "  mdr-worker-xyz789 - Phase: Pending",
         ),
         RuleScenarioParams(
@@ -3022,7 +3023,7 @@ class TestVerifyMdrOperatorHealth(RuleTestBase):
                     json.dumps(_mdr_subscriptions(include_mdr=True))
                 ),
             },
-            failed_msg="MDR operator has unhealthy pods in openshift-workload-availability namespace:\n"
+            failed_msg="Machine Deletion Remediation operator has unhealthy pods in openshift-workload-availability namespace:\n"
             "  mdr-controller-manager-abc123 - Running, Not all containers ready",
         ),
         RuleScenarioParams(
@@ -3039,7 +3040,7 @@ class TestVerifyMdrOperatorHealth(RuleTestBase):
                     json.dumps(_mdr_subscriptions(include_mdr=True))
                 ),
             },
-            failed_msg="Failed to evaluate status for MDR pod(s):\n  mdr-controller-manager-abc123",
+            failed_msg="Failed to evaluate status for Machine Deletion Remediation pod(s):\n  mdr-controller-manager-abc123",
         ),
     ]
 

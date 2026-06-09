@@ -18,11 +18,13 @@ def _create_mock_nncp(
     available: str = "True",
     degraded: str = "False",
     progressing: str = "False",
+    upgradeable: str = "True",
 ):
     """Create mock NNCP object with status conditions."""
     mock_condition_available = Mock()
     mock_condition_available.type = "Available"
     mock_condition_available.status = available
+    mock_condition_available.reason = "ConfigurationSucceeded" if available == "True" else "ConfigurationFailed"
     mock_condition_available.message = (
         "Successfully configured" if available == "True" else "Configuration failed"
     )
@@ -41,12 +43,21 @@ def _create_mock_nncp(
         "Configuration in progress" if progressing == "True" else "Not progressing"
     )
 
+    mock_condition_upgradeable = Mock()
+    mock_condition_upgradeable.type = "Upgradeable"
+    mock_condition_upgradeable.status = upgradeable
+    mock_condition_upgradeable.reason = "UpgradeBlocked" if upgradeable == "False" else "Upgradeable"
+    mock_condition_upgradeable.message = (
+        "Upgrade blocked" if upgradeable == "False" else "Can be upgraded"
+    )
+
     mock_nncp = Mock()
     mock_nncp.model.metadata.name = name
     mock_nncp.model.status.conditions = [
         mock_condition_available,
         mock_condition_degraded,
         mock_condition_progressing,
+        mock_condition_upgradeable,
     ]
 
     return mock_nncp
@@ -81,13 +92,19 @@ class TestVerifyAllNNCPsAvailable(RuleTestBase):
                 )
             },
         ),
+        RuleScenarioParams(
+            "no NNCPs found",
+            tested_object_mock_dict={
+                "oc_api": Mock(select_resources=Mock(return_value=[]))
+            },
+        ),
     ]
 
     scenario_prerequisite_fulfilled = [
         RuleScenarioParams(
-            "NMState operator installed - CRD exists",
+            "NMState operator installed with NNCPs",
             tested_object_mock_dict={
-                "oc_api": Mock(select_resources=Mock(return_value=[]))
+                "oc_api": Mock(select_resources=Mock(return_value=[_create_mock_nncp("test-nncp")]))
             },
         ),
     ]
@@ -148,7 +165,7 @@ class TestVerifyAllNNCPsAvailable(RuleTestBase):
                     )
                 )
             },
-            failed_msg="NodeNetworkConfigurationPolicies are not healthy:\n  - br-ex-nncp: Not Available (Configuration failed)",
+            failed_msg="NodeNetworkConfigurationPolicies are not healthy:\n  - br-ex-nncp: Not Available - Reason: ConfigurationFailed, Message: Configuration failed",
         ),
         RuleScenarioParams(
             "NNCP degraded",
@@ -191,10 +208,23 @@ class TestVerifyAllNNCPsAvailable(RuleTestBase):
             },
             failed_msg=(
                 "NodeNetworkConfigurationPolicies are not healthy:\n"
-                "  - br-ex-nncp: Not Available (Configuration failed)\n"
+                "  - br-ex-nncp: Not Available - Reason: ConfigurationFailed, Message: Configuration failed\n"
                 "  - worker-bond-nncp: Degraded (Degraded state detected)\n"
                 "  - vlan-nncp: Still Progressing (Configuration in progress)"
             ),
+        ),
+        RuleScenarioParams(
+            "NNCP not upgradeable",
+            tested_object_mock_dict={
+                "oc_api": Mock(
+                    select_resources=Mock(
+                        return_value=[
+                            _create_mock_nncp("br-ex-nncp", upgradeable="False"),
+                        ]
+                    )
+                )
+            },
+            failed_msg="NodeNetworkConfigurationPolicies are not healthy:\n  - br-ex-nncp: Not Upgradeable - Reason: UpgradeBlocked, Message: Upgrade blocked",
         ),
         RuleScenarioParams(
             "NNCP with no conditions",
@@ -219,17 +249,3 @@ class TestVerifyAllNNCPsAvailable(RuleTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
-
-    # Test scenarios - NOT APPLICABLE
-    scenario_not_applicable = [
-        RuleScenarioParams(
-            "no NNCPs found",
-            tested_object_mock_dict={
-                "oc_api": Mock(select_resources=Mock(return_value=[]))
-            },
-        ),
-    ]
-
-    @pytest.mark.parametrize("scenario_params", scenario_not_applicable)
-    def test_scenario_not_applicable(self, scenario_params, tested_object):
-        RuleTestBase.test_scenario_not_applicable(self, scenario_params, tested_object)

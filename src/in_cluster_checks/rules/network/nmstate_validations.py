@@ -1,10 +1,3 @@
-"""
-NMState NodeNetworkConfigurationPolicy validation for OpenShift clusters.
-
-Validates that all NodeNetworkConfigurationPolicy (NNCP) resources are in a healthy state
-after cluster operations like node reboots.
-"""
-
 from typing import Dict, List
 
 import openshift_client as oc
@@ -22,6 +15,7 @@ class VerifyAllNNCPsAvailable(OrchestratorRule):
     - Available condition must be True
     - Degraded condition must NOT be True
     - Progressing condition must NOT be True
+    - Upgradeable condition must NOT be False
 
     This is a critical health check after node reboots to ensure network
     configurations have been properly applied.
@@ -47,15 +41,14 @@ class VerifyAllNNCPsAvailable(OrchestratorRule):
             PrerequisiteResult indicating if NMState CRD exists
         """
         try:
-            # Check if NNCP CRD exists by attempting to list resources
-            self.oc_api.select_resources("nodenetworkconfigurationpolicies", all_namespaces=True, timeout=30)
-            # If select_resources succeeds, CRD exists (even if no instances found)
+            nncps = self.oc_api.select_resources("nodenetworkconfigurationpolicies", all_namespaces=True, timeout=30)
+            if not nncps:
+                return PrerequisiteResult.not_met("No NodeNetworkConfigurationPolicies found")
             return PrerequisiteResult.met()
         except oc.OpenShiftPythonException as e:
             error_msg = str(e).lower()
             if "not found" in error_msg or "no matches for kind" in error_msg:
                 return PrerequisiteResult.not_met("NMState operator is not installed (NNCP CRD not found)")
-            # Re-raise other OpenShift errors (timeouts, RBAC, etc.) to propagate naturally
             raise
 
     def run_rule(self) -> RuleResult:
@@ -66,10 +59,6 @@ class VerifyAllNNCPsAvailable(OrchestratorRule):
             RuleResult indicating NNCP health status
         """
         nncps = self.oc_api.select_resources("nodenetworkconfigurationpolicies", all_namespaces=True, timeout=60)
-
-        if not nncps:
-            return RuleResult.not_applicable("No NodeNetworkConfigurationPolicies found")
-
         failed_nncps = self._check_nncp_conditions(nncps)
 
         if failed_nncps:
@@ -79,15 +68,6 @@ class VerifyAllNNCPsAvailable(OrchestratorRule):
         return RuleResult.passed(f"All {len(nncps)} NodeNetworkConfigurationPolicies are healthy")
 
     def _check_nncp_conditions(self, nncps: List) -> List[str]:
-        """
-        Check NNCP status conditions.
-
-        Args:
-            nncps: List of NNCP resource objects
-
-        Returns:
-            List of error messages for failed NNCPs
-        """
         failed_checks = []
 
         for nncp in nncps:
@@ -113,30 +93,11 @@ class VerifyAllNNCPsAvailable(OrchestratorRule):
         return failed_checks
 
     def _get_conditions(self, nncp) -> List[Dict]:
-        """
-        Extract status conditions from NNCP.
-
-        Args:
-            nncp: NNCP resource object
-
-        Returns:
-            List of condition dictionaries
-        """
         if hasattr(nncp.model, "status") and hasattr(nncp.model.status, "conditions"):
             return nncp.model.status.conditions or []
         return []
 
     def _validate_conditions(self, nncp_name: str, conditions: List[Dict]) -> List[str]:
-        """
-        Validate NNCP status conditions.
-
-        Args:
-            nncp_name: Name of the NNCP
-            conditions: List of condition dictionaries
-
-        Returns:
-            List of failure messages
-        """
         failures = []
 
         # Build condition map and validate structure
@@ -151,8 +112,9 @@ class VerifyAllNNCPsAvailable(OrchestratorRule):
         # Check Available condition
         available_cond = condition_map.get("Available")
         if not available_cond or available_cond.status != "True":
-            message = available_cond.message if available_cond else "condition not found"
-            failures.append(f"  - {nncp_name}: Not Available ({message})")
+            reason = available_cond.reason if available_cond and hasattr(available_cond, "reason") else "Unknown"
+            message = available_cond.message if available_cond and hasattr(available_cond, "message") else ""
+            failures.append(f"  - {nncp_name}: Not Available - Reason: {reason}, Message: {message}")
 
         # Check Degraded condition (should NOT be True)
         degraded_cond = condition_map.get("Degraded")
@@ -163,5 +125,12 @@ class VerifyAllNNCPsAvailable(OrchestratorRule):
         progressing_cond = condition_map.get("Progressing")
         if progressing_cond and progressing_cond.status == "True":
             failures.append(f"  - {nncp_name}: Still Progressing ({progressing_cond.message})")
+
+        # Check Upgradeable condition (should NOT be False)
+        upgradeable_cond = condition_map.get("Upgradeable")
+        if upgradeable_cond and upgradeable_cond.status == "False":
+            reason = upgradeable_cond.reason if hasattr(upgradeable_cond, "reason") else "Unknown"
+            message = upgradeable_cond.message if hasattr(upgradeable_cond, "message") else ""
+            failures.append(f"  - {nncp_name}: Not Upgradeable - Reason: {reason}, Message: {message}")
 
         return failures

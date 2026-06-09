@@ -24,7 +24,7 @@ class DpuBondLacpHealth(BondBase):
     """
 
     objective_hosts = [Objectives.ALL_NODES]
-    supported_profiles = {"gpu"}
+    supported_profiles = {"dpf"}
     unique_name = "dpu_bond_lacp_health"
     title = "Verify LACP bond health on DPU ports"
     links = ["https://github.com/RedHatInsights/incluster-checks/wiki/DPF---LACP-bond-health-on-DPU-ports"]

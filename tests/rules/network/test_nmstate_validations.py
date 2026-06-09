@@ -32,6 +32,7 @@ def _create_mock_nncp(
     mock_condition_degraded = Mock()
     mock_condition_degraded.type = "Degraded"
     mock_condition_degraded.status = degraded
+    mock_condition_degraded.reason = "NodeNetworkConfigurationPolicyDegraded" if degraded == "True" else "NotDegraded"
     mock_condition_degraded.message = (
         "Degraded state detected" if degraded == "True" else "Not degraded"
     )
@@ -39,6 +40,7 @@ def _create_mock_nncp(
     mock_condition_progressing = Mock()
     mock_condition_progressing.type = "Progressing"
     mock_condition_progressing.status = progressing
+    mock_condition_progressing.reason = "ConfiguringNodeNetworkPolicy" if progressing == "True" else "NotProgressing"
     mock_condition_progressing.message = (
         "Configuration in progress" if progressing == "True" else "Not progressing"
     )
@@ -181,7 +183,11 @@ class TestVerifyAllNNCPsAvailable(RuleTestBase):
                     )
                 )
             },
-            failed_msg="NodeNetworkConfigurationPolicies are not healthy:\n  - worker-bond-nncp: Degraded (Degraded state detected)",
+            failed_msg=(
+                "NodeNetworkConfigurationPolicies are not healthy:\n"
+                "  - worker-bond-nncp: Degraded - Reason: NodeNetworkConfigurationPolicyDegraded, "
+                "Message: Degraded state detected"
+            ),
         ),
         RuleScenarioParams(
             "NNCP still progressing",
@@ -194,7 +200,11 @@ class TestVerifyAllNNCPsAvailable(RuleTestBase):
                     )
                 )
             },
-            failed_msg="NodeNetworkConfigurationPolicies are not healthy:\n  - br-ex-nncp: Still Progressing (Configuration in progress)",
+            failed_msg=(
+                "NodeNetworkConfigurationPolicies are not healthy:\n"
+                "  - br-ex-nncp: Still Progressing - Reason: ConfiguringNodeNetworkPolicy, "
+                "Message: Configuration in progress"
+            ),
         ),
         RuleScenarioParams(
             "multiple NNCPs with different issues",
@@ -213,8 +223,10 @@ class TestVerifyAllNNCPsAvailable(RuleTestBase):
                 "NodeNetworkConfigurationPolicies are not healthy:\n"
                 "  - br-ex-nncp: Not Available - Reason: ConfigurationFailed, "
                 "Message: Configuration failed\n"
-                "  - worker-bond-nncp: Degraded (Degraded state detected)\n"
-                "  - vlan-nncp: Still Progressing (Configuration in progress)"
+                "  - worker-bond-nncp: Degraded - Reason: NodeNetworkConfigurationPolicyDegraded, "
+                "Message: Degraded state detected\n"
+                "  - vlan-nncp: Still Progressing - Reason: ConfiguringNodeNetworkPolicy, "
+                "Message: Configuration in progress"
             ),
         ),
         RuleScenarioParams(

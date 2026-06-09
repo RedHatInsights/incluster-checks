@@ -119,12 +119,16 @@ class VerifyAllNNCPsAvailable(OrchestratorRule):
         # Check Degraded condition (should NOT be True)
         degraded_cond = condition_map.get("Degraded")
         if degraded_cond and degraded_cond.status == "True":
-            failures.append(f"  - {nncp_name}: Degraded ({degraded_cond.message})")
+            reason = degraded_cond.reason if hasattr(degraded_cond, "reason") else "Unknown"
+            message = degraded_cond.message if hasattr(degraded_cond, "message") else ""
+            failures.append(f"  - {nncp_name}: Degraded - Reason: {reason}, Message: {message}")
 
         # Check Progressing condition (should NOT be True)
         progressing_cond = condition_map.get("Progressing")
         if progressing_cond and progressing_cond.status == "True":
-            failures.append(f"  - {nncp_name}: Still Progressing ({progressing_cond.message})")
+            reason = progressing_cond.reason if hasattr(progressing_cond, "reason") else "Unknown"
+            message = progressing_cond.message if hasattr(progressing_cond, "message") else ""
+            failures.append(f"  - {nncp_name}: Still Progressing - Reason: {reason}, Message: {message}")
 
         # Check Upgradeable condition (should NOT be False)
         upgradeable_cond = condition_map.get("Upgradeable")

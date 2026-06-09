@@ -1492,11 +1492,9 @@ class VerifyMdrOperatorHealth(SubscriptionOperatorRule):
     operator_subscription_name = "openshift-workload-availability"
     operator_display_name = "Machine Deletion Remediation"
 
-    MDR_NAMESPACE = "openshift-workload-availability"
-
     def run_rule(self):
         """Verify all pods in the openshift-workload-availability namespace are Running and Ready."""
-        errors = self.validate_namespace_pods_health(self.MDR_NAMESPACE)
+        errors = self.validate_namespace_pods_health(self.operator_subscription_name)
         if errors:
             return RuleResult.failed("\n\n".join(errors))
         return RuleResult.passed()

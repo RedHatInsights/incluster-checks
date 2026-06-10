@@ -78,26 +78,20 @@ All rules use the `Status` enum (`utils/enums.py`):
 - NEVER use `self.logger` in rules. Return error messages via `RuleResult.failed()` or `RuleResult.warning()` instead. The framework handles logging automatically.
 
 **Documentation:**
-- **REQUIRED**: Every new rule MUST have a corresponding wiki page in the GitHub wiki
+- **REQUIRED**: Every new rule MUST have a corresponding documentation page in Confluence
+- Rule documentation is hosted at: https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418417677/In-Cluster+Checks+Rules
 - When implementing a new rule:
-  1. Add wiki link to the rule's `links` field pointing to where the page will be: `links = ["https://github.com/RedHatInsights/incluster-checks/wiki/{Domain}-%E2%80%90-{Rule-Title}"]`
-  2. Create wiki page content in markdown format for the user to copy-paste into GitHub wiki
-- **Wiki URL format**: `{Domain}-%E2%80%90-{Rule-Title}` where:
-  - `{Domain}` is the domain name (e.g., "Security", "Network", "Storage")
-  - `-%E2%80%90-` is the separator (hyphen + URL-encoded Unicode hyphen U+2010 + hyphen)
-  - `{Rule-Title}` is the rule title with spaces replaced by ASCII hyphens `-`
-  - Example: "Check kubelet CA certificate expiry" in Security domain → `Security-%E2%80%90-Check-kubelet-CA-certificate-expiry`
-- **IMPORTANT**: The domain-to-title separator MUST be `-%E2%80%90-` (URL-encoded). Within domain and title text, use regular ASCII hyphens `-` for spaces.
+  1. Add the Confluence page link to the rule's `links` field: `links = ["https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/{PAGE_ID}"]`
+  2. Create the documentation page in Confluence under the appropriate domain (DPF, Hardware, K8s, Linux, Network, Resources, Security)
 
-**Creating Wiki Page Content:**
-- GitHub wikis are NOT accessible via the GitHub MCP (REST API returns 404)
-- **Workflow**: 
-  1. Use WebFetch to read existing wiki pages as templates: `WebFetch(url="https://github.com/RedHatInsights/incluster-checks/wiki/Security-%E2%80%90-TLS-certificate-expiry")`
-  2. Create the new wiki page content in **markdown format** following the standard structure
-  3. Present the markdown content in a code block for easy copy-paste by the user
+**Creating Documentation Page Content:**
+- **Workflow**:
+  1. Read an existing Confluence page as a template (e.g., [TLS certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482936))
+  2. Create the new documentation page in Confluence under the appropriate domain
+  3. Add the Confluence page URL to the rule's `links` field
 
-**Wiki Page Structure:**
-All wiki pages should follow this standard structure (in markdown format):
+**Documentation Page Structure:**
+All documentation pages should follow this standard structure:
   - **Description**: What the rule checks, why it's important, severity level, and failure thresholds
   - **Prerequisites**: Required access, tools, or conditions needed to run the check
   - **Impact**: What happens if the condition fails (specific failure scenarios and consequences)
@@ -106,8 +100,8 @@ All wiki pages should follow this standard structure (in markdown format):
   - **Solution**: Step-by-step remediation instructions with code examples
   - **Resources**: Links to official documentation, KCS articles, troubleshooting guides
 
-**Wiki Page Examples:**
-- See existing templates: [Security - TLS certificate expiry](https://github.com/RedHatInsights/incluster-checks/wiki/Security-%E2%80%90-TLS-certificate-expiry), [Security - Node certificate expiry](https://github.com/RedHatInsights/incluster-checks/wiki/Security-%E2%80%90-Node-certificate-expiry)
+**Documentation Page Examples:**
+- See existing templates: [Security - TLS certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482936), [Security - Node certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418558)
 
 ## Existing Domains
 

@@ -120,7 +120,7 @@ This skill automates the complete workflow for implementing a new validation rul
 - Scaffolds the rule class with all required fields
 - Generates comprehensive tests
 - Registers the rule in the appropriate domain
-- Creates wiki documentation content
+- Creates Confluence documentation content
 - Runs all tests and pre-commit checks
 - Commits changes with proper formatting
 - Creates a pull request
@@ -138,7 +138,7 @@ This skill automates the complete workflow for implementing a new validation rul
 
 **Important notes:**
 - The skill validates that the ticket is a "Story" type - other issue types will be rejected
-- Wiki pages must be created manually on GitHub (skill provides the content to copy-paste)
+- Confluence pages must be created manually (skill provides the content to copy-paste)
 - You'll be asked for confirmation before committing and creating the PR
 - All code follows project guidelines and passes automated checks
 
@@ -186,22 +186,22 @@ class YourNewRule(Rule):
 
 The `links` field should contain references to documentation about the rule:
 
-1. **Create a Wiki page** for the new rule at https://github.com/RedHatInsights/incluster-checks/wiki
-   - Use the [wiki template](https://github.com/RedHatInsights/incluster-checks/wiki) to create the page
+1. **Create a Confluence page** for the new rule under the [In-Cluster Checks Rules](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418417677/In-Cluster+Checks+Rules) parent page
+   - Create a new page under the appropriate domain section
    - Document what the rule checks, why it's important, and troubleshooting steps
    - Include example output or scenarios
 
-2. **Add the Wiki URL** to the `links` field:
+2. **Add the Confluence URL** to the `links` field:
    ```python
    links = [
-       "https://github.com/RedHatInsights/incluster-checks/wiki/YourNewRule",
+       "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/<PAGE_ID>",
    ]
    ```
 
 3. **Additional documentation URLs** can also be included (Knowledge Base articles, OpenShift docs, bug reports, etc.):
    ```python
    links = [
-       "https://github.com/RedHatInsights/incluster-checks/wiki/YourNewRule",
+       "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/<PAGE_ID>",
        "https://access.redhat.com/solutions/12345",
    ]
    ```
@@ -686,7 +686,7 @@ Before submitting your PR, ensure:
 
 - **Bug reports or feature requests**: [Open an issue](https://github.com/RedHatInsights/incluster-checks/issues/new) on GitHub
 - **General questions**: [Open an issue](https://github.com/RedHatInsights/incluster-checks/issues/new) with your question
-- **Documentation and rule information**: Check the [project wiki](https://github.com/RedHatInsights/incluster-checks/wiki) for detailed knowledge sharing about rules
+- **Documentation and rule information**: Check the [project wiki](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418417677/In-Cluster+Checks+Rules) for detailed knowledge sharing about rules
 - **Private matters**: Contact maintainers directly via GitHub
 
 ## License

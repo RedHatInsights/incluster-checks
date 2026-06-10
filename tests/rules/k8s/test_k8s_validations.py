@@ -22,6 +22,7 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     ValidateNamespaceStatus,
     VerifyAcmOperatorHealth,
     VerifyClusterOperatorsAvailable,
+    VerifyFarContainerNonRoot,
     VerifyFarOperatorHealth,
     VerifyInternalRegistry,
     VerifyNetworkDiagnosticsDisabled,
@@ -2240,4 +2241,341 @@ class TestVerifyFarOperatorHealth(RuleTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):
         """Test that rule fails when FAR pods are unhealthy or missing."""
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+
+def _far_subscription_response(has_far=True):
+    """Build OLM subscription list response."""
+    items = []
+    if has_far:
+        items.append(
+            {
+                "metadata": {"name": "fence-agents-remediation", "namespace": "openshift-workload-availability"},
+                "spec": {"name": "fence-agents-remediation"},
+            }
+        )
+    return {"items": items}
+
+
+def _far_subscription_response_custom_name():
+    """Build OLM subscription list with custom metadata.name but correct spec.name."""
+    return {
+        "items": [
+            {
+                "metadata": {"name": "my-custom-far-sub", "namespace": "openshift-workload-availability"},
+                "spec": {"name": "fence-agents-remediation"},
+            }
+        ]
+    }
+
+
+def _create_far_pod(
+    name,
+    run_as_non_root=True,
+    containers_run_as_user=None,
+    has_security_context=True,
+    has_run_as_non_root=True,
+    has_containers=True,
+    init_containers_run_as_user=None,
+):
+    """Create a mock FAR pod object for security context tests.
+
+    Args:
+        name: Pod name
+        run_as_non_root: Value for pod-level runAsNonRoot
+        containers_run_as_user: List of runAsUser values per container (None means no securityContext)
+        has_security_context: Whether pod has a securityContext at all
+        has_run_as_non_root: Whether runAsNonRoot is present in securityContext
+        has_containers: Whether the pod has containers
+        init_containers_run_as_user: List of runAsUser values per init container (None means no initContainers)
+    """
+    mock_pod = Mock()
+    spec = {}
+
+    if has_security_context:
+        sc = {}
+        if has_run_as_non_root:
+            sc["runAsNonRoot"] = run_as_non_root
+        spec["securityContext"] = sc
+    else:
+        spec["securityContext"] = None
+
+    if has_containers:
+        containers = []
+        if containers_run_as_user is None:
+            containers_run_as_user = [1000]
+        for uid in containers_run_as_user:
+            container = {"name": f"container-{uid}"}
+            if uid is not None:
+                container["securityContext"] = {"runAsUser": uid}
+            else:
+                container["securityContext"] = None
+            containers.append(container)
+        spec["containers"] = containers
+    else:
+        spec["containers"] = []
+
+    if init_containers_run_as_user is not None:
+        init_containers = []
+        for uid in init_containers_run_as_user:
+            ic = {"name": f"init-container-{uid}"}
+            if uid is not None:
+                ic["securityContext"] = {"runAsUser": uid}
+            else:
+                ic["securityContext"] = None
+            init_containers.append(ic)
+        spec["initContainers"] = init_containers
+
+    mock_pod.name.return_value = name
+    mock_pod.as_dict.return_value = {
+        "metadata": {"name": name, "namespace": "openshift-workload-availability"},
+        "spec": spec,
+    }
+    return mock_pod
+
+
+class TestVerifyFarContainerNonRoot(RuleTestBase):
+    """Test VerifyFarContainerNonRoot rule."""
+
+    tested_type = VerifyFarContainerNonRoot
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "FAR pod runs as non-root with proper security context",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscription_response(has_far=True))
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pods": Mock(
+                    return_value=[
+                        _create_far_pod(
+                            "far-controller-manager-abc123", run_as_non_root=True, containers_run_as_user=[1000]
+                        ),
+                    ]
+                ),
+            },
+        ),
+        RuleScenarioParams(
+            "multiple FAR pods all run as non-root",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscription_response(has_far=True))
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pods": Mock(
+                    return_value=[
+                        _create_far_pod(
+                            "far-controller-manager-abc123", run_as_non_root=True, containers_run_as_user=[1000]
+                        ),
+                        _create_far_pod(
+                            "far-controller-manager-def456", run_as_non_root=True, containers_run_as_user=[1000, 65534]
+                        ),
+                    ]
+                ),
+            },
+        ),
+    ]
+
+    scenario_prerequisite_not_fulfilled = [
+        RuleScenarioParams(
+            "FAR operator subscription not found",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscription_response(has_far=False))
+                ),
+            },
+        ),
+    ]
+
+    scenario_prerequisite_fulfilled = [
+        RuleScenarioParams(
+            "FAR operator subscription exists",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscription_response(has_far=True))
+                ),
+            },
+        ),
+        RuleScenarioParams(
+            "FAR subscription with custom metadata.name but correct spec.name",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscription_response_custom_name())
+                ),
+            },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "no FAR pods found",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscription_response(has_far=True))
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pods": Mock(return_value=[]),
+            },
+            failed_msg="No FAR pods found with label app.kubernetes.io/name=fence-agents-remediation-operator",
+        ),
+        RuleScenarioParams(
+            "FAR pod has nil SecurityContext",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscription_response(has_far=True))
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pods": Mock(
+                    return_value=[
+                        _create_far_pod("far-pod-1", has_security_context=False),
+                    ]
+                ),
+            },
+            failed_msg="FAR operator pods doesn't have proper security context:\n- Pod far-pod-1 has nil SecurityContext\n",
+        ),
+        RuleScenarioParams(
+            "FAR pod has nil runAsNonRoot",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscription_response(has_far=True))
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pods": Mock(
+                    return_value=[
+                        _create_far_pod("far-pod-1", has_run_as_non_root=False),
+                    ]
+                ),
+            },
+            failed_msg="FAR operator pods doesn't have proper security context:\n- Pod far-pod-1 has nil runAsNonRoot\n",
+        ),
+        RuleScenarioParams(
+            "FAR pod has runAsNonRoot set to false",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscription_response(has_far=True))
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pods": Mock(
+                    return_value=[
+                        _create_far_pod("far-pod-1", run_as_non_root=False),
+                    ]
+                ),
+            },
+            failed_msg="FAR operator pods doesn't have proper security context:\n"
+            "- Incorrect runAsNonRoot for pod far-pod-1. Expected true, found: False\n",
+        ),
+        RuleScenarioParams(
+            "FAR pod has no containers",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscription_response(has_far=True))
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pods": Mock(
+                    return_value=[
+                        _create_far_pod("far-pod-1", has_containers=False),
+                    ]
+                ),
+            },
+            failed_msg="FAR operator pods doesn't have proper security context:\n- Pod far-pod-1 has no containers\n",
+        ),
+        RuleScenarioParams(
+            "FAR container runs as root (runAsUser=0)",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscription_response(has_far=True))
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pods": Mock(
+                    return_value=[
+                        _create_far_pod("far-pod-1", run_as_non_root=True, containers_run_as_user=[0]),
+                    ]
+                ),
+            },
+            failed_msg="FAR operator pods doesn't have proper security context:\n"
+            "- Container 'container-0' in pod far-pod-1 runs as root (runAsUser=0)\n",
+        ),
+        RuleScenarioParams(
+            "FAR init container runs as root (runAsUser=0)",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscription_response(has_far=True))
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pods": Mock(
+                    return_value=[
+                        _create_far_pod(
+                            "far-pod-1",
+                            run_as_non_root=True,
+                            containers_run_as_user=[1000],
+                            init_containers_run_as_user=[0],
+                        ),
+                    ]
+                ),
+            },
+            failed_msg="FAR operator pods doesn't have proper security context:\n"
+            "- Container 'init-container-0' in pod far-pod-1 runs as root (runAsUser=0)\n",
+        ),
+        RuleScenarioParams(
+            "mixed failures - nil SecurityContext and root container",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscription_response(has_far=True))
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pods": Mock(
+                    return_value=[
+                        _create_far_pod("far-pod-1", has_security_context=False),
+                        _create_far_pod("far-pod-2", run_as_non_root=True, containers_run_as_user=[0, 1000]),
+                    ]
+                ),
+            },
+            failed_msg="FAR operator pods doesn't have proper security context:\n"
+            "- Pod far-pod-1 has nil SecurityContext\n"
+            "- Container 'container-0' in pod far-pod-2 runs as root (runAsUser=0)\n",
+        ),
+        RuleScenarioParams(
+            "FAR container has invalid runAsUser (negative value)",
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_far_subscription_response(has_far=True))
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pods": Mock(
+                    return_value=[
+                        _create_far_pod("far-pod-1", run_as_non_root=True, containers_run_as_user=[-1]),
+                    ]
+                ),
+            },
+            failed_msg="FAR operator pods doesn't have proper security context:\n"
+            "- Container 'container--1' in pod far-pod-1 has invalid runAsUser: -1\n",
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
+    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_fulfilled)
+    def test_prerequisite_fulfilled(self, scenario_params, tested_object):
+        RuleTestBase.test_prerequisite_fulfilled(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)

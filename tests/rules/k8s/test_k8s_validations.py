@@ -1908,16 +1908,17 @@ def create_mock_acm_pod(name, phase, all_containers_ready=True):
     return mock_pod
 
 
-def _acm_subscriptions(include_acm=True):
+def _acm_subscriptions(include_acm=True, installed_csv="advanced-cluster-management.v2.12.0"):
     """Build a subscriptions response, optionally including the ACM subscription."""
     items = []
     if include_acm:
-        items.append(
-            {
-                "metadata": {"name": "acm-sub", "namespace": "open-cluster-management"},
-                "spec": {"name": "advanced-cluster-management", "source": "redhat-operators"},
-            }
-        )
+        sub = {
+            "metadata": {"name": "acm-sub", "namespace": "open-cluster-management"},
+            "spec": {"name": "advanced-cluster-management", "source": "redhat-operators"},
+        }
+        if installed_csv:
+            sub["status"] = {"installedCSV": installed_csv}
+        items.append(sub)
     items.append(
         {
             "metadata": {"name": "other-operator", "namespace": "openshift-operators"},
@@ -1969,7 +1970,7 @@ class TestVerifyAcmOperatorHealth(RuleTestBase):
 
     scenario_passed = [
         RuleScenarioParams(
-            "ACM operator installed, CSV succeeded, and all pods are healthy",
+            "ACM operator installed, CSV succeeded via installedCSV, and all pods are healthy",
             tested_object_mock_dict={
                 "oc_api.get_all_pods": Mock(
                     return_value=[
@@ -1980,6 +1981,20 @@ class TestVerifyAcmOperatorHealth(RuleTestBase):
             },
             oc_cmd_output_dict={
                 _ACM_SUB_CMD: CmdOutput(json.dumps(_acm_subscriptions(include_acm=True))),
+                _ACM_CSV_CMD: CmdOutput(json.dumps(_acm_csv_response())),
+            },
+        ),
+        RuleScenarioParams(
+            "ACM operator installed, CSV succeeded via pattern fallback (no installedCSV)",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_acm_pod("multiclusterhub-operator-abc123", "Running", True),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                _ACM_SUB_CMD: CmdOutput(json.dumps(_acm_subscriptions(include_acm=True, installed_csv=None))),
                 _ACM_CSV_CMD: CmdOutput(json.dumps(_acm_csv_response())),
             },
         ),

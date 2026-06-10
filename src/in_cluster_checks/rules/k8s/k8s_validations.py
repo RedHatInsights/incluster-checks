@@ -1210,6 +1210,9 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
     def _verify_csv_status(self):
         """Check that the ACM ClusterServiceVersion is in Succeeded phase.
 
+        Uses status.installedCSV from the operator subscription when available
+        to identify the active CSV; falls back to pattern matching.
+
         Returns:
             Error message string if CSV check fails, None if successful.
         """
@@ -1218,9 +1221,17 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
         )
         csv_data = parse_json(csv_output, f"oc get csv -n {self.ACM_NAMESPACE} -o json", self.get_host_ip())
 
-        acm_csvs = [
-            csv for csv in csv_data.get("items", []) if self.ACM_CSV_PATTERN in csv.get("metadata", {}).get("name", "")
-        ]
+        installed_csv_name = self._get_installed_csv_name()
+        if installed_csv_name:
+            acm_csvs = [
+                csv for csv in csv_data.get("items", []) if csv.get("metadata", {}).get("name") == installed_csv_name
+            ]
+        else:
+            acm_csvs = [
+                csv
+                for csv in csv_data.get("items", [])
+                if self.ACM_CSV_PATTERN in csv.get("metadata", {}).get("name", "")
+            ]
 
         if not acm_csvs:
             return (
@@ -1240,6 +1251,18 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
         if not_succeeded:
             return "ACM ClusterServiceVersion is not in Succeeded phase:\n  " + "\n  ".join(not_succeeded)
 
+        return None
+
+    def _get_installed_csv_name(self):
+        """Look up status.installedCSV from the ACM operator subscription.
+
+        Returns:
+            The installedCSV string if found, None otherwise.
+        """
+        subscriptions_data = self.oc_api.get_operator_subscriptions()
+        for sub in subscriptions_data.get("items", []):
+            if sub.get("spec", {}).get("name") == self.operator_subscription_name:
+                return sub.get("status", {}).get("installedCSV")
         return None
 
     def _verify_pods_status(self):

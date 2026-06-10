@@ -18,6 +18,16 @@ reviews:
     - If a function is too long, it should be broken into smaller, focused functions.
     - Avoid unnecessary or fragmented quotation marks in log/error messages and comments.
 
+    **Comments:**
+    - **Only suggest adding comments for complex or non-trivial code.** Do NOT request comments for
+      self-explanatory code or obvious operations.
+    - For complex code, comments explaining WHAT the code does are acceptable and helpful.
+    - Comments should also explain WHY when non-obvious (constraints, subtle invariants, workarounds,
+      surprising behavior).
+    - Flag existing comments that are redundant for simple, self-explanatory code.
+    - Well-named functions, variables, and classes reduce the need for comments but don't eliminate
+      the value of comments for genuinely complex logic.
+
     **Logic correctness:**
     - Verify set operations, conditional branches, and aggregation logic handle all cases including
       edge cases and partial states.
@@ -40,14 +50,24 @@ reviews:
     - When you find duplicated code blocks (3+ similar lines) across different rule files, explicitly
       request the author to implement a shared method in the appropriate base class (OrchestratorRule,
       Rule, or DataCollector) and provide a suggested method signature.
+    - **IMPORTANT: Check for duplicated PATTERNS, not just identical lines.** When a rule validates
+      K8s resource conditions (Available, Degraded, Progressing, Upgradeable), check if similar
+      condition validation logic already exists in other rules. Even if variable names or API calls
+      differ, the pattern is the same and should be extracted to a shared method.
     - Check for common patterns like: oc command execution with JSON parsing, data aggregation loops,
-      resource querying logic. If these patterns repeat, suggest extracting to a shared utility.
+      resource querying logic, K8s condition validation patterns. If these patterns repeat, suggest
+      extracting to a shared utility.
 
     **Error messages:**
     - Error messages must be clear and informative so the end user can understand what went wrong.
 
     **Link validation:**
-    - Verify that all links (wiki pages, documentation, external references) are valid and accessible and link content is relevant for the rule.
+    - Verify that all links (wiki pages, documentation, external references) are valid and accessible.
+    - **For GitHub wiki links**: Fetch the page content and verify it is not empty or a placeholder.
+      The wiki page should contain meaningful documentation with at least the following sections:
+      Description, Prerequisites, Impact, Root Cause, Diagnostics, Solution, and Resources.
+    - Verify link content is relevant and specific to the rule (not generic boilerplate).
+    - Flag wiki links that return 404 or contain only stub/placeholder content.
 
   path_instructions:
     - path: "src/in_cluster_checks/rules/**/*.py"

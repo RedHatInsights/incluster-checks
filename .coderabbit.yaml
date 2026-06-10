@@ -62,12 +62,11 @@ reviews:
     - Error messages must be clear and informative so the end user can understand what went wrong.
 
     **Link validation:**
-    - Verify that all links (wiki pages, documentation, external references) are valid and accessible.
-    - **For GitHub wiki links**: Fetch the page content and verify it is not empty or a placeholder.
-      The wiki page should contain meaningful documentation with at least the following sections:
+    - Verify that all links (Confluence pages, documentation, external references) are valid and accessible.
+    - **For Confluence documentation links**: The documentation page should contain meaningful content with at least the following sections:
       Description, Prerequisites, Impact, Root Cause, Diagnostics, Solution, and Resources.
     - Verify link content is relevant and specific to the rule (not generic boilerplate).
-    - Flag wiki links that return 404 or contain only stub/placeholder content.
+    - Flag links that return 404 or contain only stub/placeholder content.
 
   path_instructions:
     - path: "src/in_cluster_checks/rules/**/*.py"

@@ -255,7 +255,7 @@ class OvnRoutingHealthCheck(OvnDetectingNodeRuleBase):
     unique_name = "ovn_routing_health_check"
     title = "Verify OVN-learned routes are present"
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/Network-%E2%80%90-OVN-Routing-Health-Check",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418451085",
     ]
 
     def _run_ovn_rule(self) -> RuleResult:

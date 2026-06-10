@@ -38,8 +38,7 @@ class KubeletCaExpiryCheck(OrchestratorRule):
     unique_name = "kubelet_ca_expiry_check"
     title = "Check kubelet CA certificate expiry"
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/"
-        "Security-%E2%80%90-Check-kubelet-CA-certificate-expiry",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482913",
     ]
 
     # Alert threshold: 30 days (CA rotation should have happened at ~73 days, ~292 days after creation)

@@ -23,10 +23,7 @@ class CheckDiskUsage(Rule):
     objective_hosts = [Objectives.ALL_NODES]
     unique_name = "is_disk_space_sufficient"
     title = "Verify disk space usage on computes and storage nodes"
-    links = (
-        "https://github.com/RedHatInsights/incluster-checks/wiki/"
-        "Hardware-%E2%80%90-Verify-disk-space-usage-on-computes-and-storage-nodes",
-    )
+    links = ("https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482712",)
     THRESHOLD_WARN = 80
     THRESHOLD_ERR = 90
 

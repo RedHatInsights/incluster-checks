@@ -10,6 +10,7 @@ from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.rule import OrchestratorRule
 from in_cluster_checks.core.rule_result import PrerequisiteResult, RuleResult
 from in_cluster_checks.utils.enums import Objectives, Status
+from in_cluster_checks.utils.parsing_utils import parse_json
 
 
 class AllPodsReadyAndRunning(OrchestratorRule):
@@ -1174,8 +1175,9 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
 
     ACM orchestrates multicluster lifecycle management on the hub cluster.
     This rule checks that the ACM operator has been installed (Subscription
-    exists) and that every pod in the open-cluster-management namespace is
-    Running with all containers ready.
+    exists), that the ClusterServiceVersion is in Succeeded phase, and that
+    every pod in the open-cluster-management namespace is Running with all
+    containers ready.
     """
 
     objective_hosts = [Objectives.ORCHESTRATOR]
@@ -1192,15 +1194,87 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
     operator_display_name = "Advanced Cluster Management"
 
     ACM_NAMESPACE = "open-cluster-management"
+    ACM_CSV_PATTERN = "advanced-cluster-management"
 
     def run_rule(self):
-        """Verify all pods in the open-cluster-management namespace are Running and Ready."""
+        """Verify ACM CSV is Succeeded and all pods in the namespace are Running and Ready."""
+        csv_error = self._verify_csv_status()
+        pod_error = self._verify_pods_status()
+
+        errors = [e for e in (csv_error, pod_error) if e]
+        if errors:
+            return RuleResult.failed("\n\n".join(errors))
+
+        return RuleResult.passed()
+
+    def _verify_csv_status(self):
+        """Check that the ACM ClusterServiceVersion is in Succeeded phase.
+
+        Uses status.installedCSV from the operator subscription when available
+        to identify the active CSV; falls back to pattern matching.
+
+        Returns:
+            Error message string if CSV check fails, None if successful.
+        """
+        _, csv_output, _ = self.oc_api.run_oc_command(
+            "get", ["csv", "-n", self.ACM_NAMESPACE, "-o", "json"], timeout=45
+        )
+        csv_data = parse_json(csv_output, f"oc get csv -n {self.ACM_NAMESPACE} -o json", self.get_host_ip())
+
+        installed_csv_name = self._get_installed_csv_name()
+        if installed_csv_name:
+            acm_csvs = [
+                csv for csv in csv_data.get("items", []) if csv.get("metadata", {}).get("name") == installed_csv_name
+            ]
+        else:
+            acm_csvs = [
+                csv
+                for csv in csv_data.get("items", [])
+                if self.ACM_CSV_PATTERN in csv.get("metadata", {}).get("name", "")
+            ]
+
+        if not acm_csvs:
+            return (
+                f"No ClusterServiceVersion matching '{self.ACM_CSV_PATTERN}' "
+                f"found in {self.ACM_NAMESPACE} namespace"
+            )
+
+        not_succeeded = []
+        for csv in acm_csvs:
+            name = csv.get("metadata", {}).get("name", "unknown")
+            phase = csv.get("status", {}).get("phase", "Unknown")
+            if phase != "Succeeded":
+                reason = csv.get("status", {}).get("reason", "Unknown")
+                message = csv.get("status", {}).get("message", "")
+                not_succeeded.append(f"{name} - Phase: {phase}, Reason: {reason}, Message: {message}")
+
+        if not_succeeded:
+            return "ACM ClusterServiceVersion is not in Succeeded phase:\n  " + "\n  ".join(not_succeeded)
+
+        return None
+
+    def _get_installed_csv_name(self):
+        """Look up status.installedCSV from the ACM operator subscription.
+
+        Returns:
+            The installedCSV string if found, None otherwise.
+        """
+        subscriptions_data = self.oc_api.get_operator_subscriptions()
+        for sub in subscriptions_data.get("items", []):
+            if sub.get("spec", {}).get("name") == self.operator_subscription_name:
+                return sub.get("status", {}).get("installedCSV")
+        return None
+
+    def _verify_pods_status(self):
+        """Check that all pods in the ACM namespace are Running and Ready.
+
+        Returns:
+            Error message string if pod check fails, None if successful.
+        """
         pod_objects = self.oc_api.get_all_pods(namespace=self.ACM_NAMESPACE)
 
         if not pod_objects:
-            return RuleResult.failed(
-                f"No pods found in {self.ACM_NAMESPACE} namespace. ACM operator may not be fully deployed."
-            )
+            return f"No pods found in {self.ACM_NAMESPACE} namespace. ACM operator may not be fully deployed."
 
         not_ready_pods = []
         unknown_status_pods = []
@@ -1223,9 +1297,9 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
                     f"ACM operator has unhealthy pods in {self.ACM_NAMESPACE} namespace:\n  "
                     + "\n  ".join(not_ready_pods)
                 )
-            return RuleResult.failed("\n\n".join(parts))
+            return "\n\n".join(parts)
 
-        return RuleResult.passed()
+        return None
 
 
 class VerifyFarOperatorHealth(SubscriptionOperatorRule):

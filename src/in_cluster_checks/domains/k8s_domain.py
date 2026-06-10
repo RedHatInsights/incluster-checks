@@ -26,6 +26,7 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     VerifyInternalRegistry,
     VerifyNetworkDiagnosticsDisabled,
     VerifyNfdOperatorHealth,
+    VerifyNmoOperatorHealth,
     VerifyWebConsoleDisabled,
 )
 
@@ -65,6 +66,7 @@ class K8sValidationDomain(RuleDomain):
             VerifyNetworkDiagnosticsDisabled,
             VerifyNfdOperatorHealth,
             VerifyAcmOperatorHealth,
+            VerifyNmoOperatorHealth,
             VerifyFarOperatorHealth,
             VerifyFarContainerNonRoot,
         ]

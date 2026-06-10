@@ -27,6 +27,7 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     VerifyInternalRegistry,
     VerifyNetworkDiagnosticsDisabled,
     VerifyNfdOperatorHealth,
+    VerifyNfdPodRestartCount,
     VerifyNmoOperatorHealth,
     VerifyWebConsoleDisabled,
 )
@@ -1890,6 +1891,206 @@ class TestVerifyNfdOperatorHealth(RuleTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):
         """Test that rule fails when NFD pods are unhealthy or missing."""
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+
+def _nfd_pods_json(pods):
+    """Build a JSON response for oc get pods -n openshift-nfd -o json."""
+    return json.dumps({"items": pods})
+
+
+def _nfd_pod_item(name, container_statuses, init_container_statuses=None):
+    """Build a single pod item dict for NFD restart count tests."""
+    pod = {
+        "metadata": {"name": name, "namespace": "openshift-nfd"},
+        "status": {
+            "phase": "Running",
+            "containerStatuses": container_statuses,
+        },
+    }
+    if init_container_statuses:
+        pod["status"]["initContainerStatuses"] = init_container_statuses
+    return pod
+
+
+_NFD_RESTART_SUB_CMD = ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json"))
+_NFD_RESTART_PODS_CMD = ("get", ("pods", "-n", "openshift-nfd", "-o", "json"))
+
+
+class TestVerifyNfdPodRestartCount(RuleTestBase):
+    """Test VerifyNfdPodRestartCount rule."""
+
+    tested_type = VerifyNfdPodRestartCount
+
+    scenario_prerequisite_fulfilled = [
+        RuleScenarioParams(
+            "NFD operator subscription found",
+            oc_cmd_output_dict={
+                _NFD_RESTART_SUB_CMD: CmdOutput(json.dumps(_nfd_subscriptions(include_nfd=True))),
+            },
+        ),
+    ]
+
+    scenario_prerequisite_not_fulfilled = [
+        RuleScenarioParams(
+            "NFD operator subscription not found",
+            oc_cmd_output_dict={
+                _NFD_RESTART_SUB_CMD: CmdOutput(json.dumps(_nfd_subscriptions(include_nfd=False))),
+            },
+        ),
+        RuleScenarioParams(
+            "no subscriptions exist in cluster",
+            oc_cmd_output_dict={
+                _NFD_RESTART_SUB_CMD: CmdOutput(json.dumps({"items": []})),
+            },
+        ),
+    ]
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "NFD pods have zero restart count",
+            oc_cmd_output_dict={
+                _NFD_RESTART_SUB_CMD: CmdOutput(json.dumps(_nfd_subscriptions(include_nfd=True))),
+                _NFD_RESTART_PODS_CMD: CmdOutput(
+                    _nfd_pods_json(
+                        [
+                            _nfd_pod_item(
+                                "nfd-controller-manager-abc123",
+                                [
+                                    {"name": "manager", "restartCount": 0, "ready": True},
+                                ],
+                            ),
+                            _nfd_pod_item(
+                                "nfd-worker-xyz789",
+                                [
+                                    {"name": "nfd-worker", "restartCount": 0, "ready": True},
+                                ],
+                            ),
+                        ]
+                    )
+                ),
+            },
+        ),
+        RuleScenarioParams(
+            "NFD pods with init containers all zero restarts",
+            oc_cmd_output_dict={
+                _NFD_RESTART_SUB_CMD: CmdOutput(json.dumps(_nfd_subscriptions(include_nfd=True))),
+                _NFD_RESTART_PODS_CMD: CmdOutput(
+                    _nfd_pods_json(
+                        [
+                            _nfd_pod_item(
+                                "nfd-controller-manager-abc123",
+                                [{"name": "manager", "restartCount": 0, "ready": True}],
+                                init_container_statuses=[{"name": "init-setup", "restartCount": 0, "ready": True}],
+                            ),
+                        ]
+                    )
+                ),
+            },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "NFD pods not found in namespace",
+            oc_cmd_output_dict={
+                _NFD_RESTART_SUB_CMD: CmdOutput(json.dumps(_nfd_subscriptions(include_nfd=True))),
+                _NFD_RESTART_PODS_CMD: CmdOutput(_nfd_pods_json([])),
+            },
+            failed_msg="No pods found in openshift-nfd namespace. NFD operator may not be fully deployed.",
+        ),
+        RuleScenarioParams(
+            "NFD pod has non-zero restart count",
+            oc_cmd_output_dict={
+                _NFD_RESTART_SUB_CMD: CmdOutput(json.dumps(_nfd_subscriptions(include_nfd=True))),
+                _NFD_RESTART_PODS_CMD: CmdOutput(
+                    _nfd_pods_json(
+                        [
+                            _nfd_pod_item(
+                                "nfd-controller-manager-abc123",
+                                [
+                                    {"name": "manager", "restartCount": 0, "ready": True},
+                                ],
+                            ),
+                            _nfd_pod_item(
+                                "nfd-worker-xyz789",
+                                [
+                                    {"name": "nfd-worker", "restartCount": 3, "ready": True},
+                                ],
+                            ),
+                        ]
+                    )
+                ),
+            },
+            failed_msg="NFD pods in openshift-nfd namespace have non-zero restart counts:\n"
+            "  nfd-worker-xyz789/nfd-worker: restartCount=3",
+        ),
+        RuleScenarioParams(
+            "Multiple NFD pods with restarts across containers",
+            oc_cmd_output_dict={
+                _NFD_RESTART_SUB_CMD: CmdOutput(json.dumps(_nfd_subscriptions(include_nfd=True))),
+                _NFD_RESTART_PODS_CMD: CmdOutput(
+                    _nfd_pods_json(
+                        [
+                            _nfd_pod_item(
+                                "nfd-controller-manager-abc123",
+                                [
+                                    {"name": "manager", "restartCount": 2, "ready": True},
+                                ],
+                            ),
+                            _nfd_pod_item(
+                                "nfd-worker-xyz789",
+                                [
+                                    {"name": "nfd-worker", "restartCount": 5, "ready": True},
+                                ],
+                            ),
+                        ]
+                    )
+                ),
+            },
+            failed_msg="NFD pods in openshift-nfd namespace have non-zero restart counts:\n"
+            "  nfd-controller-manager-abc123/manager: restartCount=2\n"
+            "  nfd-worker-xyz789/nfd-worker: restartCount=5",
+        ),
+        RuleScenarioParams(
+            "NFD init container has non-zero restart count",
+            oc_cmd_output_dict={
+                _NFD_RESTART_SUB_CMD: CmdOutput(json.dumps(_nfd_subscriptions(include_nfd=True))),
+                _NFD_RESTART_PODS_CMD: CmdOutput(
+                    _nfd_pods_json(
+                        [
+                            _nfd_pod_item(
+                                "nfd-controller-manager-abc123",
+                                [{"name": "manager", "restartCount": 0, "ready": True}],
+                                init_container_statuses=[{"name": "init-setup", "restartCount": 1, "ready": True}],
+                            ),
+                        ]
+                    )
+                ),
+            },
+            failed_msg="NFD pods in openshift-nfd namespace have non-zero restart counts:\n"
+            "  nfd-controller-manager-abc123/init-setup: restartCount=1",
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_fulfilled)
+    def test_prerequisite_fulfilled(self, scenario_params, tested_object):
+        """Test that prerequisite is met when NFD operator is installed."""
+        RuleTestBase.test_prerequisite_fulfilled(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
+    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        """Test that prerequisite is not met when NFD operator is not installed."""
+        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        """Test that rule passes when all NFD pods have zero restart count."""
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        """Test that rule fails when NFD pods have non-zero restart counts."""
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
 
 

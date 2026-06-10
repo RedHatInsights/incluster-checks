@@ -28,7 +28,7 @@ class TlsCertificateExpiry(OrchestratorRule):
     unique_name = "all_tls_certs_are_valid"
     title = "Check if all TLS certificates don't expire in 14 days"
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/Security-%E2%80%90-TLS-certificate-expiry",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482936",
     ]
 
     WARNING_DAYS = 14

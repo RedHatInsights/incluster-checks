@@ -243,45 +243,57 @@ class NodeExecutorFactory:
             self.logger.error(error_msg)
             raise RuntimeError(error_msg)
 
-    def connect_all(self):
-        """Connect to all nodes (create debug pods) in parallel."""
-        self.logger.info(f"Connecting to {len(self._host_executors_dict)} nodes in parallel...")
+    def _run_on_all_nodes(self, action, action_name):
+        """Run an action on all node executors in parallel.
 
-        def connect_node(node_name, executor):
-            """Connect to a single node."""
-            try:
-                self.logger.info(f"Connecting to {node_name}...")
-                executor.connect()
-                self.logger.info(f"Successfully connected to {node_name}")
-                return node_name, True, None
-            except Exception as e:
-                self.logger.error(f"Failed to connect to {node_name}: {e}")
-                return node_name, False, str(e)
+        Args:
+            action: Callable(node_name, executor) to run on each node.
+            action_name: Human-readable name for logging (e.g., "Connection", "Disconnect").
+        """
+        self.logger.info(f"{action_name}: {len(self._host_executors_dict)} nodes in parallel...")
 
-        # Connect in parallel with configurable max concurrent connections
-        with ThreadPoolExecutor(max_workers=global_config.max_workers) as executor:
+        with ThreadPoolExecutor(max_workers=global_config.max_workers) as pool:
             futures = {
-                executor.submit(connect_node, node_name, node_executor): node_name
+                pool.submit(action, node_name, node_executor): node_name
                 for node_name, node_executor in self._host_executors_dict.items()
             }
 
             successful = 0
             failed = 0
             for future in as_completed(futures):
-                node_name, success, error = future.result()
+                success = future.result()
                 if success:
                     successful += 1
                 else:
                     failed += 1
 
-        self.logger.info(f"Connection complete: {successful} successful, {failed} failed")
+        self.logger.info(f"{action_name} complete: {successful} successful, {failed} failed")
+
+    def connect_all(self):
+        """Connect to all nodes (create debug pods) in parallel."""
+
+        def connect_node(node_name, executor):
+            try:
+                self.logger.info(f"Connecting to {node_name}...")
+                executor.connect()
+                self.logger.info(f"Successfully connected to {node_name}")
+                return True
+            except Exception as e:
+                self.logger.error(f"Failed to connect to {node_name}: {e}")
+                return False
+
+        self._run_on_all_nodes(connect_node, "Connection")
 
     def disconnect_all(self):
-        """Disconnect from all nodes (delete debug pods)."""
-        self.logger.info("Disconnecting from all nodes...")
-        for node_name, executor in self._host_executors_dict.items():
+        """Disconnect from all nodes (delete debug pods) in parallel."""
+
+        def disconnect_node(node_name, executor):
             try:
                 executor.close_connection()
                 self.logger.debug(f"Disconnected from {node_name}")
+                return True
             except Exception as e:
                 self.logger.warning(f"Failed to disconnect from {node_name}: {e}")
+                return False
+
+        self._run_on_all_nodes(disconnect_node, "Disconnect")

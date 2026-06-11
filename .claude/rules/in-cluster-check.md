@@ -58,7 +58,21 @@ All rules use the `Status` enum (`utils/enums.py`):
 - Prefer raising `UnExpectedSystemOutput` (`core/exceptions.py`) when a command produces unexpected output or fails. The framework catches it and converts the result to SKIP status with full details in the JSON output.
 
 **Prerequisites:**
-- Always implement `is_prerequisite_fulfilled()` when the rule depends on a specific package, binary, or system condition being present. Return `PrerequisiteResult.not_met("reason")` if the dependency is missing — the framework will mark the result as NOT_APPLICABLE.
+- Implement `is_prerequisite_fulfilled()` ONLY when checking optional packages, binaries, or system conditions that may not exist. NOT required for core K8s resources (Nodes, Pods, etc). Return `PrerequisiteResult.not_met("reason")` if missing — the framework will mark the result as NOT_APPLICABLE.
+
+**Supported Profiles:**
+- **By default, prefer adding `supported_profiles`** to new rules to indicate which deployment profiles they apply to
+- Set `supported_profiles` as a class variable with a set of profile names (e.g., `supported_profiles = {"telco-base"}`)
+- Only omit `supported_profiles` (leaving default `{"general"}`) for truly generic rules that apply to ANY cluster type
+- Rules are automatically filtered based on the active profile — only rules matching the profile hierarchy are executed
+- Common profiles: `"general"` (default, all clusters), `"telco-base"` (telco-specific checks)
+- Example:
+  ```python
+  class VerifyNFDOperatorHealth(Rule):
+      supported_profiles = {"telco-base"}  # Only runs for telco profiles
+      title = "Verify NFD operator health"
+      # ...
+  ```
 
 **Logging:**
 - NEVER use `self.logger` in rules. Return error messages via `RuleResult.failed()` or `RuleResult.warning()` instead. The framework handles logging automatically.
@@ -66,15 +80,19 @@ All rules use the `Status` enum (`utils/enums.py`):
 **Documentation:**
 - **REQUIRED**: Every new rule MUST have a corresponding wiki page in the GitHub wiki
 - When implementing a new rule:
-  1. Add wiki link to the rule's `links` field pointing to where the page will be: `links = ["https://github.com/RedHatInsights/incluster-checks/wiki/{Domain}-‐-{Rule-Title}"]`
+  1. Add wiki link to the rule's `links` field pointing to where the page will be: `links = ["https://github.com/RedHatInsights/incluster-checks/wiki/{Domain}-%E2%80%90-{Rule-Title}"]`
   2. Create wiki page content in markdown format for the user to copy-paste into GitHub wiki
-- Wiki page naming: Use the rule's `title` field with spaces replaced by dashes (e.g., "Check kubelet CA certificate expiry" → `Security-‐-Check-kubelet-CA-certificate-expiry`)
-- **Note**: Use `‐` (not `-`) in wiki URLs due to GitHub wiki URL encoding
+- **Wiki URL format**: `{Domain}-%E2%80%90-{Rule-Title}` where:
+  - `{Domain}` is the domain name (e.g., "Security", "Network", "Storage")
+  - `-%E2%80%90-` is the separator (hyphen + URL-encoded Unicode hyphen U+2010 + hyphen)
+  - `{Rule-Title}` is the rule title with spaces replaced by ASCII hyphens `-`
+  - Example: "Check kubelet CA certificate expiry" in Security domain → `Security-%E2%80%90-Check-kubelet-CA-certificate-expiry`
+- **IMPORTANT**: The domain-to-title separator MUST be `-%E2%80%90-` (URL-encoded). Within domain and title text, use regular ASCII hyphens `-` for spaces.
 
 **Creating Wiki Page Content:**
 - GitHub wikis are NOT accessible via the GitHub MCP (REST API returns 404)
 - **Workflow**: 
-  1. Use WebFetch to read existing wiki pages as templates: `WebFetch(url="https://github.com/RedHatInsights/incluster-checks/wiki/Security-‐-TLS-certificate-expiry")`
+  1. Use WebFetch to read existing wiki pages as templates: `WebFetch(url="https://github.com/RedHatInsights/incluster-checks/wiki/Security-%E2%80%90-TLS-certificate-expiry")`
   2. Create the new wiki page content in **markdown format** following the standard structure
   3. Present the markdown content in a code block for easy copy-paste by the user
 
@@ -89,7 +107,7 @@ All wiki pages should follow this standard structure (in markdown format):
   - **Resources**: Links to official documentation, KCS articles, troubleshooting guides
 
 **Wiki Page Examples:**
-- See existing templates: [Security - TLS certificate expiry](https://github.com/RedHatInsights/incluster-checks/wiki/Security-‐-TLS-certificate-expiry), [Security - Node certificate expiry](https://github.com/RedHatInsights/incluster-checks/wiki/Security-‐-Node-certificate-expiry)
+- See existing templates: [Security - TLS certificate expiry](https://github.com/RedHatInsights/incluster-checks/wiki/Security-%E2%80%90-TLS-certificate-expiry), [Security - Node certificate expiry](https://github.com/RedHatInsights/incluster-checks/wiki/Security-%E2%80%90-Node-certificate-expiry)
 
 ## Existing Domains
 

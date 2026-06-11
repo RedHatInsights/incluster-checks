@@ -11,35 +11,128 @@ reviews:
   instructions: |
     This is a Python framework for running health check rules on OpenShift clusters.
     Prioritize these review concerns:
-    - Code should be clean, readable, and simple. Flag any unnecessary code, dead code, or code
-      that can be removed without affecting functionality.
+
+    **Code cleanliness:**
+    - Flag any unnecessary code, dead code, or code that can be removed without affecting functionality.
+    - Flag redundant if-statements inside blocks that already guarantee the condition.
     - If a function is too long, it should be broken into smaller, focused functions.
-    - Error messages must be clear and informative so the end user can understand what went wrong.
+    - Avoid unnecessary or fragmented quotation marks in log/error messages and comments.
+
+    **Comments:**
+    - **Only suggest adding comments for complex or non-trivial code.** Do NOT request comments for
+      self-explanatory code or obvious operations.
+    - For complex code, comments explaining WHAT the code does are acceptable and helpful.
+    - Comments should also explain WHY when non-obvious (constraints, subtle invariants, workarounds,
+      surprising behavior).
+    - Flag existing comments that are redundant for simple, self-explanatory code.
+    - Well-named functions, variables, and classes reduce the need for comments but don't eliminate
+      the value of comments for genuinely complex logic.
+
+    **Logic correctness:**
+    - Verify set operations, conditional branches, and aggregation logic handle all cases including
+      edge cases and partial states.
+    - Verify docstrings and comments accurately reflect the actual implementation (e.g., if code uses
+      "dig", don't say "ping").
+    - Verify success/failure messages accurately reflect what was checked (e.g., "reachable from at least
+      one node" vs "reachable from all nodes").
+
+    **Error handling:**
+    - Do NOT silently catch and ignore exceptions. Prefer raising UnExpectedSystemOutput so the framework
+      can mark the result as SKIP with full details.
+    - Flag broad try/except blocks that return empty/default values and mask real failures.
+    - When catching specific exceptions (UnExpectedSystemOutput, JSONDecodeError), verify the code either
+      re-raises with context or has a strong reason to return a fallback value.
+
+    **Code reuse and duplication:**
     - No duplicated logic. Check if similar code already exists elsewhere in the project before
       adding new code. If the same or very similar logic exists, flag it and suggest reusing
       the existing implementation.
-    - Logic correctness: verify set operations, conditional branches, and aggregation logic
-      handle all cases including edge cases and partial states.
+    - When you find duplicated code blocks (3+ similar lines) across different rule files, explicitly
+      request the author to implement a shared method in the appropriate base class (OrchestratorRule,
+      Rule, or DataCollector) and provide a suggested method signature.
+    - **IMPORTANT: Check for duplicated PATTERNS, not just identical lines.** When a rule validates
+      K8s resource conditions (Available, Degraded, Progressing, Upgradeable), check if similar
+      condition validation logic already exists in other rules. Even if variable names or API calls
+      differ, the pattern is the same and should be extracted to a shared method.
+    - Check for common patterns like: oc command execution with JSON parsing, data aggregation loops,
+      resource querying logic, K8s condition validation patterns. If these patterns repeat, suggest
+      extracting to a shared utility.
+
+    **Error messages:**
+    - Error messages must be clear and informative so the end user can understand what went wrong.
+
+    **Link validation:**
     - Verify that all links (wiki pages, documentation, external references) are valid and accessible.
+    - **For GitHub wiki links**: Fetch the page content and verify it is not empty or a placeholder.
+      The wiki page should contain meaningful documentation with at least the following sections:
+      Description, Prerequisites, Impact, Root Cause, Diagnostics, Solution, and Resources.
+    - Verify link content is relevant and specific to the rule (not generic boilerplate).
+    - Flag wiki links that return 404 or contain only stub/placeholder content.
 
   path_instructions:
     - path: "src/in_cluster_checks/rules/**/*.py"
       instructions: |
         When reviewing rule implementations:
-        - Every rule that depends on a binary, package, or system condition MUST implement
-          is_prerequisite_fulfilled() returning PrerequisiteResult.not_met("reason") when missing.
+
+        **Prerequisites:**
+        - is_prerequisite_fulfilled() is ONLY required when checking optional packages, binaries, or
+          system conditions that may not exist. NOT required for core K8s resources (Nodes, Pods, etc).
+        - Base class default returns PrerequisiteResult.met() - only override when truly needed.
         - If a rule is profile-specific, it must declare supported_profiles = {"profile-name"}.
+        - When checking if a prerequisite is met across multiple nodes, use all() not any().
+          The rule should fail if ANY node lacks the required binary/condition, not just if ALL nodes lack it.
+          Example: Flag `if any(has_binary.values())` and suggest `if not all(has_binary.values())`.
+
+        **Aggregation logic:**
         - When aggregating results across nodes, verify the set math handles partial state correctly.
           For example, `unreachable - reachable` silently masks the case where a resource is
           healthy on some nodes but not others. Flag any set subtraction that could hide partial failures.
+        - When aggregating data from multiple nodes, verify ALL nodes' data is used, not just the first
+          successful one. Flag code that returns early with the first non-empty result (e.g., returning
+          the first node's /etc/resolv.conf instead of collecting from all nodes).
+        - Flag order-dependent data selection. If code returns the first non-empty value without checking
+          consistency, it may hide configuration drift. Suggest collecting all values, detecting conflicts,
+          and failing if nodes have different configurations.
+        - For multi-node validation, verify messages clearly distinguish between:
+          * "reachable from all nodes" (universal - every node succeeded)
+          * "reachable from at least one node" (partial - some nodes succeeded)
+          * "unreachable from all nodes" (total failure - no nodes succeeded)
+          * "unreachable from any node" (partial failure - at least one node failed)
+
+        **Data sourcing and parameter passing:**
+        - Data should be defined and sourced at the right level. If data is available in run_rule(),
+          pass it as a parameter to helper methods rather than embedding data collection in lower-level methods.
+        - If a helper method needs configuration (e.g., list of DNS servers to check), pass it as a parameter
+          rather than having the helper discover it. This makes data flow explicit and testable.
+        - Avoid having data collectors read their configuration from nested helper calls. The orchestrating
+          rule should determine what to check and pass it down.
+        - If configuration data is discovered (e.g., DNS server address AND port), ensure ALL parts are used.
+          Flag cases where only partial configuration is extracted or applied. Example: parsing address:port
+          but only using the address in subsequent operations.
+        - Do NOT define DataCollector classes inside helper methods. Define them at module level and pass
+          parameters via run_data_collector() kwargs. Nested class definitions make code harder to test and reuse.
+
+        **Error handling:**
+        - Do NOT silently catch UnExpectedSystemOutput and return empty lists/dicts. Let it propagate so
+          the framework marks the result as SKIP with full context.
+        - Do NOT catch JSONDecodeError and return empty/default values. Raise UnExpectedSystemOutput with
+          the raw output and error details so users can diagnose the issue.
+        - Flag broad try/except blocks that mask real failures by returning fallback values.
+        - When catching specific exceptions, verify the code either re-raises with context or has a
+          documented reason to return a fallback value.
+
+        **Functional validation:**
+        - Verify the rule actually validates functionality, not just connectivity or presence.
+          For example, DNS checks should verify resolution works (nslookup/dig), not just reachability (ping).
         - When checking resource health conditions (e.g., cluster operators), verify all relevant
           conditions are covered, not just the primary one.
+
+        **Code cleanliness:**
         - Rules must NOT use self.logger. Return messages via RuleResult.failed() or RuleResult.warning().
-        - Data should be defined and sourced at the right level. If data is available in run_rule(),
-          pass it as a parameter rather than embedding it in lower-level methods.
         - Flag redundant if-statements inside blocks that already guarantee the condition.
-        - Verify the rule actually validates functionality, not just connectivity or presence.
-          For example, DNS checks should verify resolution works (nslookup/dig), not just reachability.
+        - Flag variables or code paths that are defined but never used or can be removed.
+        - Flag magic strings that are used multiple times or represent logical states. Suggest using
+          enums or class constants instead of repeating string literals.
 
     - path: "tests/**/*.py"
       instructions: |

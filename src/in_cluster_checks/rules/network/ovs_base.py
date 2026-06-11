@@ -274,8 +274,6 @@ class IsOVNKubernetesCollector(OrchestratorDataCollector):
     the network type. Used by node-level OVS rules to determine applicability.
     """
 
-    objective_hosts = [Objectives.ORCHESTRATOR]
-
     def collect_data(self, **kwargs) -> bool:
         """
         Check cluster network type.

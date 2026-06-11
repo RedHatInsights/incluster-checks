@@ -9,6 +9,8 @@ from typing import List
 
 from in_cluster_checks.core.domain import RuleDomain
 from in_cluster_checks.rules.network.dpf_validations import DpuBondLacpHealth, OvnGeneveTunnelLocalIp
+from in_cluster_checks.rules.network.nmstate_validations import VerifyAllNNCPsAvailable
+
 from in_cluster_checks.rules.network.node_connectivity_validations import (
     AreAllNodesConnected,
     BondDnsServersComparison,
@@ -68,6 +70,7 @@ class NetworkValidationDomain(RuleDomain):
             MTUOverlayInterfaces,
             DpuBondLacpHealth,
             OvnGeneveTunnelLocalIp,
+            VerifyAllNNCPsAvailable,
             WhereaboutsDuplicateIPAddresses,
             WhereaboutsMissingPodrefs,
             WhereaboutsMissingAllocations,

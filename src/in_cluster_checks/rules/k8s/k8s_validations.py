@@ -10,6 +10,7 @@ from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.rule import OrchestratorRule
 from in_cluster_checks.core.rule_result import PrerequisiteResult, RuleResult
 from in_cluster_checks.utils.enums import Objectives, Status
+from in_cluster_checks.utils.parsing_utils import parse_json
 
 
 class AllPodsReadyAndRunning(OrchestratorRule):
@@ -628,7 +629,6 @@ class OpenshiftOperatorStatus(OrchestratorRule):
         )
 
 
-# Rule to validate all policies are compliant
 class ValidateAllPoliciesCompliant(OrchestratorRule):
     """Validate all Open Cluster Management policies are compliant."""
 
@@ -638,34 +638,60 @@ class ValidateAllPoliciesCompliant(OrchestratorRule):
     supported_profiles = {"telco-base"}
     links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-policies-compliance"]
 
-    def run_rule(self):
-        """Check if all OCM policies are in Compliant state"""
+    _POLICIES_RESOURCE = "policies.policy.open-cluster-management.io"
+
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        """Check that RHACM policies are defined in the cluster.
+
+        Queries for policy resources.  If the CRD is missing (RHACM not
+        installed) or no policies are defined, the rule is not applicable.
+        """
         try:
-            # Run the oc command to get all policies from all namespaces
             _, policies_output, _ = self.oc_api.run_oc_command(
-                "get", ["policies.policy.open-cluster-management.io", "--all-namespaces", "-o", "json"], timeout=45
+                "get", [self._POLICIES_RESOURCE, "--all-namespaces", "-o", "json"], timeout=45
             )
         except UnExpectedSystemOutput:
-            return RuleResult.failed("Failed to get policies from cluster")
+            return PrerequisiteResult.not_met(
+                "RHACM policies CRD not available - "
+                "Open Cluster Management governance is not installed on this cluster"
+            )
 
         try:
             policies_data = json.loads(policies_output)
         except json.JSONDecodeError as e:
             raise UnExpectedSystemOutput(
                 ip=self.get_host_ip(),
-                cmd="oc get policies.policy.open-cluster-management.io --all-namespaces -o json",
+                cmd=f"oc get {self._POLICIES_RESOURCE} --all-namespaces -o json",
                 output=policies_output,
                 message=f"Failed to parse JSON: {e}",
+            ) from e
+
+        if not policies_data.get("items", []):
+            return PrerequisiteResult.not_met(
+                "No RHACM policies defined in cluster - governance policies are not configured"
             )
 
-        items = policies_data.get("items", [])
-        # Check if there are any policies
-        if not items:
-            return RuleResult.warning("No policies found in cluster")
+        return PrerequisiteResult.met()
+
+    def run_rule(self):
+        """Check if all OCM policies are in Compliant state."""
+        _, policies_output, _ = self.oc_api.run_oc_command(
+            "get", [self._POLICIES_RESOURCE, "--all-namespaces", "-o", "json"], timeout=45
+        )
+
+        try:
+            policies_data = json.loads(policies_output)
+        except json.JSONDecodeError as e:
+            raise UnExpectedSystemOutput(
+                ip=self.get_host_ip(),
+                cmd=f"oc get {self._POLICIES_RESOURCE} --all-namespaces -o json",
+                output=policies_output,
+                message=f"Failed to parse JSON: {e}",
+            ) from e
 
         non_compliant_policies = []
 
-        for policy in items:
+        for policy in policies_data.get("items", []):
             metadata = policy.get("metadata", {})
             name = metadata.get("name", "unknown")
             namespace = metadata.get("namespace", "unknown")
@@ -937,7 +963,87 @@ class VerifyWebConsoleDisabled(OrchestratorRule):
         return RuleResult.passed()
 
 
-class VerifyNfdOperatorHealth(OrchestratorRule):
+class SubscriptionOperatorRule(OrchestratorRule):
+    """Base class for operator health validation rules that check OLM subscriptions.
+
+    Subclasses must define:
+        operator_subscription_name (str): The operator package name in the Subscription (e.g., "nfd")
+        operator_display_name (str): Human-readable operator name for error messages (e.g., "Node Feature Discovery")
+    """
+
+    operator_subscription_name: str = NotImplemented
+    operator_display_name: str = NotImplemented
+
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        """Check that the operator has been installed via a Subscription.
+
+        Queries the cluster for a Subscription resource with the
+        operator_subscription_name package.  If none is found the rule is not applicable.
+        """
+        subscriptions_data = self.oc_api.get_operator_subscriptions()
+
+        for sub in subscriptions_data.get("items", []):
+            spec = sub.get("spec", {})
+            if spec.get("name") == self.operator_subscription_name:
+                return PrerequisiteResult.met()
+
+        return PrerequisiteResult.not_met(
+            f"{self.operator_subscription_name} operator subscription not found - "
+            f"{self.operator_display_name} operator is not installed on this cluster"
+        )
+
+    def _check_pod_security_context(self, pod_name: str, security_context: dict[str, object] | None) -> list[str]:
+        """Validate pod-level security context has runAsNonRoot set to true.
+
+        Args:
+            pod_name: Pod name.
+            security_context: Pod-level security context.
+
+        Returns:
+            List of validation error messages.
+        """
+        errors = []
+        if security_context is None:
+            errors.append(f"Pod {pod_name} has nil SecurityContext")
+        elif security_context.get("runAsNonRoot") is None:
+            errors.append(f"Pod {pod_name} has nil runAsNonRoot")
+        elif not security_context.get("runAsNonRoot"):
+            errors.append(
+                f"Incorrect runAsNonRoot for pod {pod_name}. "
+                f"Expected true, found: {security_context.get('runAsNonRoot')}"
+            )
+        return errors
+
+    def _check_containers_non_root(self, pod_name: str, all_containers: list[dict[str, object]]) -> list[str]:
+        """Validate no container runs as root (runAsUser != 0).
+
+        Args:
+            pod_name: Pod name.
+            all_containers: Combined containers and initContainers list.
+
+        Returns:
+            List of validation error messages.
+        """
+        errors = []
+        if not all_containers:
+            errors.append(f"Pod {pod_name} has no containers")
+            return errors
+        for container in all_containers:
+            container_name = container.get("name", "unknown")
+            container_sc = container.get("securityContext")
+            if container_sc is not None:
+                run_as_user = container_sc.get("runAsUser")
+                if run_as_user is not None:
+                    if not isinstance(run_as_user, int) or run_as_user < 0:
+                        errors.append(
+                            f"Container '{container_name}' in pod {pod_name} has invalid runAsUser: {run_as_user}"
+                        )
+                    elif run_as_user == 0:
+                        errors.append(f"Container '{container_name}' in pod {pod_name} runs as root (runAsUser=0)")
+        return errors
+
+
+class VerifyNfdOperatorHealth(SubscriptionOperatorRule):
     """Verify Node Feature Discovery (NFD) operator pods are healthy.
 
     NFD sets the stage for cluster functionality by labelling nodes with
@@ -956,38 +1062,10 @@ class VerifyNfdOperatorHealth(OrchestratorRule):
         "/psap-node-feature-discovery-operator.html",
     ]
 
+    operator_subscription_name = "nfd"
+    operator_display_name = "Node Feature Discovery"
+
     NFD_NAMESPACE = "openshift-nfd"
-
-    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
-        """Check that the NFD operator has been installed via a Subscription.
-
-        Queries the cluster for a Subscription resource with the
-        ``nfd`` package name.  If none is found the rule is not applicable.
-        """
-        _, subscriptions_output, _ = self.oc_api.run_oc_command(
-            "get",
-            ["subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json"],
-            timeout=45,
-        )
-
-        try:
-            subscriptions_data = json.loads(subscriptions_output)
-        except json.JSONDecodeError as e:
-            raise UnExpectedSystemOutput(
-                ip=self.get_host_ip(),
-                cmd="oc get subscriptions.operators.coreos.com --all-namespaces -o json",
-                output=subscriptions_output,
-                message=f"Failed to parse operator subscriptions: {e}",
-            ) from e
-
-        for sub in subscriptions_data.get("items", []):
-            spec = sub.get("spec", {})
-            if spec.get("name") == "nfd":
-                return PrerequisiteResult.met()
-
-        return PrerequisiteResult.not_met(
-            "NFD operator subscription not found - Node Feature Discovery operator is not installed on this cluster"
-        )
 
     def run_rule(self):
         """Verify all pods in the openshift-nfd namespace are Running and Ready."""
@@ -1087,6 +1165,308 @@ class VerifyNetworkDiagnosticsDisabled(OrchestratorRule):
                 "but network diagnostics should be disabled:\n  "
             )
             message += "\n  ".join(pod_names)
+            return RuleResult.failed(message)
+
+        return RuleResult.passed()
+
+
+class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
+    """Verify Advanced Cluster Management (ACM) operator pods are healthy.
+
+    ACM orchestrates multicluster lifecycle management on the hub cluster.
+    This rule checks that the ACM operator has been installed (Subscription
+    exists), that the ClusterServiceVersion is in Succeeded phase, and that
+    every pod in the open-cluster-management namespace is Running with all
+    containers ready.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_acm_operator_health"
+    title = "Verify ACM operator pods are healthy"
+    supported_profiles = {"telco-base"}
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-ACM-operator-health",
+        "https://docs.redhat.com/en/documentation/red_hat_advanced_cluster_management_for_kubernetes"
+        "/2.12/html/install/installing#installing-while-connected-online",
+    ]
+
+    operator_subscription_name = "advanced-cluster-management"
+    operator_display_name = "Advanced Cluster Management"
+
+    ACM_NAMESPACE = "open-cluster-management"
+    ACM_CSV_PATTERN = "advanced-cluster-management"
+
+    def run_rule(self):
+        """Verify ACM CSV is Succeeded and all pods in the namespace are Running and Ready."""
+        csv_error = self._verify_csv_status()
+        pod_error = self._verify_pods_status()
+
+        errors = [e for e in (csv_error, pod_error) if e]
+        if errors:
+            return RuleResult.failed("\n\n".join(errors))
+
+        return RuleResult.passed()
+
+    def _verify_csv_status(self):
+        """Check that the ACM ClusterServiceVersion is in Succeeded phase.
+
+        Uses status.installedCSV from the operator subscription when available
+        to identify the active CSV; falls back to pattern matching.
+
+        Returns:
+            Error message string if CSV check fails, None if successful.
+        """
+        _, csv_output, _ = self.oc_api.run_oc_command(
+            "get", ["csv", "-n", self.ACM_NAMESPACE, "-o", "json"], timeout=45
+        )
+        csv_data = parse_json(csv_output, f"oc get csv -n {self.ACM_NAMESPACE} -o json", self.get_host_ip())
+
+        installed_csv_name = self._get_installed_csv_name()
+        if installed_csv_name:
+            acm_csvs = [
+                csv for csv in csv_data.get("items", []) if csv.get("metadata", {}).get("name") == installed_csv_name
+            ]
+        else:
+            acm_csvs = [
+                csv
+                for csv in csv_data.get("items", [])
+                if self.ACM_CSV_PATTERN in csv.get("metadata", {}).get("name", "")
+            ]
+
+        if not acm_csvs:
+            return (
+                f"No ClusterServiceVersion matching '{self.ACM_CSV_PATTERN}' "
+                f"found in {self.ACM_NAMESPACE} namespace"
+            )
+
+        not_succeeded = []
+        for csv in acm_csvs:
+            name = csv.get("metadata", {}).get("name", "unknown")
+            phase = csv.get("status", {}).get("phase", "Unknown")
+            if phase != "Succeeded":
+                reason = csv.get("status", {}).get("reason", "Unknown")
+                message = csv.get("status", {}).get("message", "")
+                not_succeeded.append(f"{name} - Phase: {phase}, Reason: {reason}, Message: {message}")
+
+        if not_succeeded:
+            return "ACM ClusterServiceVersion is not in Succeeded phase:\n  " + "\n  ".join(not_succeeded)
+
+        return None
+
+    def _get_installed_csv_name(self):
+        """Look up status.installedCSV from the ACM operator subscription.
+
+        Returns:
+            The installedCSV string if found, None otherwise.
+        """
+        subscriptions_data = self.oc_api.get_operator_subscriptions()
+        for sub in subscriptions_data.get("items", []):
+            if sub.get("spec", {}).get("name") == self.operator_subscription_name:
+                return sub.get("status", {}).get("installedCSV")
+        return None
+
+    def _verify_pods_status(self):
+        """Check that all pods in the ACM namespace are Running and Ready.
+
+        Returns:
+            Error message string if pod check fails, None if successful.
+        """
+        pod_objects = self.oc_api.get_all_pods(namespace=self.ACM_NAMESPACE)
+
+        if not pod_objects:
+            return f"No pods found in {self.ACM_NAMESPACE} namespace. ACM operator may not be fully deployed."
+
+        not_ready_pods = []
+        unknown_status_pods = []
+
+        for pod in pod_objects:
+            pod_status = self.oc_api.get_pod_status(pod)
+            if pod_status is None:
+                pod_name = pod.as_dict().get("metadata", {}).get("name", "unknown")
+                unknown_status_pods.append(pod_name)
+                continue
+            if not pod_status["all_containers_ready"]:
+                not_ready_pods.append(pod_status["status_message"])
+
+        if unknown_status_pods or not_ready_pods:
+            parts = []
+            if unknown_status_pods:
+                parts.append("Failed to evaluate status for ACM pod(s):\n  " + "\n  ".join(unknown_status_pods))
+            if not_ready_pods:
+                parts.append(
+                    f"ACM operator has unhealthy pods in {self.ACM_NAMESPACE} namespace:\n  "
+                    + "\n  ".join(not_ready_pods)
+                )
+            return "\n\n".join(parts)
+
+        return None
+
+
+class VerifyNmoOperatorHealth(SubscriptionOperatorRule):
+    """Verify Node Maintenance Operator (NMO) pods are healthy.
+
+    NMO provides declarative node maintenance for OpenShift clusters,
+    enabling administrators to cordon and drain nodes safely.  This rule
+    checks that the NMO operator has been installed (Subscription exists)
+    and that every pod in the openshift-workload-availability namespace
+    is Running with all containers ready.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_nmo_operator_health"
+    title = "Verify NMO operator pods are healthy"
+    supported_profiles = {"telco-base"}
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-NMO-operator-health",
+        "https://docs.redhat.com/en/documentation/workload_availability_for_red_hat_openshift"
+        "/24.1/html/remediation_fencing_and_maintenance/node-maintenance-operator",
+    ]
+
+    operator_subscription_name = "node-maintenance-operator"
+    operator_display_name = "Node Maintenance Operator"
+
+    NMO_NAMESPACE = "openshift-workload-availability"
+
+    def run_rule(self):
+        """Verify all pods in the openshift-workload-availability namespace are Running and Ready."""
+        pod_objects = self.oc_api.get_all_pods(namespace=self.NMO_NAMESPACE)
+
+        if not pod_objects:
+            return RuleResult.failed(
+                f"No pods found in {self.NMO_NAMESPACE} namespace. NMO operator may not be fully deployed."
+            )
+
+        not_ready_pods = []
+        unknown_status_pods = []
+
+        for pod in pod_objects:
+            pod_status = self.oc_api.get_pod_status(pod)
+            if pod_status is None:
+                pod_name = pod.as_dict().get("metadata", {}).get("name", "unknown")
+                unknown_status_pods.append(pod_name)
+                continue
+            if not pod_status["all_containers_ready"]:
+                not_ready_pods.append(pod_status["status_message"])
+
+        if unknown_status_pods or not_ready_pods:
+            parts = []
+            if unknown_status_pods:
+                parts.append("Failed to evaluate status for NMO pod(s):\n  " + "\n  ".join(unknown_status_pods))
+            if not_ready_pods:
+                parts.append(
+                    f"NMO operator has unhealthy pods in {self.NMO_NAMESPACE} namespace:\n  "
+                    + "\n  ".join(not_ready_pods)
+                )
+            return RuleResult.failed("\n\n".join(parts))
+
+        return RuleResult.passed()
+
+
+class VerifyFarOperatorHealth(SubscriptionOperatorRule):
+    """Verify Fence Agents Remediation (FAR) operator pods are healthy.
+
+    FAR provides automatic node fencing and recovery for hardware failures.
+    This rule checks that the FAR operator has been installed (Subscription
+    exists) and that every pod in the openshift-workload-availability namespace
+    is Running with all containers ready.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_far_operator_health"
+    title = "Verify FAR operator pods are healthy"
+    supported_profiles = {"telco-base"}
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-FAR-operator-health",
+        "https://docs.openshift.com/container-platform/4.18/nodes/nodes/eco-fence-agents-remediation-operator.html",
+    ]
+
+    operator_subscription_name = "fence-agents-remediation"
+    operator_display_name = "Fence Agents Remediation"
+
+    FAR_NAMESPACE = "openshift-workload-availability"
+
+    def run_rule(self):
+        """Verify all pods in the openshift-workload-availability namespace are Running and Ready."""
+        pod_objects = self.oc_api.get_all_pods(namespace=self.FAR_NAMESPACE)
+
+        if not pod_objects:
+            return RuleResult.failed(
+                f"No pods found in {self.FAR_NAMESPACE} namespace. FAR operator may not be fully deployed."
+            )
+
+        not_ready_pods = []
+        unknown_status_pods = []
+
+        for pod in pod_objects:
+            pod_status = self.oc_api.get_pod_status(pod)
+            if pod_status is None:
+                pod_name = pod.as_dict().get("metadata", {}).get("name", "unknown")
+                unknown_status_pods.append(pod_name)
+                continue
+            if not pod_status["all_containers_ready"]:
+                not_ready_pods.append(pod_status["status_message"])
+
+        if unknown_status_pods or not_ready_pods:
+            parts = []
+            if unknown_status_pods:
+                parts.append("Failed to evaluate status for FAR pod(s):\n  " + "\n  ".join(unknown_status_pods))
+            if not_ready_pods:
+                parts.append(
+                    f"FAR operator has unhealthy pods in {self.FAR_NAMESPACE} namespace:\n  "
+                    + "\n  ".join(not_ready_pods)
+                )
+            return RuleResult.failed("\n\n".join(parts))
+
+        return RuleResult.passed()
+
+
+class VerifyFarContainerNonRoot(SubscriptionOperatorRule):
+    """Verify FAR (Fence Agents Remediation) container runs as non-root user.
+
+    Checks that FAR operator pods have proper security context:
+    - Pod-level runAsNonRoot is set to true
+    - No container runs as root (runAsUser != 0)
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_far_container_non_root"
+    title = "Verify FAR container runs as non-root user"
+    supported_profiles = {"telco-base"}
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-FAR-container-non%E2%80%90root",
+        "https://docs.openshift.com/container-platform/4.18/nodes/pods/nodes-pods-configuring.html",
+    ]
+
+    operator_subscription_name = "fence-agents-remediation"
+    operator_display_name = "Fence Agents Remediation"
+
+    FAR_POD_LABEL_KEY = "app.kubernetes.io/name"
+    FAR_POD_LABEL_VALUE = "fence-agents-remediation-operator"
+
+    def run_rule(self):
+        """Check if FAR pods run as non-root user with proper security context."""
+        pod_objects = self.oc_api.get_pods(labels={self.FAR_POD_LABEL_KEY: self.FAR_POD_LABEL_VALUE})
+
+        if not pod_objects:
+            return RuleResult.failed(
+                f"No FAR pods found with label {self.FAR_POD_LABEL_KEY}={self.FAR_POD_LABEL_VALUE}"
+            )
+
+        error_messages = []
+
+        for pod in pod_objects:
+            pod_name = pod.name()
+            spec = pod.as_dict().get("spec", {})
+
+            error_messages.extend(self._check_pod_security_context(pod_name, spec.get("securityContext")))
+
+            all_containers = spec.get("containers", []) + spec.get("initContainers", [])
+            error_messages.extend(self._check_containers_non_root(pod_name, all_containers))
+
+        if error_messages:
+            message = "FAR operator pods doesn't have proper security context:\n"
+            for msg in error_messages:
+                message += f"- {msg}\n"
             return RuleResult.failed(message)
 
         return RuleResult.passed()

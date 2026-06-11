@@ -1,3 +1,8 @@
+---
+name: new-rule
+description: Use when creating a new in-cluster validation rule from scratch - provides rule templates, domain registration, and test scaffolding
+---
+
 Create a new in-cluster rule based on the following description:
 
 $ARGUMENTS

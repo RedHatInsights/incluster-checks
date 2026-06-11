@@ -1,3 +1,8 @@
+---
+name: implement-rule-from-jira
+description: Use when user wants to create a new validation rule from a Jira ticket (Story type only) - validates ticket, scaffolds rule with tests and wiki docs
+---
+
 Create a new in-cluster validation rule from a Jira ticket.
 
 **Args**: Jira ticket number (e.g., PDRIVE-123)
@@ -39,7 +44,7 @@ You are helping an external contributor create a new in-cluster validation rule 
 
 **Follow the git workflow from implement-jira exactly:**
 
-Reference: @.claude/skills/implement-jira.md (Step 2)
+Reference: @.claude/commands/implement-jira.md (Step 2)
 
 1. **Update main branch**:
    ```bash
@@ -74,7 +79,7 @@ Present this analysis to the user and ask for confirmation before proceeding.
 ## Step 4: Create the Rule
 
 **Follow rule creation guidelines from:**
-- @.claude/skills/new-rule.md
+- @.claude/commands/new-rule.md
 - @.claude/rules/in-cluster-check.md
 
 ### 4a. Create Rule Class
@@ -112,7 +117,7 @@ class SomeDomain(RuleDomain):
 ## Step 5: Write Tests
 
 **Follow test guidelines from:**
-- @.claude/skills/new-rule.md (Step 4)
+- @.claude/commands/new-rule.md (Step 4)
 - @.claude/rules/testing.md
 
 Create tests in `tests/rules/<domain>/test_<file>.py`:
@@ -223,7 +228,7 @@ When committing:
 
 ## Step 9: Ensure Latest Code
 
-**Reference**: @.claude/skills/implement-jira.md (Step 7)
+**Reference**: @.claude/commands/implement-jira.md (Step 7)
 
 After committing, rebase on upstream:
 

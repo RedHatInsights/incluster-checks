@@ -4,7 +4,6 @@ with NVIDIA BlueField DPUs.
 """
 
 import re
-from sys import stdout
 from typing import Dict, List, Optional
 
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
@@ -192,7 +191,7 @@ class OvnGeneveTunnelLocalIp(Rule):
     links = ["https://github.com/RedHatInsights/incluster-checks/wiki/DPF---OVN-Geneve-tunnel-local_ip"]
 
     def _get_ovs_show(self) -> Optional[str]:
-        """Run ovs-vsctl show and return stdout, or None on failure."""
+        """Run ovs-vsctl show and return output, or None on failure."""
         try:
             return self.get_output_from_run_cmd(SafeCmdString("ovs-vsctl show"))
         except Exception:
@@ -224,10 +223,10 @@ class OvnGeneveTunnelLocalIp(Rule):
 
     def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
         """Check if OVS has any Geneve tunnel interfaces."""
-        stdout = self._get_ovs_show()
-        if stdout is None:
+        ovs_output = self._get_ovs_show()
+        if ovs_output is None:
             return PrerequisiteResult.not_met("Cannot access OVS")
-        if "geneve" not in stdout:
+        if "geneve" not in ovs_output:
             return PrerequisiteResult.not_met("No Geneve tunnels configured")
         return PrerequisiteResult.met()
 

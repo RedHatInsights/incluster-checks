@@ -1125,13 +1125,7 @@ class VerifyNfdPodRestartCount(SubscriptionOperatorRule):
 
     def run_rule(self):
         """Verify all containers in openshift-nfd pods have zero restart count."""
-        _, pods_output, _ = self.oc_api.run_oc_command(
-            "get",
-            ["pods", "-n", self.NFD_NAMESPACE, "-o", "json"],
-        )
-
-        pods_data = parse_json(pods_output, "oc get pods -n openshift-nfd -o json", "orchestrator")
-        items = pods_data.get("items", [])
+        items = self.oc_api.get_pods(namespace=self.NFD_NAMESPACE)
 
         if not items:
             return RuleResult.failed(
@@ -1141,9 +1135,10 @@ class VerifyNfdPodRestartCount(SubscriptionOperatorRule):
         pods_with_restarts = []
 
         for pod in items:
-            pod_name = pod.get("metadata", {}).get("name", "unknown")
-            container_statuses = pod.get("status", {}).get("containerStatuses", [])
-            init_container_statuses = pod.get("status", {}).get("initContainerStatuses", [])
+            pod_name = pod.name()
+            pod_dict = pod.as_dict()
+            container_statuses = pod_dict.get("status", {}).get("containerStatuses", [])
+            init_container_statuses = pod_dict.get("status", {}).get("initContainerStatuses", [])
 
             for container in container_statuses + init_container_statuses:
                 restart_count = container.get("restartCount", 0)

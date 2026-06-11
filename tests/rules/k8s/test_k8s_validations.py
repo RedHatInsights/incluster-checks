@@ -1894,27 +1894,21 @@ class TestVerifyNfdOperatorHealth(RuleTestBase):
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
 
 
-def _nfd_pods_json(pods):
-    """Build a JSON response for oc get pods -n openshift-nfd -o json."""
-    return json.dumps({"items": pods})
-
-
-def _nfd_pod_item(name, container_statuses, init_container_statuses=None):
-    """Build a single pod item dict for NFD restart count tests."""
-    pod = {
-        "metadata": {"name": name, "namespace": "openshift-nfd"},
-        "status": {
-            "phase": "Running",
-            "containerStatuses": container_statuses,
-        },
-    }
+def _create_mock_nfd_restart_pod(name, container_statuses, init_container_statuses=None):
+    """Create a mock NFD pod object for restart count tests."""
+    mock_pod = Mock()
+    mock_pod.name.return_value = name
+    status = {"containerStatuses": container_statuses}
     if init_container_statuses:
-        pod["status"]["initContainerStatuses"] = init_container_statuses
-    return pod
+        status["initContainerStatuses"] = init_container_statuses
+    mock_pod.as_dict.return_value = {
+        "metadata": {"name": name, "namespace": "openshift-nfd"},
+        "status": status,
+    }
+    return mock_pod
 
 
 _NFD_RESTART_SUB_CMD = ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json"))
-_NFD_RESTART_PODS_CMD = ("get", ("pods", "-n", "openshift-nfd", "-o", "json"))
 
 
 class TestVerifyNfdPodRestartCount(RuleTestBase):
@@ -1951,23 +1945,19 @@ class TestVerifyNfdPodRestartCount(RuleTestBase):
             "NFD pods have zero restart count",
             oc_cmd_output_dict={
                 _NFD_RESTART_SUB_CMD: CmdOutput(json.dumps(_nfd_subscriptions(include_nfd=True))),
-                _NFD_RESTART_PODS_CMD: CmdOutput(
-                    _nfd_pods_json(
-                        [
-                            _nfd_pod_item(
-                                "nfd-controller-manager-abc123",
-                                [
-                                    {"name": "manager", "restartCount": 0, "ready": True},
-                                ],
-                            ),
-                            _nfd_pod_item(
-                                "nfd-worker-xyz789",
-                                [
-                                    {"name": "nfd-worker", "restartCount": 0, "ready": True},
-                                ],
-                            ),
-                        ]
-                    )
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pods": Mock(
+                    return_value=[
+                        _create_mock_nfd_restart_pod(
+                            "nfd-controller-manager-abc123",
+                            [{"name": "manager", "restartCount": 0, "ready": True}],
+                        ),
+                        _create_mock_nfd_restart_pod(
+                            "nfd-worker-xyz789",
+                            [{"name": "nfd-worker", "restartCount": 0, "ready": True}],
+                        ),
+                    ]
                 ),
             },
         ),
@@ -1975,16 +1965,16 @@ class TestVerifyNfdPodRestartCount(RuleTestBase):
             "NFD pods with init containers all zero restarts",
             oc_cmd_output_dict={
                 _NFD_RESTART_SUB_CMD: CmdOutput(json.dumps(_nfd_subscriptions(include_nfd=True))),
-                _NFD_RESTART_PODS_CMD: CmdOutput(
-                    _nfd_pods_json(
-                        [
-                            _nfd_pod_item(
-                                "nfd-controller-manager-abc123",
-                                [{"name": "manager", "restartCount": 0, "ready": True}],
-                                init_container_statuses=[{"name": "init-setup", "restartCount": 0, "ready": True}],
-                            ),
-                        ]
-                    )
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pods": Mock(
+                    return_value=[
+                        _create_mock_nfd_restart_pod(
+                            "nfd-controller-manager-abc123",
+                            [{"name": "manager", "restartCount": 0, "ready": True}],
+                            init_container_statuses=[{"name": "init-setup", "restartCount": 0, "ready": True}],
+                        ),
+                    ]
                 ),
             },
         ),
@@ -1995,7 +1985,9 @@ class TestVerifyNfdPodRestartCount(RuleTestBase):
             "NFD pods not found in namespace",
             oc_cmd_output_dict={
                 _NFD_RESTART_SUB_CMD: CmdOutput(json.dumps(_nfd_subscriptions(include_nfd=True))),
-                _NFD_RESTART_PODS_CMD: CmdOutput(_nfd_pods_json([])),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pods": Mock(return_value=[]),
             },
             failed_msg="No pods found in openshift-nfd namespace. NFD operator may not be fully deployed.",
         ),
@@ -2003,23 +1995,19 @@ class TestVerifyNfdPodRestartCount(RuleTestBase):
             "NFD pod has non-zero restart count",
             oc_cmd_output_dict={
                 _NFD_RESTART_SUB_CMD: CmdOutput(json.dumps(_nfd_subscriptions(include_nfd=True))),
-                _NFD_RESTART_PODS_CMD: CmdOutput(
-                    _nfd_pods_json(
-                        [
-                            _nfd_pod_item(
-                                "nfd-controller-manager-abc123",
-                                [
-                                    {"name": "manager", "restartCount": 0, "ready": True},
-                                ],
-                            ),
-                            _nfd_pod_item(
-                                "nfd-worker-xyz789",
-                                [
-                                    {"name": "nfd-worker", "restartCount": 3, "ready": True},
-                                ],
-                            ),
-                        ]
-                    )
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pods": Mock(
+                    return_value=[
+                        _create_mock_nfd_restart_pod(
+                            "nfd-controller-manager-abc123",
+                            [{"name": "manager", "restartCount": 0, "ready": True}],
+                        ),
+                        _create_mock_nfd_restart_pod(
+                            "nfd-worker-xyz789",
+                            [{"name": "nfd-worker", "restartCount": 3, "ready": True}],
+                        ),
+                    ]
                 ),
             },
             failed_msg="NFD pods in openshift-nfd namespace have non-zero restart counts:\n"
@@ -2029,23 +2017,19 @@ class TestVerifyNfdPodRestartCount(RuleTestBase):
             "Multiple NFD pods with restarts across containers",
             oc_cmd_output_dict={
                 _NFD_RESTART_SUB_CMD: CmdOutput(json.dumps(_nfd_subscriptions(include_nfd=True))),
-                _NFD_RESTART_PODS_CMD: CmdOutput(
-                    _nfd_pods_json(
-                        [
-                            _nfd_pod_item(
-                                "nfd-controller-manager-abc123",
-                                [
-                                    {"name": "manager", "restartCount": 2, "ready": True},
-                                ],
-                            ),
-                            _nfd_pod_item(
-                                "nfd-worker-xyz789",
-                                [
-                                    {"name": "nfd-worker", "restartCount": 5, "ready": True},
-                                ],
-                            ),
-                        ]
-                    )
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pods": Mock(
+                    return_value=[
+                        _create_mock_nfd_restart_pod(
+                            "nfd-controller-manager-abc123",
+                            [{"name": "manager", "restartCount": 2, "ready": True}],
+                        ),
+                        _create_mock_nfd_restart_pod(
+                            "nfd-worker-xyz789",
+                            [{"name": "nfd-worker", "restartCount": 5, "ready": True}],
+                        ),
+                    ]
                 ),
             },
             failed_msg="NFD pods in openshift-nfd namespace have non-zero restart counts:\n"
@@ -2056,16 +2040,16 @@ class TestVerifyNfdPodRestartCount(RuleTestBase):
             "NFD init container has non-zero restart count",
             oc_cmd_output_dict={
                 _NFD_RESTART_SUB_CMD: CmdOutput(json.dumps(_nfd_subscriptions(include_nfd=True))),
-                _NFD_RESTART_PODS_CMD: CmdOutput(
-                    _nfd_pods_json(
-                        [
-                            _nfd_pod_item(
-                                "nfd-controller-manager-abc123",
-                                [{"name": "manager", "restartCount": 0, "ready": True}],
-                                init_container_statuses=[{"name": "init-setup", "restartCount": 1, "ready": True}],
-                            ),
-                        ]
-                    )
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pods": Mock(
+                    return_value=[
+                        _create_mock_nfd_restart_pod(
+                            "nfd-controller-manager-abc123",
+                            [{"name": "manager", "restartCount": 0, "ready": True}],
+                            init_container_statuses=[{"name": "init-setup", "restartCount": 1, "ready": True}],
+                        ),
+                    ]
                 ),
             },
             failed_msg="NFD pods in openshift-nfd namespace have non-zero restart counts:\n"

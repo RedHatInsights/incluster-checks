@@ -8,7 +8,9 @@ Based on support/HealthChecks/flows/Network/network_flows_openshift.py
 from typing import List
 
 from in_cluster_checks.core.domain import RuleDomain
+from in_cluster_checks.rules.network.dpf_validations import DpuBondLacpHealth, OvnGeneveTunnelLocalIp
 from in_cluster_checks.rules.network.nmstate_validations import VerifyAllNNCPsAvailable
+
 from in_cluster_checks.rules.network.node_connectivity_validations import (
     AreAllNodesConnected,
     BondDnsServersComparison,
@@ -39,7 +41,7 @@ class NetworkValidationDomain(RuleDomain):
     """
     Network rule domain for OpenShift.
 
-    Validates network health including OVS, OVN-Kubernetes, Whereabouts, and node connectivity.
+    Validates network health including OVS, OVN-Kubernetes, DPF, Whereabouts, and node connectivity.
     """
 
     def domain_name(self) -> str:
@@ -66,6 +68,8 @@ class NetworkValidationDomain(RuleDomain):
             NodesHaveOvnkubeNodePod,
             LogicalSwitchNodeValidator,
             MTUOverlayInterfaces,
+            DpuBondLacpHealth,
+            OvnGeneveTunnelLocalIp,
             VerifyAllNNCPsAvailable,
             WhereaboutsDuplicateIPAddresses,
             WhereaboutsMissingPodrefs,

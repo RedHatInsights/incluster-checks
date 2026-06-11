@@ -1099,6 +1099,61 @@ class VerifyNfdOperatorHealth(SubscriptionOperatorRule):
         return RuleResult.passed()
 
 
+class VerifyNfdPodRestartCount(SubscriptionOperatorRule):
+    """Verify NFD pods have zero restart count across all containers.
+
+    A non-zero restart count indicates pod instability caused by crashes,
+    OOMKills, or configuration errors, compromising reliable node feature
+    labelling.  This rule checks that the NFD operator is installed and
+    that every container in the openshift-nfd namespace has restartCount 0.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_nfd_pod_restart_count"
+    title = "Verify NFD pod restart count is zero"
+    supported_profiles = {"telco-base"}
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-NFD-pod-restart-count",
+        "https://docs.openshift.com/container-platform/4.18/hardware_enablement"
+        "/psap-node-feature-discovery-operator.html",
+    ]
+
+    operator_subscription_name = "nfd"
+    operator_display_name = "Node Feature Discovery"
+
+    NFD_NAMESPACE = "openshift-nfd"
+
+    def run_rule(self):
+        """Verify all containers in openshift-nfd pods have zero restart count."""
+        items = self.oc_api.get_pods(namespace=self.NFD_NAMESPACE)
+
+        if not items:
+            return RuleResult.failed(
+                f"No pods found in {self.NFD_NAMESPACE} namespace. NFD operator may not be fully deployed."
+            )
+
+        pods_with_restarts = []
+
+        for pod in items:
+            pod_name = pod.name()
+            pod_dict = pod.as_dict()
+            container_statuses = pod_dict.get("status", {}).get("containerStatuses", [])
+            init_container_statuses = pod_dict.get("status", {}).get("initContainerStatuses", [])
+
+            for container in container_statuses + init_container_statuses:
+                restart_count = container.get("restartCount", 0)
+                if restart_count > 0:
+                    container_name = container.get("name", "unknown")
+                    pods_with_restarts.append(f"{pod_name}/{container_name}: restartCount={restart_count}")
+
+        if pods_with_restarts:
+            message = f"NFD pods in {self.NFD_NAMESPACE} namespace have non-zero restart counts:\n  "
+            message += "\n  ".join(pods_with_restarts)
+            return RuleResult.failed(message)
+
+        return RuleResult.passed()
+
+
 class VerifyNetworkDiagnosticsDisabled(OrchestratorRule):
     """Verify no pods exist in openshift-network-diagnostics namespace when diagnostics are disabled.
 

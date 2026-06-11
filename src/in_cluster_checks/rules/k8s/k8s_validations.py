@@ -25,7 +25,9 @@ class AllPodsReadyAndRunning(OrchestratorRule):
         ready_pods, not_running_pods = self._get_pods_lists()
 
         if len(ready_pods) == 0:
-            return RuleResult.failed("Did not get any pods from 'oc get pods --all-namespaces'")
+            return RuleResult.failed(
+                "Did not get any pods from 'oc get pods --all-namespaces'"
+            )
 
         if not_running_pods:
             message = "Not all pods are running\n"
@@ -37,7 +39,9 @@ class AllPodsReadyAndRunning(OrchestratorRule):
                 pod_name = pod_info["name"]
                 status = pod_info["status"]
                 ready = pod_info["ready"]
-                message += f"  {namespace}/{pod_name} - Ready: {ready}, Status: {status}\n"
+                message += (
+                    f"  {namespace}/{pod_name} - Ready: {ready}, Status: {status}\n"
+                )
 
             return RuleResult.failed(message)
 
@@ -78,7 +82,9 @@ class AllPodsReadyAndRunning(OrchestratorRule):
 
             # Calculate ready containers
             total_containers = len(container_statuses)
-            ready_containers = sum(1 for c in container_statuses if c.get("ready", False))
+            ready_containers = sum(
+                1 for c in container_statuses if c.get("ready", False)
+            )
             ready_str = f"{ready_containers}/{total_containers}"
 
             pod_info = {
@@ -116,11 +122,14 @@ class NodesAreReady(OrchestratorRule):
         error_messages = []
 
         if not_ready_list:
-            error_messages.append("The following nodes are not ready:\n  " + "\n  ".join(not_ready_list))
+            error_messages.append(
+                "The following nodes are not ready:\n  " + "\n  ".join(not_ready_list)
+            )
 
         if warned_list:
             error_messages.append(
-                "The following nodes are ready but having some issues:\n  " + "\n  ".join(warned_list)
+                "The following nodes are ready but having some issues:\n  "
+                + "\n  ".join(warned_list)
             )
 
         if error_messages:
@@ -176,12 +185,20 @@ class NodesAreReady(OrchestratorRule):
                     if (
                         condition_type != "Ready"
                         and condition_status == "True"
-                        and condition_type in ["DiskPressure", "MemoryPressure", "PIDPressure", "NetworkUnavailable"]
+                        and condition_type
+                        in [
+                            "DiskPressure",
+                            "MemoryPressure",
+                            "PIDPressure",
+                            "NetworkUnavailable",
+                        ]
                     ):
                         warning_conditions.append(condition_type)
 
                 if warning_conditions:
-                    warned_list.append(f"{node_name} - Ready,{','.join(warning_conditions)}")
+                    warned_list.append(
+                        f"{node_name} - Ready,{','.join(warning_conditions)}"
+                    )
                 else:
                     ready_list.append(node_name)
             else:
@@ -203,12 +220,16 @@ class NodesCpuAndMemoryStatus(OrchestratorRule):
     def run_rule(self):
         """Check CPU and memory usage for all nodes."""
         try:
-            _, nodes_info, _ = self.oc_api.run_oc_command("adm", ["top", "nodes", "--no-headers"], timeout=45)
+            _, nodes_info, _ = self.oc_api.run_oc_command(
+                "adm", ["top", "nodes", "--no-headers"], timeout=45
+            )
         except UnExpectedSystemOutput:
             return RuleResult.failed("Failed to get nodes CPU and memory information")
 
         if not nodes_info or not nodes_info.strip():
-            return RuleResult.failed("No node metrics available from 'oc adm top nodes'")
+            return RuleResult.failed(
+                "No node metrics available from 'oc adm top nodes'"
+            )
 
         nodes_with_high_cpu = []
         nodes_with_high_memory = []
@@ -294,7 +315,8 @@ class NodesCpuAndMemoryStatus(OrchestratorRule):
 
         if is_critical:
             return RuleResult.failed(
-                message + f"\n\nCRITICAL: At least one node exceeds {self.THRESHOLD_CRITICAL}% threshold"
+                message
+                + f"\n\nCRITICAL: At least one node exceeds {self.THRESHOLD_CRITICAL}% threshold"
             )
 
         return RuleResult.failed(message)
@@ -343,7 +365,9 @@ class ValidateAllDaemonsetsScheduled(OrchestratorRule):
     def run_rule(self):
         """Check if all daemonsets have desired number of available copies."""
         try:
-            _, out, _ = self.oc_api.run_oc_command("get", ["daemonsets", "--all-namespaces", "-o", "json"], timeout=45)
+            _, out, _ = self.oc_api.run_oc_command(
+                "get", ["daemonsets", "--all-namespaces", "-o", "json"], timeout=45
+            )
         except UnExpectedSystemOutput:
             return RuleResult.failed("Failed to get daemonsets")
 
@@ -382,7 +406,9 @@ class ValidateAllDaemonsetsScheduled(OrchestratorRule):
             # Only flag as problematic if there are pods explicitly marked as unavailable
             # This indicates a real issue rather than just initialization delay
             elif number_unavailable > 0:
-                problematic_daemonsets.append(f"{namespace}/{name} - {number_unavailable} pod(s) unavailable")
+                problematic_daemonsets.append(
+                    f"{namespace}/{name} - {number_unavailable} pod(s) unavailable"
+                )
 
         if problematic_daemonsets:
             message = "Following daemonsets have scheduling or availability issues:\n  "
@@ -399,7 +425,9 @@ class AllDeploymentsAvailable(OrchestratorRule):
     unique_name = "all_deployments_available"
     title = "Verify all deployments are available"
     supported_profiles = {"telco-base"}
-    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-deployments-availability"]
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-deployments-availability"
+    ]
 
     def run_rule(self):
         """Check if all deployments have Available condition set to True."""
@@ -428,7 +456,9 @@ class AllDeploymentsAvailable(OrchestratorRule):
 
             # If no Available condition found or it's not True, deployment is unavailable
             if not available_condition:
-                unavailable_deployments.append(f"{namespace}/{name} - No Available condition found")
+                unavailable_deployments.append(
+                    f"{namespace}/{name} - No Available condition found"
+                )
             elif available_condition.get("status") != "True":
                 reason = available_condition.get("reason", "Unknown")
                 message = available_condition.get("message", "No message")
@@ -452,7 +482,9 @@ class CheckDeploymentsReplicaStatus(OrchestratorRule):
     unique_name = "check_deployments_replica_status"
     title = "Verify deployment replica counts"
     supported_profiles = {"telco-base"}
-    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Check-deployment-replicas-status"]
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Check-deployment-replicas-status"
+    ]
 
     def run_rule(self):
         """Check if all deployments have desired number of replicas ready."""
@@ -511,7 +543,9 @@ class AllStatefulsetsReady(OrchestratorRule):
     unique_name = "all_statefulsets_ready"
     title = "Verify all statefulsets are ready"
     supported_profiles = {"telco-base"}
-    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-statefulsets-readiness"]
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-statefulsets-readiness"
+    ]
 
     def run_rule(self):
         """Check if all statefulsets have ready replicas matching desired replicas."""
@@ -565,11 +599,21 @@ class OpenshiftOperatorStatus(OrchestratorRule):
         unavailable_operators = []
         progressing_operators = []
         table_data = []
-        headers = ["Name", "Version", "Available", "Progressing", "Degraded", "Since", "Message"]
+        headers = [
+            "Name",
+            "Version",
+            "Available",
+            "Progressing",
+            "Degraded",
+            "Since",
+            "Message",
+        ]
 
         try:
             _, operators_output, _ = self.oc_api.run_oc_command(
-                "get", ["clusteroperators.config.openshift.io", "--no-headers"], timeout=45
+                "get",
+                ["clusteroperators.config.openshift.io", "--no-headers"],
+                timeout=45,
             )
         except UnExpectedSystemOutput:
             return RuleResult.failed("Failed to get cluster operators status")
@@ -605,11 +649,13 @@ class OpenshiftOperatorStatus(OrchestratorRule):
             error_messages = []
             if unavailable_operators:
                 error_messages.append(
-                    "The following operators are not available:\n  " + "\n  ".join(unavailable_operators)
+                    "The following operators are not available:\n  "
+                    + "\n  ".join(unavailable_operators)
                 )
             if progressing_operators:
                 error_messages.append(
-                    "The following operators are in progress:\n  " + "\n  ".join(progressing_operators)
+                    "The following operators are in progress:\n  "
+                    + "\n  ".join(progressing_operators)
                 )
 
             # Return with dedicated table fields
@@ -636,7 +682,9 @@ class ValidateAllPoliciesCompliant(OrchestratorRule):
     unique_name = "validate_all_policies_compliant"
     title = "Verify all policies are in compliant state"
     supported_profiles = {"telco-base"}
-    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-policies-compliance"]
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-policies-compliance"
+    ]
 
     _POLICIES_RESOURCE = "policies.policy.open-cluster-management.io"
 
@@ -648,7 +696,9 @@ class ValidateAllPoliciesCompliant(OrchestratorRule):
         """
         try:
             _, policies_output, _ = self.oc_api.run_oc_command(
-                "get", [self._POLICIES_RESOURCE, "--all-namespaces", "-o", "json"], timeout=45
+                "get",
+                [self._POLICIES_RESOURCE, "--all-namespaces", "-o", "json"],
+                timeout=45,
             )
         except UnExpectedSystemOutput:
             return PrerequisiteResult.not_met(
@@ -676,7 +726,9 @@ class ValidateAllPoliciesCompliant(OrchestratorRule):
     def run_rule(self):
         """Check if all OCM policies are in Compliant state."""
         _, policies_output, _ = self.oc_api.run_oc_command(
-            "get", [self._POLICIES_RESOURCE, "--all-namespaces", "-o", "json"], timeout=45
+            "get",
+            [self._POLICIES_RESOURCE, "--all-namespaces", "-o", "json"],
+            timeout=45,
         )
 
         try:
@@ -698,10 +750,14 @@ class ValidateAllPoliciesCompliant(OrchestratorRule):
             status = policy.get("status", {})
             compliance_state = status.get("compliant", "Unknown")
             if compliance_state != "Compliant":
-                non_compliant_policies.append(f"{namespace}/{name} - {compliance_state}")
+                non_compliant_policies.append(
+                    f"{namespace}/{name} - {compliance_state}"
+                )
 
         if non_compliant_policies:
-            message = f"There are {len(non_compliant_policies)} non-compliant policies:\n  "
+            message = (
+                f"There are {len(non_compliant_policies)} non-compliant policies:\n  "
+            )
             message += "\n  ".join(non_compliant_policies)
             return RuleResult.failed(message)
 
@@ -716,7 +772,9 @@ class VerifyInternalRegistry(OrchestratorRule):
     unique_name = "verify_internal_registry"
     title = "Verify internal image registry is configured and available"
     supported_profiles = {"telco-base"}
-    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-internal-image-registry"]
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-internal-image-registry"
+    ]
 
     def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
         """
@@ -732,18 +790,24 @@ class VerifyInternalRegistry(OrchestratorRule):
                 timeout=45,
             )
         except UnExpectedSystemOutput:
-            return PrerequisiteResult.not_met("Failed to get image registry configuration")
+            return PrerequisiteResult.not_met(
+                "Failed to get image registry configuration"
+            )
 
         try:
             registry_config = json.loads(registry_config_output)
         except json.JSONDecodeError as e:
-            return PrerequisiteResult.not_met(f"Failed to parse image registry configuration: {e}")
+            return PrerequisiteResult.not_met(
+                f"Failed to parse image registry configuration: {e}"
+            )
 
         spec = registry_config.get("spec", {})
         management_state = spec.get("managementState", "Unknown")
 
         if management_state != "Managed":
-            return PrerequisiteResult.not_met(f"Image registry management state is '{management_state}', not 'Managed'")
+            return PrerequisiteResult.not_met(
+                f"Image registry management state is '{management_state}', not 'Managed'"
+            )
 
         return PrerequisiteResult.met()
 
@@ -799,7 +863,9 @@ class VerifyClusterOperatorsAvailable(OrchestratorRule):
     def run_rule(self):
         """Check cluster operator conditions: Available, Degraded, Progressing, Upgradeable."""
         try:
-            _, operators_output, _ = self.oc_api.run_oc_command("get", ["clusteroperators", "-o", "json"], timeout=45)
+            _, operators_output, _ = self.oc_api.run_oc_command(
+                "get", ["clusteroperators", "-o", "json"], timeout=45
+            )
         except UnExpectedSystemOutput:
             return RuleResult.failed("Failed to get cluster operators")
 
@@ -839,45 +905,59 @@ class VerifyClusterOperatorsAvailable(OrchestratorRule):
                 if available_condition:
                     reason = available_condition.get("reason", "Unknown")
                     message = available_condition.get("message", "")
-                unavailable_operators.append(f"{name} - Reason: {reason}, Message: {message}")
+                unavailable_operators.append(
+                    f"{name} - Reason: {reason}, Message: {message}"
+                )
 
             if degraded_condition and degraded_condition.get("status") == "True":
                 reason = degraded_condition.get("reason", "Unknown")
                 message = degraded_condition.get("message", "")
-                degraded_operators.append(f"{name} - Reason: {reason}, Message: {message}")
+                degraded_operators.append(
+                    f"{name} - Reason: {reason}, Message: {message}"
+                )
 
             if progressing_condition and progressing_condition.get("status") == "True":
                 reason = progressing_condition.get("reason", "Unknown")
                 message = progressing_condition.get("message", "")
-                progressing_operators.append(f"{name} - Reason: {reason}, Message: {message}")
+                progressing_operators.append(
+                    f"{name} - Reason: {reason}, Message: {message}"
+                )
 
             if upgradeable_condition and upgradeable_condition.get("status") == "False":
                 reason = upgradeable_condition.get("reason", "Unknown")
                 message = upgradeable_condition.get("message", "")
-                not_upgradeable_operators.append(f"{name} - Reason: {reason}, Message: {message}")
+                not_upgradeable_operators.append(
+                    f"{name} - Reason: {reason}, Message: {message}"
+                )
 
         error_messages = []
         warning_messages = []
 
         if unavailable_operators:
             error_messages.append(
-                "Following cluster operators are not available:\n  " + "\n  ".join(unavailable_operators)
+                "Following cluster operators are not available:\n  "
+                + "\n  ".join(unavailable_operators)
             )
 
         if degraded_operators:
-            error_messages.append("Following cluster operators are degraded:\n  " + "\n  ".join(degraded_operators))
+            error_messages.append(
+                "Following cluster operators are degraded:\n  "
+                + "\n  ".join(degraded_operators)
+            )
 
         if error_messages:
             return RuleResult.failed("\n\n".join(error_messages))
 
         if progressing_operators:
             warning_messages.append(
-                "Following cluster operators are progressing:\n  " + "\n  ".join(progressing_operators)
+                "Following cluster operators are progressing:\n  "
+                + "\n  ".join(progressing_operators)
             )
 
         if not_upgradeable_operators:
             warning_messages.append(
-                "Following cluster operators are not upgradeable:\n  " + "\n  ".join(not_upgradeable_operators)
+                "Following cluster operators are not upgradeable:\n  "
+                + "\n  ".join(not_upgradeable_operators)
             )
 
         if warning_messages:
@@ -924,12 +1004,16 @@ class VerifyWebConsoleDisabled(OrchestratorRule):
                 timeout=45,
             )
         except UnExpectedSystemOutput:
-            return PrerequisiteResult.not_met("Failed to get console operator configuration")
+            return PrerequisiteResult.not_met(
+                "Failed to get console operator configuration"
+            )
 
         try:
             console_config = json.loads(console_config_output)
         except json.JSONDecodeError as e:
-            return PrerequisiteResult.not_met(f"Failed to parse console operator configuration: {e}")
+            return PrerequisiteResult.not_met(
+                f"Failed to parse console operator configuration: {e}"
+            )
 
         spec = console_config.get("spec", {})
         management_state = spec.get("managementState", "Unknown")
@@ -992,7 +1076,9 @@ class SubscriptionOperatorRule(OrchestratorRule):
             f"{self.operator_display_name} operator is not installed on this cluster"
         )
 
-    def _check_pod_security_context(self, pod_name: str, security_context: dict[str, object] | None) -> list[str]:
+    def _check_pod_security_context(
+        self, pod_name: str, security_context: dict[str, object] | None
+    ) -> list[str]:
         """Validate pod-level security context has runAsNonRoot set to true.
 
         Args:
@@ -1014,7 +1100,9 @@ class SubscriptionOperatorRule(OrchestratorRule):
             )
         return errors
 
-    def _check_containers_non_root(self, pod_name: str, all_containers: list[dict[str, object]]) -> list[str]:
+    def _check_containers_non_root(
+        self, pod_name: str, all_containers: list[dict[str, object]]
+    ) -> list[str]:
         """Validate no container runs as root (runAsUser != 0).
 
         Args:
@@ -1039,7 +1127,9 @@ class SubscriptionOperatorRule(OrchestratorRule):
                             f"Container '{container_name}' in pod {pod_name} has invalid runAsUser: {run_as_user}"
                         )
                     elif run_as_user == 0:
-                        errors.append(f"Container '{container_name}' in pod {pod_name} runs as root (runAsUser=0)")
+                        errors.append(
+                            f"Container '{container_name}' in pod {pod_name} runs as root (runAsUser=0)"
+                        )
         return errors
 
 
@@ -1089,7 +1179,10 @@ class VerifyNfdOperatorHealth(SubscriptionOperatorRule):
                 not_ready_pods.append(pod_status["status_message"])
 
         if unknown_status_pods:
-            return RuleResult.failed("Failed to evaluate status for NFD pod(s):\n  " + "\n  ".join(unknown_status_pods))
+            return RuleResult.failed(
+                "Failed to evaluate status for NFD pod(s):\n  "
+                + "\n  ".join(unknown_status_pods)
+            )
 
         if not_ready_pods:
             message = f"NFD operator has unhealthy pods in {self.NFD_NAMESPACE} namespace:\n  "
@@ -1131,12 +1224,16 @@ class VerifyNetworkDiagnosticsDisabled(OrchestratorRule):
                 timeout=45,
             )
         except UnExpectedSystemOutput:
-            return PrerequisiteResult.not_met("Failed to get network operator configuration")
+            return PrerequisiteResult.not_met(
+                "Failed to get network operator configuration"
+            )
 
         try:
             network_config = json.loads(network_config_output)
         except json.JSONDecodeError as e:
-            return PrerequisiteResult.not_met(f"Failed to parse network operator configuration: {e}")
+            return PrerequisiteResult.not_met(
+                f"Failed to parse network operator configuration: {e}"
+            )
 
         spec = network_config.get("spec", {})
         disable_diagnostics = spec.get("disableNetworkDiagnostics")
@@ -1151,7 +1248,9 @@ class VerifyNetworkDiagnosticsDisabled(OrchestratorRule):
 
     def run_rule(self):
         """Verify no pods exist in the openshift-network-diagnostics namespace."""
-        pod_objects = self.oc_api.get_all_pods(namespace="openshift-network-diagnostics")
+        pod_objects = self.oc_api.get_all_pods(
+            namespace="openshift-network-diagnostics"
+        )
 
         if pod_objects:
             pod_names = []
@@ -1219,12 +1318,18 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
         _, csv_output, _ = self.oc_api.run_oc_command(
             "get", ["csv", "-n", self.ACM_NAMESPACE, "-o", "json"], timeout=45
         )
-        csv_data = parse_json(csv_output, f"oc get csv -n {self.ACM_NAMESPACE} -o json", self.get_host_ip())
+        csv_data = parse_json(
+            csv_output,
+            f"oc get csv -n {self.ACM_NAMESPACE} -o json",
+            self.get_host_ip(),
+        )
 
         installed_csv_name = self._get_installed_csv_name()
         if installed_csv_name:
             acm_csvs = [
-                csv for csv in csv_data.get("items", []) if csv.get("metadata", {}).get("name") == installed_csv_name
+                csv
+                for csv in csv_data.get("items", [])
+                if csv.get("metadata", {}).get("name") == installed_csv_name
             ]
         else:
             acm_csvs = [
@@ -1246,10 +1351,15 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
             if phase != "Succeeded":
                 reason = csv.get("status", {}).get("reason", "Unknown")
                 message = csv.get("status", {}).get("message", "")
-                not_succeeded.append(f"{name} - Phase: {phase}, Reason: {reason}, Message: {message}")
+                not_succeeded.append(
+                    f"{name} - Phase: {phase}, Reason: {reason}, Message: {message}"
+                )
 
         if not_succeeded:
-            return "ACM ClusterServiceVersion is not in Succeeded phase:\n  " + "\n  ".join(not_succeeded)
+            return (
+                "ACM ClusterServiceVersion is not in Succeeded phase:\n  "
+                + "\n  ".join(not_succeeded)
+            )
 
         return None
 
@@ -1291,7 +1401,10 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
         if unknown_status_pods or not_ready_pods:
             parts = []
             if unknown_status_pods:
-                parts.append("Failed to evaluate status for ACM pod(s):\n  " + "\n  ".join(unknown_status_pods))
+                parts.append(
+                    "Failed to evaluate status for ACM pod(s):\n  "
+                    + "\n  ".join(unknown_status_pods)
+                )
             if not_ready_pods:
                 parts.append(
                     f"ACM operator has unhealthy pods in {self.ACM_NAMESPACE} namespace:\n  "
@@ -1351,7 +1464,10 @@ class VerifyNmoOperatorHealth(SubscriptionOperatorRule):
         if unknown_status_pods or not_ready_pods:
             parts = []
             if unknown_status_pods:
-                parts.append("Failed to evaluate status for NMO pod(s):\n  " + "\n  ".join(unknown_status_pods))
+                parts.append(
+                    "Failed to evaluate status for NMO pod(s):\n  "
+                    + "\n  ".join(unknown_status_pods)
+                )
             if not_ready_pods:
                 parts.append(
                     f"NMO operator has unhealthy pods in {self.NMO_NAMESPACE} namespace:\n  "
@@ -1409,13 +1525,108 @@ class VerifyFarOperatorHealth(SubscriptionOperatorRule):
         if unknown_status_pods or not_ready_pods:
             parts = []
             if unknown_status_pods:
-                parts.append("Failed to evaluate status for FAR pod(s):\n  " + "\n  ".join(unknown_status_pods))
+                parts.append(
+                    "Failed to evaluate status for FAR pod(s):\n  "
+                    + "\n  ".join(unknown_status_pods)
+                )
             if not_ready_pods:
                 parts.append(
                     f"FAR operator has unhealthy pods in {self.FAR_NAMESPACE} namespace:\n  "
                     + "\n  ".join(not_ready_pods)
                 )
             return RuleResult.failed("\n\n".join(parts))
+
+        return RuleResult.passed()
+
+
+class VerifyFARControllerReplicas(OrchestratorRule):
+    """Verify FAR controller manager has correct number of replicas.
+
+    FAR (Fence Agents Remediation) uses 2 replicas for high availability.
+    When one pod fails, the other takes over to ensure continuous operation.
+
+    This rule checks:
+    - Deployment has 2 replicas configured (spec.replicas)
+    - All 2 replicas are ready (status.readyReplicas)
+
+    Skipped on Single Node OpenShift (SNO) - SNO only supports 1 replica.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_far_controller_replicas"
+    title = "Verify FAR controller manager has correct number of replicas"
+    supported_profiles = {"telco-base"}
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/"
+        "K8s-%E2%80%90-Verify-FAR-controller-manager-has-correct-number-of-replicas"
+    ]
+
+    FAR_NAMESPACE = "openshift-workload-availability"
+    FAR_DEPLOYMENT_NAME = "fence-agents-remediation-controller-manager"
+    EXPECTED_REPLICAS = 2
+
+    def is_prerequisite_fulfilled(self):
+        """Check if FAR deployment exists."""
+        deployments = self.oc_api.get_all_deployments(
+            namespace=self.FAR_NAMESPACE, timeout=30
+        )
+
+        for deployment in deployments:
+            deployment_name = deployment.as_dict()["metadata"]["name"]
+            if deployment_name == self.FAR_DEPLOYMENT_NAME:
+                return PrerequisiteResult.met()
+
+        return PrerequisiteResult.not_met(
+            f"FAR deployment '{self.FAR_DEPLOYMENT_NAME}' not found in '{self.FAR_NAMESPACE}' namespace. "
+            "FAR operator may not be installed."
+        )
+
+    def run_rule(self):
+        """Check FAR controller manager has correct number of replicas."""
+        # Step 1: Check if this is a Single Node OpenShift cluster
+        infrastructure = self.oc_api.select_resources(
+            "infrastructure/cluster", single=True, timeout=30
+        )
+        if infrastructure:
+            infra_dict = infrastructure.as_dict()
+            topology = infra_dict.get("status", {}).get("controlPlaneTopology", "")
+            if topology == "SingleReplica":
+                return RuleResult.skip(
+                    "SNO (Single Node OpenShift) cluster detected. Skipping replica check."
+                )
+
+        # Step 2: Get FAR deployment
+        deployments = self.oc_api.get_all_deployments(
+            namespace=self.FAR_NAMESPACE, timeout=30
+        )
+        far_deployment = None
+
+        for deployment in deployments:
+            deployment_name = deployment.as_dict()["metadata"]["name"]
+            if deployment_name == self.FAR_DEPLOYMENT_NAME:
+                far_deployment = deployment
+                break
+
+        if not far_deployment:
+            return RuleResult.failed(
+                f"FAR deployment '{self.FAR_DEPLOYMENT_NAME}' not found"
+            )
+
+        # Step 3: Get replica counts from deployment
+        deployment_dict = far_deployment.as_dict()
+        spec_replicas = deployment_dict.get("spec", {}).get("replicas")
+        ready_replicas = deployment_dict.get("status", {}).get("readyReplicas", 0)
+
+        # Step 4: Check if replicas match expected value
+        if spec_replicas != self.EXPECTED_REPLICAS:
+            return RuleResult.failed(
+                f"Expected {self.EXPECTED_REPLICAS} replicas in deployment spec, but found {spec_replicas}"
+            )
+
+        if ready_replicas != self.EXPECTED_REPLICAS:
+            return RuleResult.failed(
+                f"Expected {self.EXPECTED_REPLICAS} ready replicas, but only {ready_replicas} are ready"
+            )
 
         return RuleResult.passed()
 
@@ -1445,7 +1656,9 @@ class VerifyFarContainerNonRoot(SubscriptionOperatorRule):
 
     def run_rule(self):
         """Check if FAR pods run as non-root user with proper security context."""
-        pod_objects = self.oc_api.get_pods(labels={self.FAR_POD_LABEL_KEY: self.FAR_POD_LABEL_VALUE})
+        pod_objects = self.oc_api.get_pods(
+            labels={self.FAR_POD_LABEL_KEY: self.FAR_POD_LABEL_VALUE}
+        )
 
         if not pod_objects:
             return RuleResult.failed(
@@ -1458,10 +1671,14 @@ class VerifyFarContainerNonRoot(SubscriptionOperatorRule):
             pod_name = pod.name()
             spec = pod.as_dict().get("spec", {})
 
-            error_messages.extend(self._check_pod_security_context(pod_name, spec.get("securityContext")))
+            error_messages.extend(
+                self._check_pod_security_context(pod_name, spec.get("securityContext"))
+            )
 
             all_containers = spec.get("containers", []) + spec.get("initContainers", [])
-            error_messages.extend(self._check_containers_non_root(pod_name, all_containers))
+            error_messages.extend(
+                self._check_containers_non_root(pod_name, all_containers)
+            )
 
         if error_messages:
             message = "FAR operator pods doesn't have proper security context:\n"

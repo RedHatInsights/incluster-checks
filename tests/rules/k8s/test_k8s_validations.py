@@ -2653,19 +2653,8 @@ def _create_far_pod(
     return mock_pod
 
 
-def create_mock_deployment(name, spec_replicas, ready_replicas):
-    """Create a simple mock deployment object."""
-    mock_deployment = Mock()
-    mock_deployment.as_dict.return_value = {
-        "metadata": {"name": name},
-        "spec": {"replicas": spec_replicas},
-        "status": {"readyReplicas": ready_replicas},
-    }
-    return mock_deployment
-
-
-def create_mock_infrastructure(topology):
-    """Create a simple mock infrastructure object."""
+def create_mock_infrastructure_for_far(topology):
+    """Create a mock infrastructure object for FAR tests."""
     mock_infra = Mock()
     mock_infra.as_dict.return_value = {
         "status": {"controlPlaneTopology": topology},
@@ -2685,7 +2674,12 @@ class TestVerifyFARControllerReplicas(RuleTestBase):
             tested_object_mock_dict={
                 "oc_api.get_all_deployments": Mock(
                     return_value=[
-                        create_mock_deployment("fence-agents-remediation-controller-manager", 2, 2),
+                        create_mock_deployment(
+                            "fence-agents-remediation-controller-manager",
+                            "openshift-workload-availability",
+                            spec={"replicas": 2},
+                            status={"readyReplicas": 2},
+                        ),
                     ]
                 ),
             },
@@ -2700,13 +2694,6 @@ class TestVerifyFARControllerReplicas(RuleTestBase):
                 "oc_api.get_all_deployments": Mock(return_value=[]),
             },
         ),
-        RuleScenarioParams(
-            "SNO cluster - prerequisite not fulfilled",
-            tested_object_mock_dict={
-                "oc_api.select_resources": Mock(return_value=create_mock_infrastructure("SingleReplica")),
-                "oc_api.get_all_deployments": Mock(return_value=[]),
-            },
-        ),
     ]
 
     # Test: Rule passed - Deployment has 2 replicas and 2 ready
@@ -2714,15 +2701,15 @@ class TestVerifyFARControllerReplicas(RuleTestBase):
         RuleScenarioParams(
             "FAR deployment has 2 replicas and all are ready",
             tested_object_mock_dict={
-                "oc_api.select_resources": Mock(
-                    side_effect=[
-                        create_mock_infrastructure("HighlyAvailable"),  # Not SNO
-                        create_mock_deployment("fence-agents-remediation-controller-manager", 2, 2),
-                    ]
-                ),
+                "oc_api.select_resources": Mock(return_value=create_mock_infrastructure_for_far("HighlyAvailable")),
                 "oc_api.get_all_deployments": Mock(
                     return_value=[
-                        create_mock_deployment("fence-agents-remediation-controller-manager", 2, 2),
+                        create_mock_deployment(
+                            "fence-agents-remediation-controller-manager",
+                            "openshift-workload-availability",
+                            spec={"replicas": 2},
+                            status={"readyReplicas": 2},
+                        ),
                     ]
                 ),
             },
@@ -2734,15 +2721,15 @@ class TestVerifyFARControllerReplicas(RuleTestBase):
         RuleScenarioParams(
             "FAR deployment has wrong spec replicas",
             tested_object_mock_dict={
-                "oc_api.select_resources": Mock(
-                    side_effect=[
-                        create_mock_infrastructure("HighlyAvailable"),
-                        create_mock_deployment("fence-agents-remediation-controller-manager", 1, 1),
-                    ]
-                ),
+                "oc_api.select_resources": Mock(return_value=create_mock_infrastructure_for_far("HighlyAvailable")),
                 "oc_api.get_all_deployments": Mock(
                     return_value=[
-                        create_mock_deployment("fence-agents-remediation-controller-manager", 1, 1),
+                        create_mock_deployment(
+                            "fence-agents-remediation-controller-manager",
+                            "openshift-workload-availability",
+                            spec={"replicas": 1},
+                            status={"readyReplicas": 1},
+                        ),
                     ]
                 ),
             },
@@ -2751,15 +2738,15 @@ class TestVerifyFARControllerReplicas(RuleTestBase):
         RuleScenarioParams(
             "FAR deployment has correct spec but not all replicas ready",
             tested_object_mock_dict={
-                "oc_api.select_resources": Mock(
-                    side_effect=[
-                        create_mock_infrastructure("HighlyAvailable"),
-                        create_mock_deployment("fence-agents-remediation-controller-manager", 2, 1),
-                    ]
-                ),
+                "oc_api.select_resources": Mock(return_value=create_mock_infrastructure_for_far("HighlyAvailable")),
                 "oc_api.get_all_deployments": Mock(
                     return_value=[
-                        create_mock_deployment("fence-agents-remediation-controller-manager", 2, 1),
+                        create_mock_deployment(
+                            "fence-agents-remediation-controller-manager",
+                            "openshift-workload-availability",
+                            spec={"replicas": 2},
+                            status={"readyReplicas": 1},
+                        ),
                     ]
                 ),
             },
@@ -2786,6 +2773,24 @@ class TestVerifyFARControllerReplicas(RuleTestBase):
     def test_scenario_failed(self, scenario_params, tested_object):
         """Test that rule fails when replica count is wrong."""
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+    def test_sno_cluster_skipped(self, tested_object):
+        """Test that rule is skipped on SNO (Single Node OpenShift) cluster."""
+        tested_object.oc_api.select_resources = Mock(return_value=create_mock_infrastructure_for_far("SingleReplica"))
+        tested_object.oc_api.get_all_deployments = Mock(
+            return_value=[
+                create_mock_deployment(
+                    "fence-agents-remediation-controller-manager",
+                    "openshift-workload-availability",
+                    spec={"replicas": 1},
+                    status={"readyReplicas": 1},
+                ),
+            ]
+        )
+
+        result = tested_object.run_rule()
+        assert result.status == Status.SKIP
+        assert "SNO" in result.message or "Single Node OpenShift" in result.message
 
 
 class TestVerifyFarContainerNonRoot(RuleTestBase):

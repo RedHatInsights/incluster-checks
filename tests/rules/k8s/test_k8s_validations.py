@@ -25,6 +25,7 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     VerifyFarContainerNonRoot,
     VerifyFarOperatorHealth,
     VerifyInternalRegistry,
+    VerifyMdrOperatorHealth,
     VerifyNetworkDiagnosticsDisabled,
     VerifyNfdOperatorHealth,
     VerifyNmoOperatorHealth,
@@ -3040,7 +3041,27 @@ class TestVerifyMdrOperatorHealth(RuleTestBase):
                     json.dumps(_mdr_subscriptions(include_mdr=True))
                 ),
             },
-            failed_msg="Failed to evaluate status for Machine Deletion Remediation pod(s):\n  mdr-controller-manager-abc123",
+            failed_msg="Machine Deletion Remediation operator has pods in unexpected succeeded state:\n  mdr-controller-manager-abc123",
+        ),
+        RuleScenarioParams(
+            "MDR operator installed with unknown and unhealthy pods",
+            tested_object_mock_dict={
+                "oc_api.get_all_pods": Mock(
+                    return_value=[
+                        create_mock_mdr_pod("mdr-controller-manager-abc123", "Succeeded", True),
+                        create_mock_mdr_pod("mdr-worker-xyz789", "Running", False),
+                    ]
+                ),
+            },
+            oc_cmd_output_dict={
+                ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json")): CmdOutput(
+                    json.dumps(_mdr_subscriptions(include_mdr=True))
+                ),
+            },
+            failed_msg="Machine Deletion Remediation operator has pods in unexpected succeeded state:\n"
+            "  mdr-controller-manager-abc123\n\n"
+            "Machine Deletion Remediation operator has unhealthy pods in openshift-workload-availability namespace:\n"
+            "  mdr-worker-xyz789 - Running, Not all containers ready",
         ),
     ]
 

@@ -1470,6 +1470,8 @@ class VerifyFarContainerNonRoot(SubscriptionOperatorRule):
             return RuleResult.failed(message)
 
         return RuleResult.passed()
+
+
 class VerifyMdrOperatorHealth(SubscriptionOperatorRule):
     """Verify Machine Deletion Remediation (MDR) operator pods are healthy.
 
@@ -1492,9 +1494,43 @@ class VerifyMdrOperatorHealth(SubscriptionOperatorRule):
     operator_subscription_name = "openshift-workload-availability"
     operator_display_name = "Machine Deletion Remediation"
 
+    MDR_NAMESPACE = "openshift-workload-availability"
+
     def run_rule(self):
         """Verify all pods in the openshift-workload-availability namespace are Running and Ready."""
-        errors = self.validate_namespace_pods_health(self.operator_subscription_name)
-        if errors:
-            return RuleResult.failed("\n\n".join(errors))
+        pod_objects = self.oc_api.get_all_pods(namespace=self.MDR_NAMESPACE)
+
+        if not pod_objects:
+            return RuleResult.failed(
+                f"No pods found in {self.MDR_NAMESPACE} namespace. "
+                f"{self.operator_display_name} operator may not be fully deployed."
+            )
+
+        not_ready_pods = []
+        unknown_status_pods = []
+
+        for pod in pod_objects:
+            pod_status = self.oc_api.get_pod_status(pod)
+            if pod_status is None:
+                pod_name = pod.as_dict().get("metadata", {}).get("name", "unknown")
+                unknown_status_pods.append(pod_name)
+                continue
+            if not pod_status["all_containers_ready"]:
+                not_ready_pods.append(pod_status["status_message"])
+
+        parts = []
+        if unknown_status_pods:
+            parts.append(
+                f"{self.operator_display_name} operator has pods in unexpected succeeded state:\n  "
+                + "\n  ".join(unknown_status_pods)
+            )
+        if not_ready_pods:
+            parts.append(
+                f"{self.operator_display_name} operator has unhealthy pods in {self.MDR_NAMESPACE} namespace:\n  "
+                + "\n  ".join(not_ready_pods)
+            )
+
+        if parts:
+            return RuleResult.failed("\n\n".join(parts))
+
         return RuleResult.passed()

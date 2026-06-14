@@ -405,7 +405,7 @@ class AllDeploymentsAvailable(OrchestratorRule):
     unique_name = "all_deployments_available"
     title = "Verify all deployments are available"
     supported_profiles = {"telco-base"}
-    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-deployments-availability"]
+    links = ["https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418516241"]
 
     def run_rule(self):
         """Check if all deployments have Available condition set to True."""
@@ -458,7 +458,7 @@ class CheckDeploymentsReplicaStatus(OrchestratorRule):
     unique_name = "check_deployments_replica_status"
     title = "Verify deployment replica counts"
     supported_profiles = {"telco-base"}
-    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Check-deployment-replicas-status"]
+    links = ["https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482816"]
 
     def run_rule(self):
         """Check if all deployments have desired number of replicas ready."""
@@ -517,7 +517,7 @@ class AllStatefulsetsReady(OrchestratorRule):
     unique_name = "all_statefulsets_ready"
     title = "Verify all statefulsets are ready"
     supported_profiles = {"telco-base"}
-    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-statefulsets-readiness"]
+    links = ["https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418516203"]
 
     def run_rule(self):
         """Check if all statefulsets have ready replicas matching desired replicas."""
@@ -652,7 +652,7 @@ class ValidateAllPoliciesCompliant(OrchestratorRule):
     unique_name = "validate_all_policies_compliant"
     title = "Verify all policies are in compliant state"
     supported_profiles = {"telco-base"}
-    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-policies-compliance"]
+    links = ["https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418424"]
 
     _POLICIES_RESOURCE = "policies.policy.open-cluster-management.io"
 
@@ -736,7 +736,7 @@ class VerifyInternalRegistry(OrchestratorRule):
     unique_name = "verify_internal_registry"
     title = "Verify internal image registry is configured and available"
     supported_profiles = {"telco-base"}
-    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-internal-image-registry"]
+    links = ["https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482747"]
 
     def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
         """
@@ -813,7 +813,7 @@ class VerifyClusterOperatorsAvailable(OrchestratorRule):
     title = "Verify all cluster operators are in available state"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-cluster-operators-available",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418357",
     ]
 
     def run_rule(self):
@@ -926,7 +926,7 @@ class VerifyWebConsoleDisabled(OrchestratorRule):
     title = "Verify web console is disabled (edge/SNO clusters)"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-web-console-disabled",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482772",
         "https://docs.openshift.com/container-platform/latest/web_console/disabling-web-console.html",
     ]
 
@@ -1077,7 +1077,7 @@ class VerifyNfdOperatorHealth(SubscriptionOperatorRule):
     title = "Verify NFD operator pods are healthy"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s%E2%80%90-Verify-NFD-operator-health",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482793",
         "https://docs.openshift.com/container-platform/4.18/hardware_enablement"
         "/psap-node-feature-discovery-operator.html",
     ]
@@ -1133,7 +1133,6 @@ class VerifyNfdPodRestartCount(SubscriptionOperatorRule):
     title = "Verify NFD pod restart count is zero"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-NFD-pod-restart-count",
         "https://docs.openshift.com/container-platform/4.18/hardware_enablement"
         "/psap-node-feature-discovery-operator.html",
     ]
@@ -1187,7 +1186,7 @@ class VerifyNetworkDiagnosticsDisabled(OrchestratorRule):
     title = "Verify no pods in network diagnostics namespace (edge/SNO clusters)"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-network-diagnostics-disabled",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418516222",
         "https://docs.redhat.com/en/documentation/openshift_container_platform"
         "/4.17/html/networking_operators/cluster-network-operator",
     ]
@@ -1260,7 +1259,7 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
     title = "Verify ACM operator pods are healthy"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-ACM-operator-health",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418516286",
         "https://docs.redhat.com/en/documentation/red_hat_advanced_cluster_management_for_kubernetes"
         "/2.12/html/install/installing#installing-while-connected-online",
     ]
@@ -1396,7 +1395,7 @@ class VerifyNmoOperatorHealth(SubscriptionOperatorRule):
     title = "Verify NMO operator pods are healthy"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-NMO-operator-health",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418378",
         "https://docs.redhat.com/en/documentation/workload_availability_for_red_hat_openshift"
         "/24.1/html/remediation_fencing_and_maintenance/node-maintenance-operator",
     ]
@@ -1455,7 +1454,7 @@ class VerifyFarOperatorHealth(SubscriptionOperatorRule):
     title = "Verify FAR operator pods are healthy"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-FAR-operator-health",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418450754",
         "https://docs.openshift.com/container-platform/4.18/nodes/nodes/eco-fence-agents-remediation-operator.html",
     ]
 
@@ -1516,10 +1515,7 @@ class VerifyFARControllerReplicas(OrchestratorRule):
     unique_name = "verify_far_controller_replicas"
     title = "Verify FAR controller manager has correct number of replicas"
     supported_profiles = {"telco-base"}
-    links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/"
-        "K8s-%E2%80%90-Verify-FAR-controller-manager-has-correct-number-of-replicas"
-    ]
+    links = ["https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418516260"]
 
     FAR_NAMESPACE = "openshift-workload-availability"
     FAR_DEPLOYMENT_NAME = "fence-agents-remediation-controller-manager"
@@ -1594,7 +1590,7 @@ class VerifyFarContainerNonRoot(SubscriptionOperatorRule):
     title = "Verify FAR container runs as non-root user"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-FAR-container-non%E2%80%90root",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418450775",
         "https://docs.openshift.com/container-platform/4.18/nodes/pods/nodes-pods-configuring.html",
     ]
 

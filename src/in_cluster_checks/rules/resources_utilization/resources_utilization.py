@@ -195,7 +195,7 @@ class ResourcesUtilization(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "resources_utilization"
     title = "Resources Utilization"
-    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/Resources-%E2%80%90-Resources-Utilization"]
+    links = ["https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418514"]
 
     # Core resources always shown (supports regex patterns)
     CORE_RESOURCES = [

@@ -29,8 +29,7 @@ class VerifyAllNNCPsAvailable(OrchestratorRule):
     supported_profiles = {"telco-base"}
     objective_hosts = [Objectives.ORCHESTRATOR]
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/"
-        "Network-%E2%80%90-Verify-all-NodeNetworkConfigurationPolicies-are-Available",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418464",
     ]
 
     def is_prerequisite_fulfilled(self) -> PrerequisiteResult:

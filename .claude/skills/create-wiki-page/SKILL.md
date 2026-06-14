@@ -1,13 +1,15 @@
 ---
 name: create-wiki-page
-description: Use when creating wiki documentation for an in-cluster-checks validation rule - follows 7-section template with proper formatting
+description: Use when creating documentation for an in-cluster-checks validation rule - follows 7-section template with proper formatting
 ---
 
-Create a wiki page for an in-cluster-checks validation rule.
+Create a Confluence documentation page for an in-cluster-checks validation rule.
 
 $ARGUMENTS
 
-Follow the 7-section wiki template and project documentation standards.
+Follow the 7-section documentation template and project documentation standards.
+
+Documentation is hosted in Confluence: https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418417677/In-Cluster+Checks+Rules
 
 ---
 

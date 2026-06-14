@@ -1,13 +1,13 @@
 ---
 name: implement-rule-from-jira
-description: Use when user wants to create a new validation rule from a Jira ticket (Story type only) - validates ticket, scaffolds rule with tests and wiki docs
+description: Use when user wants to create a new validation rule from a Jira ticket (Story type only) - validates ticket, scaffolds rule with tests and Confluence docs
 ---
 
 Create a new in-cluster validation rule from a Jira ticket.
 
 **Args**: Jira ticket number (e.g., PDRIVE-123)
 
-**Purpose**: This skill helps external contributors implement new validation rules according to project guidelines. It validates the ticket type, scaffolds the rule, creates tests, generates wiki documentation, and handles the complete PR workflow.
+**Purpose**: This skill helps external contributors implement new validation rules according to project guidelines. It validates the ticket type, scaffolds the rule, creates tests, generates Confluence documentation, and handles the complete PR workflow.
 
 # Implement New Rule from Jira Ticket
 
@@ -91,7 +91,7 @@ Place the rule in `src/in_cluster_checks/rules/<domain>/<file>.py`:
 - Implement `run_rule()` returning `RuleResult`
 - Add `is_prerequisite_fulfilled()` if needed
 - **CRITICAL**: All commands MUST use `SafeCmdString`
-- Add wiki link to `links` field (see Step 6 for wiki URL format)
+- Add Confluence link to `links` field (see Step 6 for URL format)
 
 **Important reminders:**
 - NO use of `self.logger` - return messages via RuleResult
@@ -136,29 +136,23 @@ pytest tests/rules/<domain>/test_<file>.py -v
 
 Ensure all tests pass before proceeding.
 
-## Step 6: Create Wiki Page Content
+## Step 6: Create Confluence Documentation Page
 
-**REQUIRED**: Every new rule MUST have wiki documentation.
+**REQUIRED**: Every new rule MUST have Confluence documentation.
 
-**Reference**: @.claude/rules/in-cluster-check.md (Documentation section, lines 66-93)
+**Reference**: @.claude/rules/in-cluster-check.md (Documentation section)
 
-### 6a. Fetch Wiki Template
+### 6a. Review Existing Template
 
-Use WebFetch to read an existing wiki page as a template:
-```
-WebFetch(url="https://github.com/RedHatInsights/incluster-checks/wiki/Security-‐-TLS-certificate-expiry")
-```
+Read an existing Confluence page as a template:
+- [TLS certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482936)
+- [Node certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418558)
 
-### 6b. Generate Wiki Content
+### 6b. Generate Documentation Content
 
-Create wiki page content in **markdown format** following the standard structure:
+Create documentation page content following the standard structure:
 
-**Wiki URL Format**: `https://github.com/RedHatInsights/incluster-checks/wiki/{Domain}-‐-{Rule-Title}`
-- Use the rule's `title` field with spaces replaced by dashes
-- Use `‐` (not `-`) in URLs due to GitHub wiki encoding
-- Example: "Check kubelet CA certificate expiry" → `Security-‐-Check-kubelet-CA-certificate-expiry`
-
-**Standard Wiki Structure**:
+**Standard Structure**:
 - **Description**: What the rule checks, why it's important, severity, failure thresholds
 - **Prerequisites**: Required access, tools, or conditions
 - **Impact**: What happens if the condition fails
@@ -167,27 +161,28 @@ Create wiki page content in **markdown format** following the standard structure
 - **Solution**: Step-by-step remediation with code examples
 - **Resources**: Links to official docs, KCS articles, guides
 
-### 6c. Present Wiki Content
+### 6c. Present Documentation Content
 
-Show the complete wiki page content in a markdown code block for easy copy-paste:
+Show the complete page content in a markdown code block for easy copy-paste:
 
 ```
-Here's the wiki page content for your new rule.
+Here's the documentation page content for your new rule.
 
 **IMPORTANT - Manual Steps Required:**
 
-1. **Copy the wiki content** from the markdown code block below
-2. **Navigate to**: https://github.com/RedHatInsights/incluster-checks/wiki/{Domain}-‐-{Rule-Title}
-3. Click "Create new page"
-4. Paste the content
-5. Save the page
-6. **Verify the wiki link** in your rule's `links` field matches the created wiki page URL
+1. **Navigate to**: https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418417677/In-Cluster+Checks+Rules
+2. Open the appropriate **domain page** (e.g., Network, K8s, Security)
+3. Click **Create** to add a child page
+4. Set the title to the rule's title
+5. Paste the content from below
+6. **Publish** the page
+7. **Copy the page URL** and add it to the rule's `links` field
 
 ```markdown
-[Wiki content here]
+[Documentation content here]
 ```
 
-**Note**: GitHub wikis are not accessible via API, so this must be done manually. Make sure the wiki link in the rule code matches the actual wiki page URL after creation.
+**Note**: After creating the page, copy the Confluence URL and update the rule's `links` field to match.
 ```
 
 ## Step 7: Run All Tests
@@ -279,8 +274,8 @@ Use `mcp__plugin_github_github__create_pull_request`:
   - ✅ Pre-commit checks pass
   - ✅ Coverage maintained
   
-  ## Wiki Documentation
-  Wiki page URL: https://github.com/RedHatInsights/incluster-checks/wiki/{Domain}-‐-{Rule-Title}
+  ## Documentation
+  Confluence page: https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/{PAGE_ID}
   (Will be created after PR approval)
   ```
 
@@ -304,7 +299,7 @@ Created new validation rule: `<unique_name>`
 
 **Pull Request:** [PR #NUMBER](PR-URL)
 
-**Wiki Documentation:** [Rule Wiki Page](wiki-url)
+**Documentation:** [Rule Documentation Page](confluence-url)
 
 **Status:** Ready for review
 ```
@@ -333,10 +328,10 @@ Before marking complete, verify:
 - [ ] Tests written with passed and failed scenarios
 - [ ] All tests passing
 - [ ] Pre-commit checks passing
-- [ ] Wiki page content created and provided to user
-- [ ] User instructed to manually create wiki page and copy content
-- [ ] Wiki link added to rule's `links` field
-- [ ] User reminded to verify wiki link matches actual wiki page URL
+- [ ] Documentation page content created and provided to user
+- [ ] User instructed to create Confluence page under appropriate domain
+- [ ] Confluence link added to rule's `links` field
+- [ ] User reminded to verify Confluence link matches actual page URL
 - [ ] Committed with conventional commit format
 - [ ] Rebased on upstream/main
 - [ ] Pushed to origin
@@ -357,7 +352,7 @@ Expected flow:
 6. Create rule in src/in_cluster_checks/rules/network/
 7. Register in NetworkValidationDomain
 8. Create tests in tests/rules/network/
-9. Generate wiki page content and provide to user
+9. Generate documentation page content and provide to user
 10. Run tests → all pass ✓
 11. Commit with: feat(PDRIVE-505): add network connectivity validation
 12. Rebase on upstream/main

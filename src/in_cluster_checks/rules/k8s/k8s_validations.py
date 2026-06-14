@@ -176,7 +176,13 @@ class NodesAreReady(OrchestratorRule):
                     if (
                         condition_type != "Ready"
                         and condition_status == "True"
-                        and condition_type in ["DiskPressure", "MemoryPressure", "PIDPressure", "NetworkUnavailable"]
+                        and condition_type
+                        in [
+                            "DiskPressure",
+                            "MemoryPressure",
+                            "PIDPressure",
+                            "NetworkUnavailable",
+                        ]
                     ):
                         warning_conditions.append(condition_type)
 
@@ -565,11 +571,21 @@ class OpenshiftOperatorStatus(OrchestratorRule):
         unavailable_operators = []
         progressing_operators = []
         table_data = []
-        headers = ["Name", "Version", "Available", "Progressing", "Degraded", "Since", "Message"]
+        headers = [
+            "Name",
+            "Version",
+            "Available",
+            "Progressing",
+            "Degraded",
+            "Since",
+            "Message",
+        ]
 
         try:
             _, operators_output, _ = self.oc_api.run_oc_command(
-                "get", ["clusteroperators.config.openshift.io", "--no-headers"], timeout=45
+                "get",
+                ["clusteroperators.config.openshift.io", "--no-headers"],
+                timeout=45,
             )
         except UnExpectedSystemOutput:
             return RuleResult.failed("Failed to get cluster operators status")
@@ -648,7 +664,9 @@ class ValidateAllPoliciesCompliant(OrchestratorRule):
         """
         try:
             _, policies_output, _ = self.oc_api.run_oc_command(
-                "get", [self._POLICIES_RESOURCE, "--all-namespaces", "-o", "json"], timeout=45
+                "get",
+                [self._POLICIES_RESOURCE, "--all-namespaces", "-o", "json"],
+                timeout=45,
             )
         except UnExpectedSystemOutput:
             return PrerequisiteResult.not_met(
@@ -676,7 +694,9 @@ class ValidateAllPoliciesCompliant(OrchestratorRule):
     def run_rule(self):
         """Check if all OCM policies are in Compliant state."""
         _, policies_output, _ = self.oc_api.run_oc_command(
-            "get", [self._POLICIES_RESOURCE, "--all-namespaces", "-o", "json"], timeout=45
+            "get",
+            [self._POLICIES_RESOURCE, "--all-namespaces", "-o", "json"],
+            timeout=45,
         )
 
         try:
@@ -1274,7 +1294,11 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
         _, csv_output, _ = self.oc_api.run_oc_command(
             "get", ["csv", "-n", self.ACM_NAMESPACE, "-o", "json"], timeout=45
         )
-        csv_data = parse_json(csv_output, f"oc get csv -n {self.ACM_NAMESPACE} -o json", self.get_host_ip())
+        csv_data = parse_json(
+            csv_output,
+            f"oc get csv -n {self.ACM_NAMESPACE} -o json",
+            self.get_host_ip(),
+        )
 
         installed_csv_name = self._get_installed_csv_name()
         if installed_csv_name:
@@ -1471,6 +1495,88 @@ class VerifyFarOperatorHealth(SubscriptionOperatorRule):
                     + "\n  ".join(not_ready_pods)
                 )
             return RuleResult.failed("\n\n".join(parts))
+
+        return RuleResult.passed()
+
+
+class VerifyFARControllerReplicas(OrchestratorRule):
+    """Verify FAR controller manager has correct number of replicas.
+
+    FAR (Fence Agents Remediation) uses 2 replicas for high availability.
+    When one pod fails, the other takes over to ensure continuous operation.
+
+    This rule checks:
+    - Deployment has 2 replicas configured (spec.replicas)
+    - All 2 replicas are ready (status.readyReplicas)
+
+    Skipped on Single Node OpenShift (SNO) - SNO only supports 1 replica.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_far_controller_replicas"
+    title = "Verify FAR controller manager has correct number of replicas"
+    supported_profiles = {"telco-base"}
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/"
+        "K8s-%E2%80%90-Verify-FAR-controller-manager-has-correct-number-of-replicas"
+    ]
+
+    FAR_NAMESPACE = "openshift-workload-availability"
+    FAR_DEPLOYMENT_NAME = "fence-agents-remediation-controller-manager"
+    EXPECTED_REPLICAS = 2
+
+    def is_prerequisite_fulfilled(self):
+        """Check if FAR deployment exists."""
+        deployments = self.oc_api.get_all_deployments(namespace=self.FAR_NAMESPACE, timeout=30)
+
+        for deployment in deployments:
+            deployment_name = deployment.as_dict()["metadata"]["name"]
+            if deployment_name == self.FAR_DEPLOYMENT_NAME:
+                return PrerequisiteResult.met()
+
+        return PrerequisiteResult.not_met(
+            f"FAR deployment '{self.FAR_DEPLOYMENT_NAME}' not found in '{self.FAR_NAMESPACE}' namespace. "
+            "FAR operator may not be installed."
+        )
+
+    def run_rule(self):
+        """Check FAR controller manager has correct number of replicas."""
+        # Step 1: Check if this is a Single Node OpenShift cluster
+        infrastructure = self.oc_api.select_resources("infrastructure/cluster", single=True, timeout=30)
+        if infrastructure:
+            infra_dict = infrastructure.as_dict()
+            topology = infra_dict.get("status", {}).get("controlPlaneTopology", "")
+            if topology == "SingleReplica":
+                return RuleResult.skip("SNO (Single Node OpenShift) cluster detected. Skipping replica check.")
+
+        # Step 2: Get FAR deployment
+        deployments = self.oc_api.get_all_deployments(namespace=self.FAR_NAMESPACE, timeout=30)
+        far_deployment = None
+
+        for deployment in deployments:
+            deployment_name = deployment.as_dict()["metadata"]["name"]
+            if deployment_name == self.FAR_DEPLOYMENT_NAME:
+                far_deployment = deployment
+                break
+
+        if not far_deployment:
+            return RuleResult.failed(f"FAR deployment '{self.FAR_DEPLOYMENT_NAME}' not found")
+
+        # Step 3: Get replica counts from deployment
+        deployment_dict = far_deployment.as_dict()
+        spec_replicas = deployment_dict.get("spec", {}).get("replicas")
+        ready_replicas = deployment_dict.get("status", {}).get("readyReplicas", 0)
+
+        # Step 4: Check if replicas match expected value
+        if spec_replicas != self.EXPECTED_REPLICAS:
+            return RuleResult.failed(
+                f"Expected {self.EXPECTED_REPLICAS} replicas in deployment spec, but found {spec_replicas}"
+            )
+
+        if ready_replicas != self.EXPECTED_REPLICAS:
+            return RuleResult.failed(
+                f"Expected {self.EXPECTED_REPLICAS} ready replicas, but only {ready_replicas} are ready"
+            )
 
         return RuleResult.passed()
 

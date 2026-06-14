@@ -1133,7 +1133,6 @@ class VerifyNfdPodRestartCount(SubscriptionOperatorRule):
     title = "Verify NFD pod restart count is zero"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-NFD-pod-restart-count",
         "https://docs.openshift.com/container-platform/4.18/hardware_enablement"
         "/psap-node-feature-discovery-operator.html",
     ]
@@ -1396,7 +1395,7 @@ class VerifyNmoOperatorHealth(SubscriptionOperatorRule):
     title = "Verify NMO operator pods are healthy"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-NMO-operator-health",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418378",
         "https://docs.redhat.com/en/documentation/workload_availability_for_red_hat_openshift"
         "/24.1/html/remediation_fencing_and_maintenance/node-maintenance-operator",
     ]
@@ -1516,10 +1515,7 @@ class VerifyFARControllerReplicas(OrchestratorRule):
     unique_name = "verify_far_controller_replicas"
     title = "Verify FAR controller manager has correct number of replicas"
     supported_profiles = {"telco-base"}
-    links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/"
-        "K8s-%E2%80%90-Verify-FAR-controller-manager-has-correct-number-of-replicas"
-    ]
+    links = ["https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418516260"]
 
     FAR_NAMESPACE = "openshift-workload-availability"
     FAR_DEPLOYMENT_NAME = "fence-agents-remediation-controller-manager"

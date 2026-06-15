@@ -25,6 +25,7 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     VerifyFarContainerNonRoot,
     VerifyFarOperatorHealth,
     VerifyInternalRegistry,
+    VerifyMdrOperatorHealth,
     VerifyNetworkDiagnosticsDisabled,
     VerifyNfdOperatorHealth,
     VerifyNmoOperatorHealth,
@@ -3040,7 +3041,7 @@ class TestVerifyMdrOperatorHealth(RuleTestBase):
                     json.dumps(_mdr_subscriptions(include_mdr=True))
                 ),
             },
-            failed_msg="Failed to evaluate status for Machine Deletion Remediation pod(s):\n  mdr-controller-manager-abc123",
+            failed_msg="Machine Deletion Remediation operator has pods in unexpected succeeded state:\n  mdr-controller-manager-abc123",
         ),
     ]
 

@@ -1034,13 +1034,56 @@ class SubscriptionOperatorRule(OrchestratorRule):
             if container_sc is not None:
                 run_as_user = container_sc.get("runAsUser")
                 if run_as_user is not None:
-                    if not isinstance(run_as_user, int) or run_as_user < 0:
+                    if not isinstance(run_as_user, int) or isinstance(run_as_user, bool) or run_as_user < 0:
                         errors.append(
                             f"Container '{container_name}' in pod {pod_name} has invalid runAsUser: {run_as_user}"
                         )
                     elif run_as_user == 0:
                         errors.append(f"Container '{container_name}' in pod {pod_name} runs as root (runAsUser=0)")
         return errors
+
+    def validate_namespace_pods_health(self, namespace: str) -> list[str]:
+        """Validate all pods in a namespace are Running and Ready.
+
+        Args:
+            namespace: Kubernetes namespace to check
+
+        Returns:
+            List of error messages. Empty list if all pods are healthy.
+        """
+        pod_objects = self.oc_api.get_all_pods(namespace=namespace)
+
+        if not pod_objects:
+            return [
+                f"No pods found in {namespace} namespace. "
+                f"{self.operator_display_name} operator may not be fully deployed."
+            ]
+
+        not_ready_pods = []
+        succeeded_state_pods = []
+
+        for pod in pod_objects:
+            pod_status = self.oc_api.get_pod_status(pod)
+            if pod_status is None:
+                pod_name = pod.as_dict().get("metadata", {}).get("name", "unknown")
+                succeeded_state_pods.append(pod_name)
+                continue
+            if not pod_status["all_containers_ready"]:
+                not_ready_pods.append(pod_status["status_message"])
+
+        parts = []
+        if succeeded_state_pods:
+            parts.append(
+                f"{self.operator_display_name} operator has pods in unexpected succeeded state:\n  "
+                + "\n  ".join(succeeded_state_pods)
+            )
+        if not_ready_pods:
+            parts.append(
+                f"{self.operator_display_name} operator has unhealthy pods in {namespace} namespace:\n  "
+                + "\n  ".join(not_ready_pods)
+            )
+
+        return parts
 
 
 class VerifyNfdOperatorHealth(SubscriptionOperatorRule):
@@ -1207,7 +1250,7 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
 
         return RuleResult.passed()
 
-    def _verify_csv_status(self):
+    def _verify_csv_status(self) -> str | None:
         """Check that the ACM ClusterServiceVersion is in Succeeded phase.
 
         Uses status.installedCSV from the operator subscription when available
@@ -1253,7 +1296,7 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
 
         return None
 
-    def _get_installed_csv_name(self):
+    def _get_installed_csv_name(self) -> str | None:
         """Look up status.installedCSV from the ACM operator subscription.
 
         Returns:
@@ -1265,7 +1308,7 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
                 return sub.get("status", {}).get("installedCSV")
         return None
 
-    def _verify_pods_status(self):
+    def _verify_pods_status(self) -> str | None:
         """Check that all pods in the ACM namespace are Running and Ready.
 
         Returns:
@@ -1470,6 +1513,8 @@ class VerifyFarContainerNonRoot(SubscriptionOperatorRule):
             return RuleResult.failed(message)
 
         return RuleResult.passed()
+
+
 class VerifyMdrOperatorHealth(SubscriptionOperatorRule):
     """Verify Machine Deletion Remediation (MDR) operator pods are healthy.
 

@@ -484,21 +484,25 @@ class CheckDeploymentsReplicaStatus(OrchestratorRule):
             available_replicas = int(status.get("availableReplicas", 0))
             updated_replicas = int(status.get("updatedReplicas", 0))
 
+            # Get deployment conditions for diagnostic info
+            conditions = status.get("conditions") or []
+            condition_info = self._format_failed_conditions(conditions)
+
             # Check if ready replicas match desired
             if ready_replicas != desired_replicas:
                 problematic_deployments.append(
-                    f"{namespace}/{name} - Desired: {desired_replicas}, Ready: {ready_replicas}"
+                    f"{namespace}/{name} - Desired: {desired_replicas}, Ready: {ready_replicas}{condition_info}"
                 )
             # Check if available replicas match desired
             elif available_replicas != desired_replicas:
                 problematic_deployments.append(
-                    f"{namespace}/{name} - Desired: {desired_replicas}, Available: {available_replicas}"
+                    f"{namespace}/{name} - Desired: {desired_replicas}, Available: {available_replicas}{condition_info}"
                 )
             # Check if updated replicas match desired (rollout not complete)
             elif updated_replicas != desired_replicas:
                 problematic_deployments.append(
                     f"{namespace}/{name} - Desired: {desired_replicas}, Updated: {updated_replicas} "
-                    "(rollout in progress)"
+                    f"(rollout in progress){condition_info}"
                 )
 
         if problematic_deployments:
@@ -507,6 +511,31 @@ class CheckDeploymentsReplicaStatus(OrchestratorRule):
             return RuleResult.failed(message)
 
         return RuleResult.passed()
+
+    @staticmethod
+    def _format_failed_conditions(conditions: list[dict[str, object]] | None) -> str:
+        """Format deployment conditions with status=False for inclusion in error messages.
+
+        Args:
+            conditions: List of deployment condition dictionaries, or None
+
+        Returns:
+            String with formatted conditions (e.g., " [Reason: Message]"),
+            or empty string if no failed conditions
+        """
+        if not conditions:
+            return ""
+
+        condition_parts = []
+        for condition in conditions:
+            if condition.get("status") == "False":
+                reason = condition.get("reason", "Unknown")
+                message = condition.get("message", "")
+                condition_parts.append(f"[{reason}: {message}]")
+
+        if condition_parts:
+            return " " + " ".join(condition_parts)
+        return ""
 
 
 # Checking statefulsets is important as they are used for critical components like alerts and monitoring.

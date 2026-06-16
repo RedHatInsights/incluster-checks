@@ -12,6 +12,8 @@ profiles:
   # --- Layer 3: Platforms & Hardware ---
   gpu:
     include: [ai-base] # GPU implies AI-base rules
+  dpf:
+    include: [general] # DPF (DPU Platform Framework) deployments with NVIDIA BlueField-3 DPUs
   rh-nokia:
     include: [telco-base]
 

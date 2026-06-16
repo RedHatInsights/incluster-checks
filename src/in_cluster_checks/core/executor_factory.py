@@ -226,7 +226,7 @@ class NodeExecutorFactory:
         """
         namespace = global_config.namespace
         self.logger.info(f"Validating permissions for namespace '{namespace}'...")
-
+        #try
         with oc.timeout(30):
             result = oc.invoke("auth", ["can-i", "create", "pods", f"--namespace={namespace}"])
             output = result.out().strip()

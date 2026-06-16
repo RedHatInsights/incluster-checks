@@ -946,6 +946,112 @@ class TestCheckDeploymentsReplicaStatus(RuleTestBase):
             tested_object_mock_dict={"oc_api.get_all_deployments": Mock(return_value=[])},
             failed_msg="No deployments found in cluster",
         ),
+        RuleScenarioParams(
+            "deployment with failed conditions shows diagnostic info",
+            tested_object_mock_dict={
+                "oc_api.get_all_deployments": Mock(
+                    return_value=[
+                        create_mock_deployment(
+                            "assisted-chat",
+                            "assisted-chat",
+                            spec={"replicas": 1},
+                            status={
+                                "replicas": 1,
+                                "readyReplicas": 0,
+                                "availableReplicas": 0,
+                                "updatedReplicas": 1,
+                                "conditions": [
+                                    {
+                                        "type": "Available",
+                                        "status": "False",
+                                        "reason": "MinimumReplicasUnavailable",
+                                        "message": "Deployment does not have minimum availability.",
+                                    },
+                                    {
+                                        "type": "Progressing",
+                                        "status": "False",
+                                        "reason": "ProgressDeadlineExceeded",
+                                        "message": 'ReplicaSet "assisted-chat-5c78bb9bf" has timed out progressing.',
+                                    },
+                                ],
+                            },
+                        ),
+                    ]
+                )
+            },
+            failed_msg="Following deployments have replica count issues:\n"
+            "  assisted-chat/assisted-chat - Desired: 1, Ready: 0 "
+            "[MinimumReplicasUnavailable: Deployment does not have minimum availability.] "
+            "[ProgressDeadlineExceeded: ReplicaSet "
+            '"assisted-chat-5c78bb9bf" has timed out progressing.]',
+        ),
+        RuleScenarioParams(
+            "deployment with partial failure and conditions",
+            tested_object_mock_dict={
+                "oc_api.get_all_deployments": Mock(
+                    return_value=[
+                        create_mock_deployment(
+                            "partial-failure",
+                            "prod-ns",
+                            spec={"replicas": 5},
+                            status={
+                                "replicas": 5,
+                                "readyReplicas": 2,
+                                "availableReplicas": 2,
+                                "updatedReplicas": 5,
+                                "conditions": [
+                                    {
+                                        "type": "Available",
+                                        "status": "False",
+                                        "reason": "MinimumReplicasUnavailable",
+                                        "message": "Deployment does not have minimum availability.",
+                                    },
+                                ],
+                            },
+                        ),
+                    ]
+                )
+            },
+            failed_msg="Following deployments have replica count issues:\n"
+            "  prod-ns/partial-failure - Desired: 5, Ready: 2 "
+            "[MinimumReplicasUnavailable: Deployment does not have minimum availability.]",
+        ),
+        RuleScenarioParams(
+            "deployment with conditions all passing still fails on replica mismatch",
+            tested_object_mock_dict={
+                "oc_api.get_all_deployments": Mock(
+                    return_value=[
+                        create_mock_deployment(
+                            "scaling-deployment",
+                            "default",
+                            spec={"replicas": 3},
+                            status={
+                                "replicas": 3,
+                                "readyReplicas": 1,
+                                "availableReplicas": 1,
+                                "updatedReplicas": 3,
+                                "conditions": [
+                                    {
+                                        "type": "Available",
+                                        "status": "True",
+                                        "reason": "MinimumReplicasAvailable",
+                                        "message": "Deployment has minimum availability.",
+                                    },
+                                    {
+                                        "type": "Progressing",
+                                        "status": "True",
+                                        "reason": "NewReplicaSetAvailable",
+                                        "message": 'ReplicaSet "scaling-deployment-abc" has successfully progressed.',
+                                    },
+                                ],
+                            },
+                        ),
+                    ]
+                )
+            },
+            failed_msg="Following deployments have replica count issues:\n"
+            "  default/scaling-deployment - Desired: 3, Ready: 1",
+        ),
     ]
 
     @pytest.mark.parametrize("scenario_params", scenario_passed)

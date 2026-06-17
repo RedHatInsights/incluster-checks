@@ -176,7 +176,13 @@ class NodesAreReady(OrchestratorRule):
                     if (
                         condition_type != "Ready"
                         and condition_status == "True"
-                        and condition_type in ["DiskPressure", "MemoryPressure", "PIDPressure", "NetworkUnavailable"]
+                        and condition_type
+                        in [
+                            "DiskPressure",
+                            "MemoryPressure",
+                            "PIDPressure",
+                            "NetworkUnavailable",
+                        ]
                     ):
                         warning_conditions.append(condition_type)
 
@@ -399,7 +405,7 @@ class AllDeploymentsAvailable(OrchestratorRule):
     unique_name = "all_deployments_available"
     title = "Verify all deployments are available"
     supported_profiles = {"telco-base"}
-    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-deployments-availability"]
+    links = ["https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418516241"]
 
     def run_rule(self):
         """Check if all deployments have Available condition set to True."""
@@ -452,7 +458,7 @@ class CheckDeploymentsReplicaStatus(OrchestratorRule):
     unique_name = "check_deployments_replica_status"
     title = "Verify deployment replica counts"
     supported_profiles = {"telco-base"}
-    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Check-deployment-replicas-status"]
+    links = ["https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482816"]
 
     def run_rule(self):
         """Check if all deployments have desired number of replicas ready."""
@@ -478,21 +484,25 @@ class CheckDeploymentsReplicaStatus(OrchestratorRule):
             available_replicas = int(status.get("availableReplicas", 0))
             updated_replicas = int(status.get("updatedReplicas", 0))
 
+            # Get deployment conditions for diagnostic info
+            conditions = status.get("conditions") or []
+            condition_info = self._format_failed_conditions(conditions)
+
             # Check if ready replicas match desired
             if ready_replicas != desired_replicas:
                 problematic_deployments.append(
-                    f"{namespace}/{name} - Desired: {desired_replicas}, Ready: {ready_replicas}"
+                    f"{namespace}/{name} - Desired: {desired_replicas}, Ready: {ready_replicas}{condition_info}"
                 )
             # Check if available replicas match desired
             elif available_replicas != desired_replicas:
                 problematic_deployments.append(
-                    f"{namespace}/{name} - Desired: {desired_replicas}, Available: {available_replicas}"
+                    f"{namespace}/{name} - Desired: {desired_replicas}, Available: {available_replicas}{condition_info}"
                 )
             # Check if updated replicas match desired (rollout not complete)
             elif updated_replicas != desired_replicas:
                 problematic_deployments.append(
                     f"{namespace}/{name} - Desired: {desired_replicas}, Updated: {updated_replicas} "
-                    "(rollout in progress)"
+                    f"(rollout in progress){condition_info}"
                 )
 
         if problematic_deployments:
@@ -501,6 +511,31 @@ class CheckDeploymentsReplicaStatus(OrchestratorRule):
             return RuleResult.failed(message)
 
         return RuleResult.passed()
+
+    @staticmethod
+    def _format_failed_conditions(conditions: list[dict[str, object]] | None) -> str:
+        """Format deployment conditions with status=False for inclusion in error messages.
+
+        Args:
+            conditions: List of deployment condition dictionaries, or None
+
+        Returns:
+            String with formatted conditions (e.g., " [Reason: Message]"),
+            or empty string if no failed conditions
+        """
+        if not conditions:
+            return ""
+
+        condition_parts = []
+        for condition in conditions:
+            if condition.get("status") == "False":
+                reason = condition.get("reason", "Unknown")
+                message = condition.get("message", "")
+                condition_parts.append(f"[{reason}: {message}]")
+
+        if condition_parts:
+            return " " + " ".join(condition_parts)
+        return ""
 
 
 # Checking statefulsets is important as they are used for critical components like alerts and monitoring.
@@ -511,7 +546,7 @@ class AllStatefulsetsReady(OrchestratorRule):
     unique_name = "all_statefulsets_ready"
     title = "Verify all statefulsets are ready"
     supported_profiles = {"telco-base"}
-    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-statefulsets-readiness"]
+    links = ["https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418516203"]
 
     def run_rule(self):
         """Check if all statefulsets have ready replicas matching desired replicas."""
@@ -565,11 +600,21 @@ class OpenshiftOperatorStatus(OrchestratorRule):
         unavailable_operators = []
         progressing_operators = []
         table_data = []
-        headers = ["Name", "Version", "Available", "Progressing", "Degraded", "Since", "Message"]
+        headers = [
+            "Name",
+            "Version",
+            "Available",
+            "Progressing",
+            "Degraded",
+            "Since",
+            "Message",
+        ]
 
         try:
             _, operators_output, _ = self.oc_api.run_oc_command(
-                "get", ["clusteroperators.config.openshift.io", "--no-headers"], timeout=45
+                "get",
+                ["clusteroperators.config.openshift.io", "--no-headers"],
+                timeout=45,
             )
         except UnExpectedSystemOutput:
             return RuleResult.failed("Failed to get cluster operators status")
@@ -636,7 +681,7 @@ class ValidateAllPoliciesCompliant(OrchestratorRule):
     unique_name = "validate_all_policies_compliant"
     title = "Verify all policies are in compliant state"
     supported_profiles = {"telco-base"}
-    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-policies-compliance"]
+    links = ["https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418424"]
 
     _POLICIES_RESOURCE = "policies.policy.open-cluster-management.io"
 
@@ -648,7 +693,9 @@ class ValidateAllPoliciesCompliant(OrchestratorRule):
         """
         try:
             _, policies_output, _ = self.oc_api.run_oc_command(
-                "get", [self._POLICIES_RESOURCE, "--all-namespaces", "-o", "json"], timeout=45
+                "get",
+                [self._POLICIES_RESOURCE, "--all-namespaces", "-o", "json"],
+                timeout=45,
             )
         except UnExpectedSystemOutput:
             return PrerequisiteResult.not_met(
@@ -676,7 +723,9 @@ class ValidateAllPoliciesCompliant(OrchestratorRule):
     def run_rule(self):
         """Check if all OCM policies are in Compliant state."""
         _, policies_output, _ = self.oc_api.run_oc_command(
-            "get", [self._POLICIES_RESOURCE, "--all-namespaces", "-o", "json"], timeout=45
+            "get",
+            [self._POLICIES_RESOURCE, "--all-namespaces", "-o", "json"],
+            timeout=45,
         )
 
         try:
@@ -716,7 +765,7 @@ class VerifyInternalRegistry(OrchestratorRule):
     unique_name = "verify_internal_registry"
     title = "Verify internal image registry is configured and available"
     supported_profiles = {"telco-base"}
-    links = ["https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-internal-image-registry"]
+    links = ["https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482747"]
 
     def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
         """
@@ -793,7 +842,7 @@ class VerifyClusterOperatorsAvailable(OrchestratorRule):
     title = "Verify all cluster operators are in available state"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-cluster-operators-available",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418357",
     ]
 
     def run_rule(self):
@@ -906,7 +955,7 @@ class VerifyWebConsoleDisabled(OrchestratorRule):
     title = "Verify web console is disabled (edge/SNO clusters)"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-web-console-disabled",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482772",
         "https://docs.openshift.com/container-platform/latest/web_console/disabling-web-console.html",
     ]
 
@@ -1034,13 +1083,56 @@ class SubscriptionOperatorRule(OrchestratorRule):
             if container_sc is not None:
                 run_as_user = container_sc.get("runAsUser")
                 if run_as_user is not None:
-                    if not isinstance(run_as_user, int) or run_as_user < 0:
+                    if not isinstance(run_as_user, int) or isinstance(run_as_user, bool) or run_as_user < 0:
                         errors.append(
                             f"Container '{container_name}' in pod {pod_name} has invalid runAsUser: {run_as_user}"
                         )
                     elif run_as_user == 0:
                         errors.append(f"Container '{container_name}' in pod {pod_name} runs as root (runAsUser=0)")
         return errors
+
+    def validate_namespace_pods_health(self, namespace: str) -> list[str]:
+        """Validate all pods in a namespace are Running and Ready.
+
+        Args:
+            namespace: Kubernetes namespace to check
+
+        Returns:
+            List of error messages. Empty list if all pods are healthy.
+        """
+        pod_objects = self.oc_api.get_all_pods(namespace=namespace)
+
+        if not pod_objects:
+            return [
+                f"No pods found in {namespace} namespace. "
+                f"{self.operator_display_name} operator may not be fully deployed."
+            ]
+
+        not_ready_pods = []
+        succeeded_state_pods = []
+
+        for pod in pod_objects:
+            pod_status = self.oc_api.get_pod_status(pod)
+            if pod_status is None:
+                pod_name = pod.as_dict().get("metadata", {}).get("name", "unknown")
+                succeeded_state_pods.append(pod_name)
+                continue
+            if not pod_status["all_containers_ready"]:
+                not_ready_pods.append(pod_status["status_message"])
+
+        parts = []
+        if succeeded_state_pods:
+            parts.append(
+                f"{self.operator_display_name} operator has pods in unexpected succeeded state:\n  "
+                + "\n  ".join(succeeded_state_pods)
+            )
+        if not_ready_pods:
+            parts.append(
+                f"{self.operator_display_name} operator has unhealthy pods in {namespace} namespace:\n  "
+                + "\n  ".join(not_ready_pods)
+            )
+
+        return parts
 
 
 class VerifyNfdOperatorHealth(SubscriptionOperatorRule):
@@ -1057,7 +1149,7 @@ class VerifyNfdOperatorHealth(SubscriptionOperatorRule):
     title = "Verify NFD operator pods are healthy"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s%E2%80%90-Verify-NFD-operator-health",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482793",
         "https://docs.openshift.com/container-platform/4.18/hardware_enablement"
         "/psap-node-feature-discovery-operator.html",
     ]
@@ -1116,7 +1208,7 @@ class VerifyNfdPodRestartCount(SubscriptionOperatorRule):
         "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/421603419/Verify+NFD+pod+restart+count",
         "https://docs.openshift.com/container-platform/4.18/hardware_enablement/psap-node-feature-discovery-operator.html",
     ]
-
+    
     operator_subscription_name = "nfd"
     operator_display_name = "Node Feature Discovery"
 
@@ -1166,7 +1258,7 @@ class VerifyNetworkDiagnosticsDisabled(OrchestratorRule):
     title = "Verify no pods in network diagnostics namespace (edge/SNO clusters)"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-network-diagnostics-disabled",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418516222",
         "https://docs.redhat.com/en/documentation/openshift_container_platform"
         "/4.17/html/networking_operators/cluster-network-operator",
     ]
@@ -1239,7 +1331,7 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
     title = "Verify ACM operator pods are healthy"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-ACM-operator-health",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418516286",
         "https://docs.redhat.com/en/documentation/red_hat_advanced_cluster_management_for_kubernetes"
         "/2.12/html/install/installing#installing-while-connected-online",
     ]
@@ -1261,7 +1353,7 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
 
         return RuleResult.passed()
 
-    def _verify_csv_status(self):
+    def _verify_csv_status(self) -> str | None:
         """Check that the ACM ClusterServiceVersion is in Succeeded phase.
 
         Uses status.installedCSV from the operator subscription when available
@@ -1273,7 +1365,11 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
         _, csv_output, _ = self.oc_api.run_oc_command(
             "get", ["csv", "-n", self.ACM_NAMESPACE, "-o", "json"], timeout=45
         )
-        csv_data = parse_json(csv_output, f"oc get csv -n {self.ACM_NAMESPACE} -o json", self.get_host_ip())
+        csv_data = parse_json(
+            csv_output,
+            f"oc get csv -n {self.ACM_NAMESPACE} -o json",
+            self.get_host_ip(),
+        )
 
         installed_csv_name = self._get_installed_csv_name()
         if installed_csv_name:
@@ -1307,7 +1403,7 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
 
         return None
 
-    def _get_installed_csv_name(self):
+    def _get_installed_csv_name(self) -> str | None:
         """Look up status.installedCSV from the ACM operator subscription.
 
         Returns:
@@ -1319,7 +1415,7 @@ class VerifyAcmOperatorHealth(SubscriptionOperatorRule):
                 return sub.get("status", {}).get("installedCSV")
         return None
 
-    def _verify_pods_status(self):
+    def _verify_pods_status(self) -> str | None:
         """Check that all pods in the ACM namespace are Running and Ready.
 
         Returns:
@@ -1371,7 +1467,7 @@ class VerifyNmoOperatorHealth(SubscriptionOperatorRule):
     title = "Verify NMO operator pods are healthy"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-NMO-operator-health",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418378",
         "https://docs.redhat.com/en/documentation/workload_availability_for_red_hat_openshift"
         "/24.1/html/remediation_fencing_and_maintenance/node-maintenance-operator",
     ]
@@ -1430,7 +1526,7 @@ class VerifyFarOperatorHealth(SubscriptionOperatorRule):
     title = "Verify FAR operator pods are healthy"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-FAR-operator-health",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418450754",
         "https://docs.openshift.com/container-platform/4.18/nodes/nodes/eco-fence-agents-remediation-operator.html",
     ]
 
@@ -1474,6 +1570,85 @@ class VerifyFarOperatorHealth(SubscriptionOperatorRule):
         return RuleResult.passed()
 
 
+class VerifyFARControllerReplicas(OrchestratorRule):
+    """Verify FAR controller manager has correct number of replicas.
+
+    FAR (Fence Agents Remediation) uses 2 replicas for high availability.
+    When one pod fails, the other takes over to ensure continuous operation.
+
+    This rule checks:
+    - Deployment has 2 replicas configured (spec.replicas)
+    - All 2 replicas are ready (status.readyReplicas)
+
+    Skipped on Single Node OpenShift (SNO) - SNO only supports 1 replica.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_far_controller_replicas"
+    title = "Verify FAR controller manager has correct number of replicas"
+    supported_profiles = {"telco-base"}
+    links = ["https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418516260"]
+
+    FAR_NAMESPACE = "openshift-workload-availability"
+    FAR_DEPLOYMENT_NAME = "fence-agents-remediation-controller-manager"
+    EXPECTED_REPLICAS = 2
+
+    def is_prerequisite_fulfilled(self):
+        """Check if FAR deployment exists."""
+        deployments = self.oc_api.get_all_deployments(namespace=self.FAR_NAMESPACE, timeout=30)
+
+        for deployment in deployments:
+            deployment_name = deployment.as_dict()["metadata"]["name"]
+            if deployment_name == self.FAR_DEPLOYMENT_NAME:
+                return PrerequisiteResult.met()
+
+        return PrerequisiteResult.not_met(
+            f"FAR deployment '{self.FAR_DEPLOYMENT_NAME}' not found in '{self.FAR_NAMESPACE}' namespace. "
+            "FAR operator may not be installed."
+        )
+
+    def run_rule(self):
+        """Check FAR controller manager has correct number of replicas."""
+        # Step 1: Check if this is a Single Node OpenShift cluster
+        infrastructure = self.oc_api.select_resources("infrastructure/cluster", single=True, timeout=30)
+        if infrastructure:
+            infra_dict = infrastructure.as_dict()
+            topology = infra_dict.get("status", {}).get("controlPlaneTopology", "")
+            if topology == "SingleReplica":
+                return RuleResult.skip("SNO (Single Node OpenShift) cluster detected. Skipping replica check.")
+
+        # Step 2: Get FAR deployment
+        deployments = self.oc_api.get_all_deployments(namespace=self.FAR_NAMESPACE, timeout=30)
+        far_deployment = None
+
+        for deployment in deployments:
+            deployment_name = deployment.as_dict()["metadata"]["name"]
+            if deployment_name == self.FAR_DEPLOYMENT_NAME:
+                far_deployment = deployment
+                break
+
+        if not far_deployment:
+            return RuleResult.failed(f"FAR deployment '{self.FAR_DEPLOYMENT_NAME}' not found")
+
+        # Step 3: Get replica counts from deployment
+        deployment_dict = far_deployment.as_dict()
+        spec_replicas = deployment_dict.get("spec", {}).get("replicas")
+        ready_replicas = deployment_dict.get("status", {}).get("readyReplicas", 0)
+
+        # Step 4: Check if replicas match expected value
+        if spec_replicas != self.EXPECTED_REPLICAS:
+            return RuleResult.failed(
+                f"Expected {self.EXPECTED_REPLICAS} replicas in deployment spec, but found {spec_replicas}"
+            )
+
+        if ready_replicas != self.EXPECTED_REPLICAS:
+            return RuleResult.failed(
+                f"Expected {self.EXPECTED_REPLICAS} ready replicas, but only {ready_replicas} are ready"
+            )
+
+        return RuleResult.passed()
+
+
 class VerifyFarContainerNonRoot(SubscriptionOperatorRule):
     """Verify FAR (Fence Agents Remediation) container runs as non-root user.
 
@@ -1487,7 +1662,7 @@ class VerifyFarContainerNonRoot(SubscriptionOperatorRule):
     title = "Verify FAR container runs as non-root user"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-FAR-container-non%E2%80%90root",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418450775",
         "https://docs.openshift.com/container-platform/4.18/nodes/pods/nodes-pods-configuring.html",
     ]
 
@@ -1523,4 +1698,34 @@ class VerifyFarContainerNonRoot(SubscriptionOperatorRule):
                 message += f"- {msg}\n"
             return RuleResult.failed(message)
 
+        return RuleResult.passed()
+
+
+class VerifyMdrOperatorHealth(SubscriptionOperatorRule):
+    """Verify Machine Deletion Remediation (MDR) operator pods are healthy.
+
+    MDR is part of Red Hat Workload Availability (RHWA) and provides automated
+    machine deletion remediation for unhealthy nodes. This rule checks that the
+    MDR operator has been installed (Subscription exists) and that every pod in
+    the openshift-workload-availability namespace is Running with all containers ready.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "verify_mdr_operator_health"
+    title = "Verify MDR operator pods are healthy"
+    supported_profiles = {"telco-base"}
+    links = [
+        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-MDR-operator-health",
+        "https://docs.redhat.com/en/documentation/workload_availability_for_red_hat_openshift"
+        "/23.3/html/remediation_fencing_and_maintenance/machine-deletion-remediation-operator-remediate-nodes",
+    ]
+
+    operator_subscription_name = "openshift-workload-availability"
+    operator_display_name = "Machine Deletion Remediation"
+
+    def run_rule(self):
+        """Verify all pods in the openshift-workload-availability namespace are Running and Ready."""
+        errors = self.validate_namespace_pods_health(self.operator_subscription_name)
+        if errors:
+            return RuleResult.failed("\n\n".join(errors))
         return RuleResult.passed()

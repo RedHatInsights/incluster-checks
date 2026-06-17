@@ -119,11 +119,8 @@ class NodeExecutorFactory:
         roles = []
         node_labels = node_dict.get("metadata", {}).get("labels", {})
 
-        # Extract role labels from node-role.kubernetes.io/* labels
-        # Same pattern as HC
-        role_labels = [
-            key.split("node-role.kubernetes.io/")[1] for key in node_labels.keys() if "node-role.kubernetes.io/" in key
-        ]
+        role_prefix = "node-role.kubernetes.io/"
+        role_labels = [key.removeprefix(role_prefix) for key in node_labels.keys() if key.startswith(role_prefix)]
 
         # Map role labels to Objectives
         for role_label in role_labels:
@@ -149,10 +146,8 @@ class NodeExecutorFactory:
         """
         node_labels = node_dict.get("metadata", {}).get("labels", {})
 
-        # Extract role labels from node-role.kubernetes.io/* labels
-        role_labels = [
-            key.split("node-role.kubernetes.io/")[1] for key in node_labels.keys() if "node-role.kubernetes.io/" in key
-        ]
+        role_prefix = "node-role.kubernetes.io/"
+        role_labels = [key.removeprefix(role_prefix) for key in node_labels.keys() if key.startswith(role_prefix)]
 
         return ",".join(sorted(role_labels)) if role_labels else ""
 

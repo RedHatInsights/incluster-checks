@@ -28,7 +28,7 @@ class NodeCertificateExpiry(Rule):
     unique_name = "node_certificate_expiry"
     title = "Verify node certificates are not expiring soon"
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/Security-%E2%80%90-Node-certificate-expiry",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418558",
     ]
 
     # Days before expiry to start warning
@@ -259,7 +259,7 @@ class KubeletCsrHealthCheck(OrchestratorRule):
     unique_name = "kubelet_csr_health_check"
     title = "Check kubelet CSR health"
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/Security-‐-Check-kubelet-CSR-health",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418450824",
     ]
 
     def run_rule(self):

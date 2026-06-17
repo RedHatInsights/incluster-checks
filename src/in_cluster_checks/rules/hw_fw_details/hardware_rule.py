@@ -54,6 +54,7 @@ class HardwareDetailsRule(HwFwRule):
 
     unique_name = "hardware_details"
     title = "Hardware Details"
+    include_in_light_run = False
 
     def get_data_collectors(self) -> List[type]:
         """Get list of hardware data collectors."""

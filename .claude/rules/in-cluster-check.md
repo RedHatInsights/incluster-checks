@@ -74,6 +74,20 @@ All rules use the `Status` enum (`utils/enums.py`):
       # ...
   ```
 
+**Light-Run Mode:**
+- **Use `include_in_light_run`** to mark resource-intensive rules that should be excluded from quick health checks
+- Set `include_in_light_run = False` on rules that perform resource-intensive operations (e.g., hardware/firmware inventory collection)
+- Default is `True` (included in light runs) — only set to `False` for truly resource-intensive rules
+- When `--light-run` CLI flag is used, rules with `include_in_light_run = False` are automatically excluded
+- Example:
+  ```python
+  class HardwareDetailsRule(OrchestratorRule):
+      objective_hosts = [Objectives.ORCHESTRATOR]
+      unique_name = "hardware_details"
+      include_in_light_run = False  # Exclude from --light-run
+      # ...
+  ```
+
 **Logging:**
 - NEVER use `self.logger` in rules. Return error messages via `RuleResult.failed()` or `RuleResult.warning()` instead. The framework handles logging automatically.
 

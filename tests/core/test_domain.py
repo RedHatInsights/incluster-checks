@@ -22,6 +22,9 @@ from profiles.profile import Profiles
 @pytest.fixture(autouse=True)
 def setup_profiles():
     """Set up profiles for all tests in this module."""
+    # Reset light_run before test
+    global_config.light_run = False
+
     # Create minimal profile configuration
     profile = Profiles()
     profile['general'] = {'general'}  # Minimal profile: general includes only itself
@@ -35,6 +38,7 @@ def setup_profiles():
     # Cleanup
     global_config.profiles_hierarchy = Profiles()
     global_config.active_profile = ""
+    global_config.light_run = False
 
 
 class MockRule(Rule):
@@ -356,4 +360,128 @@ class TestRuleDomain:
 
         # Should return empty list (no executor with ONE_WORKER role)
         assert len(instances) == 0
+
+
+class MockRuleIncluded(Rule):
+    """Mock rule included in light run."""
+
+    objective_hosts = (Objectives.MASTERS,)
+    unique_name = "mock_rule_included"
+    include_in_light_run = True
+
+    def run_rule(self) -> RuleResult:
+        return RuleResult.passed()
+
+
+class MockRuleExcluded(Rule):
+    """Mock rule excluded from light run."""
+
+    objective_hosts = (Objectives.MASTERS,)
+    unique_name = "mock_rule_excluded"
+    include_in_light_run = False
+
+    def run_rule(self) -> RuleResult:
+        return RuleResult.passed()
+
+
+class MockDomainForLightRun(RuleDomain):
+    """Mock domain for testing light run filtering."""
+
+    def domain_name(self) -> str:
+        return "mock_domain"
+
+    def get_rule_classes(self) -> list[type[Rule]]:
+        all_rules = [MockRuleIncluded, MockRuleExcluded]
+        return self._filter_rules_for_light_run(all_rules)
+
+
+class TestFilterRulesForLightRun:
+    """Test _filter_rules_for_light_run() helper method."""
+
+    def test_normal_mode_includes_all_rules(self):
+        """Normal mode (light_run=False) should return all rules."""
+        # Set normal mode
+        global_config.light_run = False
+
+        domain = MockDomainForLightRun()
+        all_rules = [MockRuleIncluded, MockRuleExcluded]
+        filtered = domain._filter_rules_for_light_run(all_rules)
+
+        assert len(filtered) == 2
+        assert MockRuleIncluded in filtered
+        assert MockRuleExcluded in filtered
+
+    def test_light_mode_excludes_heavy_rules(self):
+        """Light mode (light_run=True) should exclude rules with include_in_light_run=False."""
+        # Set light mode
+        global_config.light_run = True
+
+        domain = MockDomainForLightRun()
+        all_rules = [MockRuleIncluded, MockRuleExcluded]
+        filtered = domain._filter_rules_for_light_run(all_rules)
+
+        assert len(filtered) == 1
+        assert MockRuleIncluded in filtered
+        assert MockRuleExcluded not in filtered
+
+    def test_light_mode_with_all_included_rules(self):
+        """Light mode with only included rules should return all."""
+        global_config.light_run = True
+
+        domain = MockDomainForLightRun()
+        all_rules = [MockRuleIncluded]
+        filtered = domain._filter_rules_for_light_run(all_rules)
+
+        assert len(filtered) == 1
+        assert MockRuleIncluded in filtered
+
+    def test_light_mode_with_all_excluded_rules(self):
+        """Light mode with only excluded rules should return empty list."""
+        global_config.light_run = True
+
+        domain = MockDomainForLightRun()
+        all_rules = [MockRuleExcluded]
+        filtered = domain._filter_rules_for_light_run(all_rules)
+
+        assert len(filtered) == 0
+
+    def test_rule_without_include_in_light_run_defaults_to_true(self):
+        """Rules without include_in_light_run attribute should default to True."""
+
+        class MockRuleNoAttribute(Rule):
+            objective_hosts = (Objectives.MASTERS,)
+            unique_name = "mock_rule_no_attr"
+
+            def run_rule(self) -> RuleResult:
+                return RuleResult.passed()
+
+        global_config.light_run = True
+
+        domain = MockDomainForLightRun()
+        all_rules = [MockRuleNoAttribute]
+        filtered = domain._filter_rules_for_light_run(all_rules)
+
+        assert len(filtered) == 1
+        assert MockRuleNoAttribute in filtered
+
+    def test_runner_build_component_map_filters_light_run_rules(self):
+        """Test InClusterCheckRunner.build_component_map() reflects light-run filtering."""
+        from in_cluster_checks.runner import InClusterCheckRunner
+
+        # Create runner with light_run=True
+        runner = InClusterCheckRunner(light_run=True)
+
+        # Verify global config was set
+        assert global_config.light_run is True
+
+        # Build component map using mock domain
+        domains = {"mock_domain": MockDomainForLightRun()}
+        component_map = runner.build_component_map(domains)
+
+        # Should include only MockRuleIncluded (include_in_light_run=True)
+        assert "mock_rule_included" in component_map
+        assert "mock_rule_excluded" not in component_map
+
+        # Verify component path format
+        assert component_map["mock_rule_included"] == f"{MockRuleIncluded.__module__}.MockRuleIncluded"
 

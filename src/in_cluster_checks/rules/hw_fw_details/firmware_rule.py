@@ -28,6 +28,7 @@ class FirmwareDetailsRule(HwFwRule):
 
     unique_name = "firmware_details"
     title = "Firmware Details"
+    include_in_light_run = False
 
     def get_data_collectors(self) -> List[type]:
         """Get list of firmware/BIOS data collectors."""

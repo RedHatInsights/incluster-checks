@@ -104,6 +104,9 @@ def list_rules(runner: InClusterCheckRunner) -> None:
             for rule_class in sorted(rules, key=lambda r: r.get_unique_name_classmethod() or ""):
                 rule_name = rule_class.get_unique_name_classmethod()
                 if rule_name:
+                    # Check if rule is excluded from light runs
+                    light_run_indicator = "" if rule_class.include_in_light_run else " [full-run-only]"
+
                     # Try to get title if available
                     title = "No description"
                     try:
@@ -113,7 +116,7 @@ def list_rules(runner: InClusterCheckRunner) -> None:
                     except Exception:
                         pass
 
-                    print(f"  - {rule_name}")
+                    print(f"  - {rule_name}{light_run_indicator}")
                     if title != "No description":
                         print(f"      {title}")
                     total_rules += 1
@@ -178,6 +181,12 @@ def main() -> None:
         help="List all available rules by domain and exit",
     )
 
+    parser.add_argument(
+        "--light-run",
+        action="store_true",
+        help="Run only lightweight rules (excludes resource-intensive rules like hardware/firmware details)",
+    )
+
     # Get available profiles for the argument choices
     try:
         available_profiles = ProfileLoader.get_available_profiles()
@@ -223,6 +232,7 @@ def main() -> None:
             debug_rule_name=args.debug_rule,
             namespace=args.namespace,
             max_workers=50,
+            light_run=args.light_run,
         )
 
         # Handle list commands

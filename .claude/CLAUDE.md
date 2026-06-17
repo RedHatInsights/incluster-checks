@@ -50,6 +50,10 @@ pre-commit run --all-files          # Code quality checks
 # Run all checks (output saved to ./cluster-checks.json)
 in-cluster-checks --output ./cluster-checks.json
 
+# Run only lightweight rules (excludes resource-intensive rules marked with include_in_light_run=False)
+# Currently excludes: hw_fw_details domain (hardware/firmware inventory collection)
+in-cluster-checks --light-run --output ./quick-check.json
+
 # Run with debug logging
 in-cluster-checks --log-level DEBUG
 
@@ -59,7 +63,8 @@ in-cluster-checks --debug-rule "is_disk_space_sufficient"
 # List available domains
 in-cluster-checks --list-domains
 
-# List all available rules
+# List all available rules 
+# Rules marked [full-run-only] are excluded from --light-run (resource-intensive rules)
 in-cluster-checks --list-rules
 ```
 

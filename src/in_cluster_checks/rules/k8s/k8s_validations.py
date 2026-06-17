@@ -1113,9 +1113,8 @@ class VerifyNfdPodRestartCount(SubscriptionOperatorRule):
     title = "Verify NFD pod restart count is zero"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-NFD-pod-restart-count",
-        "https://docs.openshift.com/container-platform/4.18/hardware_enablement"
-        "/psap-node-feature-discovery-operator.html",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/421603419/Verify+NFD+pod+restart+count",
+        "https://docs.openshift.com/container-platform/4.18/hardware_enablement/psap-node-feature-discovery-operator.html",
     ]
 
     operator_subscription_name = "nfd"

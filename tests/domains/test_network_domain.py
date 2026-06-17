@@ -7,6 +7,7 @@ from unittest.mock import Mock
 import pytest
 
 from in_cluster_checks.domains.network_domain import NetworkValidationDomain
+from in_cluster_checks.rules.network.dns_validations import VerifyDnsReachability
 from in_cluster_checks.rules.network.nmstate_validations import VerifyAllNNCPsAvailable
 from in_cluster_checks.rules.network.node_connectivity_validations import (
     AreAllNodesConnected,
@@ -68,7 +69,7 @@ class TestNetworkRuleDomain:
         rules = domain.get_rule_classes()
 
         assert isinstance(rules, list)
-        assert len(rules) == 17
+        assert len(rules) == 18
         assert OvsInterfaceAndPortFound in rules
         assert OvsPhysicalPortHealthCheck in rules
         assert OvsBridgeInterfaceHealthCheck in rules
@@ -86,6 +87,7 @@ class TestNetworkRuleDomain:
         assert WhereaboutsMissingPodrefs in rules
         assert WhereaboutsMissingAllocations in rules
         assert WhereaboutsExistingAllocations in rules
+        assert VerifyDnsReachability in rules
 
     def test_verify_runs_validators(self):
         """Test that verify() runs validators on nodes."""

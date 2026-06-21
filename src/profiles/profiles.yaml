@@ -8,6 +8,9 @@ profiles:
     include: [general]
   ai-base:
     include: [general]
+  network-foundations:
+    description: "Network foundations validation profile"
+    include: [general]
 
   # --- Layer 3: Platforms & Hardware ---
   gpu:

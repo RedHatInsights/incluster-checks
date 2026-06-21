@@ -92,7 +92,7 @@ nameserver 8.8.8.8
         RuleScenarioParams(
             scenario_title="all_dns_servers_reachable_from_operator",
             tested_object_mock_dict={
-                "get_data_from_collector": Mock(return_value={"orchestrator_ip1": ["192.168.1.1", "8.8.8.8"]}),
+                "run_data_collector": Mock(return_value={"orchestrator_ip1": ["192.168.1.1", "8.8.8.8"]}),
             },
             cmd_input_output_dict={
                 "ping -c 1 -W 2 192.168.1.1": CmdOutput("PING 192.168.1.1 (192.168.1.1) 56(84) bytes of data.\n"),
@@ -102,12 +102,25 @@ nameserver 8.8.8.8
         RuleScenarioParams(
             scenario_title="all_dns_servers_reachable_from_resolv_conf",
             tested_object_mock_dict={
-                "get_data_from_collector": Mock(return_value={}),
+                "run_data_collector": Mock(return_value={"orchestrator_ip1": []}),
             },
             cmd_input_output_dict={
                 "ls /etc/resolv.conf": CmdOutput("/etc/resolv.conf"),
                 "cat /etc/resolv.conf": CmdOutput(resolv_conf_content),
                 "hostname -I": CmdOutput("10.0.0.10 10.0.0.11\n"),  # Node IPs (different from DNS servers)
+                "ping -c 1 -W 2 192.168.1.1": CmdOutput("PING 192.168.1.1 (192.168.1.1) 56(84) bytes of data.\n"),
+                "ping -c 1 -W 2 8.8.8.8": CmdOutput("PING 8.8.8.8 (8.8.8.8) 56(84) bytes of data.\n"),
+            },
+        ),
+        RuleScenarioParams(
+            scenario_title="empty_dns_operator_config",
+            tested_object_mock_dict={
+                "run_data_collector": Mock(return_value={}),
+            },
+            cmd_input_output_dict={
+                "ls /etc/resolv.conf": CmdOutput("/etc/resolv.conf"),
+                "cat /etc/resolv.conf": CmdOutput(resolv_conf_content),
+                "hostname -I": CmdOutput("10.0.0.10 10.0.0.11\n"),
                 "ping -c 1 -W 2 192.168.1.1": CmdOutput("PING 192.168.1.1 (192.168.1.1) 56(84) bytes of data.\n"),
                 "ping -c 1 -W 2 8.8.8.8": CmdOutput("PING 8.8.8.8 (8.8.8.8) 56(84) bytes of data.\n"),
             },
@@ -118,7 +131,7 @@ nameserver 8.8.8.8
         RuleScenarioParams(
             scenario_title="some_dns_servers_unreachable",
             tested_object_mock_dict={
-                "get_data_from_collector": Mock(return_value={"orchestrator_ip1": ["192.168.1.1", "8.8.8.8"]}),
+                "run_data_collector": Mock(return_value={"orchestrator_ip1": ["192.168.1.1", "8.8.8.8"]}),
             },
             cmd_input_output_dict={
                 "ping -c 1 -W 2 192.168.1.1": CmdOutput("PING 192.168.1.1 (192.168.1.1) 56(84) bytes of data.\n"),
@@ -129,12 +142,25 @@ nameserver 8.8.8.8
         RuleScenarioParams(
             scenario_title="no_dns_servers_found",
             tested_object_mock_dict={
-                "get_data_from_collector": Mock(return_value={}),
+                "run_data_collector": Mock(return_value={"orchestrator_ip1": []}),
             },
             cmd_input_output_dict={
                 "ls /etc/resolv.conf": CmdOutput("", return_code=2),  # File not found
             },
             failed_msg="No DNS servers found at /etc/resolv.conf",
+        ),
+        RuleScenarioParams(
+            scenario_title="dns_config_mismatch_across_orchestrators",
+            tested_object_mock_dict={
+                "run_data_collector": Mock(
+                    return_value={
+                        "10.0.0.1": ["192.168.1.1", "8.8.8.8"],
+                        "10.0.0.2": ["192.168.1.1", "8.8.4.4"],
+                    }
+                ),
+            },
+            cmd_input_output_dict={},
+            failed_msg="DNS configuration mismatch across orchestrators:\n10.0.0.1: 192.168.1.1, 8.8.8.8\n10.0.0.2: 192.168.1.1, 8.8.4.4",
         ),
     ]
 

@@ -96,7 +96,7 @@ class VerifyDnsReachability(Rule):
         Returns:
             PrerequisiteResult indicating if ping is available
         """
-        return_code, _, _ = self.run_cmd("which ping")
+        return_code, _, _ = self.run_cmd(SafeCmdString("which ping"))
         if return_code != 0:
             return PrerequisiteResult.not_met("ping binary not available on this node")
 
@@ -110,12 +110,25 @@ class VerifyDnsReachability(Rule):
             RuleResult indicating DNS reachability status for this node
         """
         # Get DNS servers from DNS operator config (shared across all nodes)
-        dns_operator_config = self.get_data_from_collector(DnsOperatorConfigCollector)
+        dns_operator_config = self.run_data_collector(DnsOperatorConfigCollector)
+        # dns_operator_config is dict: {orchestrator_ip: [dns_servers]}
 
+        # Handle empty dict case (no orchestrators returned data)
+        dns_servers = next(iter(dns_operator_config.values()), [])
+
+        # Validate DNS configuration consistency across orchestrators
         if dns_operator_config:
-            # dns_operator_config is dict: {orchestrator_ip: [dns_servers]}
-            # All nodes have same DNS servers, so fetch from first orchestrator
-            dns_servers = next(iter(dns_operator_config.values()))
+            dns_configs_set = {tuple(sorted(servers)) for servers in dns_operator_config.values()}
+            if len(dns_configs_set) > 1:
+                # Configuration mismatch - report which orchestrators have different configs
+                config_details = []
+                for orch_ip, servers in dns_operator_config.items():
+                    config_details.append(f"{orch_ip}: {', '.join(servers) if servers else '(empty)'}")
+                return RuleResult.failed(
+                    "DNS configuration mismatch across orchestrators:\n" + "\n".join(config_details)
+                )
+
+        if dns_servers:
             source = "DNS operator upstream resolvers"
         else:
             # Read DNS servers from local /etc/resolv.conf on this node

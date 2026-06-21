@@ -112,8 +112,21 @@ class VerifyDnsReachability(Rule):
         # Get DNS servers from DNS operator config (shared across all nodes)
         dns_operator_config = self.run_data_collector(DnsOperatorConfigCollector)
         # dns_operator_config is dict: {orchestrator_ip: [dns_servers]}
-        # All nodes have same DNS servers, so fetch from first orchestrator
-        dns_servers = next(iter(dns_operator_config.values()))
+
+        # Handle empty dict case (no orchestrators returned data)
+        dns_servers = next(iter(dns_operator_config.values()), [])
+
+        # Validate DNS configuration consistency across orchestrators
+        if dns_operator_config:
+            dns_configs_set = {tuple(sorted(servers)) for servers in dns_operator_config.values()}
+            if len(dns_configs_set) > 1:
+                # Configuration mismatch - report which orchestrators have different configs
+                config_details = []
+                for orch_ip, servers in dns_operator_config.items():
+                    config_details.append(f"{orch_ip}: {', '.join(servers) if servers else '(empty)'}")
+                return RuleResult.failed(
+                    "DNS configuration mismatch across orchestrators:\n" + "\n".join(config_details)
+                )
 
         if dns_servers:
             source = "DNS operator upstream resolvers"

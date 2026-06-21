@@ -443,7 +443,7 @@ class OrphanCsiVolumes(CephRule):
         """
         # First check base Ceph prerequisites (namespace, operator, tools)
         base_result = super().is_prerequisite_fulfilled()
-        if not base_result.met:
+        if not base_result.fulfilled:
             return base_result
 
         # Check if ceph filesystem exists

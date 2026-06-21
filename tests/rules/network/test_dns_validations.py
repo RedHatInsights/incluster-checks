@@ -92,7 +92,7 @@ nameserver 8.8.8.8
         RuleScenarioParams(
             scenario_title="all_dns_servers_reachable_from_operator",
             tested_object_mock_dict={
-                "get_data_from_collector": Mock(return_value={"orchestrator_ip1": ["192.168.1.1", "8.8.8.8"]}),
+                "run_data_collector": Mock(return_value={"orchestrator_ip1": ["192.168.1.1", "8.8.8.8"]}),
             },
             cmd_input_output_dict={
                 "ping -c 1 -W 2 192.168.1.1": CmdOutput("PING 192.168.1.1 (192.168.1.1) 56(84) bytes of data.\n"),
@@ -102,7 +102,7 @@ nameserver 8.8.8.8
         RuleScenarioParams(
             scenario_title="all_dns_servers_reachable_from_resolv_conf",
             tested_object_mock_dict={
-                "get_data_from_collector": Mock(return_value={}),
+                "run_data_collector": Mock(return_value={"orchestrator_ip1": []}),
             },
             cmd_input_output_dict={
                 "ls /etc/resolv.conf": CmdOutput("/etc/resolv.conf"),
@@ -118,7 +118,7 @@ nameserver 8.8.8.8
         RuleScenarioParams(
             scenario_title="some_dns_servers_unreachable",
             tested_object_mock_dict={
-                "get_data_from_collector": Mock(return_value={"orchestrator_ip1": ["192.168.1.1", "8.8.8.8"]}),
+                "run_data_collector": Mock(return_value={"orchestrator_ip1": ["192.168.1.1", "8.8.8.8"]}),
             },
             cmd_input_output_dict={
                 "ping -c 1 -W 2 192.168.1.1": CmdOutput("PING 192.168.1.1 (192.168.1.1) 56(84) bytes of data.\n"),
@@ -129,7 +129,7 @@ nameserver 8.8.8.8
         RuleScenarioParams(
             scenario_title="no_dns_servers_found",
             tested_object_mock_dict={
-                "get_data_from_collector": Mock(return_value={}),
+                "run_data_collector": Mock(return_value={"orchestrator_ip1": []}),
             },
             cmd_input_output_dict={
                 "ls /etc/resolv.conf": CmdOutput("", return_code=2),  # File not found

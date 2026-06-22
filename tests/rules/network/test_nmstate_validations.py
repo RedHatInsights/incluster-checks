@@ -95,6 +95,18 @@ class TestVerifyAllNNCPsAvailable(RuleTestBase):
             },
         ),
         RuleScenarioParams(
+            "server doesn't have resource type",
+            tested_object_mock_dict={
+                "oc_api": Mock(
+                    select_resources=Mock(
+                        side_effect=oc.OpenShiftPythonException(
+                            'error: the server doesn\'t have a resource type "nodenetworkconfigurationpolicies"'
+                        )
+                    )
+                )
+            },
+        ),
+        RuleScenarioParams(
             "no NNCPs found",
             tested_object_mock_dict={
                 "oc_api": Mock(select_resources=Mock(return_value=[]))

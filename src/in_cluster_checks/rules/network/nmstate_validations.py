@@ -46,7 +46,11 @@ class VerifyAllNNCPsAvailable(OrchestratorRule):
             return PrerequisiteResult.met()
         except oc.OpenShiftPythonException as e:
             error_msg = str(e).lower()
-            if "not found" in error_msg or "no matches for kind" in error_msg:
+            if (
+                "not found" in error_msg
+                or "no matches for kind" in error_msg
+                or "doesn't have a resource type" in error_msg
+            ):
                 return PrerequisiteResult.not_met("NMState operator is not installed (NNCP CRD not found)")
             raise
 

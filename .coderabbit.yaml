@@ -126,6 +126,13 @@ reviews:
         - When checking resource health conditions (e.g., cluster operators), verify all relevant
           conditions are covered, not just the primary one.
 
+        **Domain registration:**
+        - Every new rule class MUST be registered in the corresponding domain's get_rule_classes() method
+          (e.g., K8sValidationDomain for k8s rules, NetworkValidationDomain for network rules).
+          A rule that exists in `src/in_cluster_checks/rules/` but is not listed in any domain's
+          get_rule_classes() will never execute. Flag any new rule class that is not imported and
+          listed in the appropriate domain file under `src/in_cluster_checks/domains/`.
+
         **Code cleanliness:**
         - Rules must NOT use self.logger. Return messages via RuleResult.failed() or RuleResult.warning().
         - Flag redundant if-statements inside blocks that already guarantee the condition.

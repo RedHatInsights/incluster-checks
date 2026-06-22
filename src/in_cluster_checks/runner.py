@@ -39,6 +39,7 @@ class InClusterCheckRunner:
         namespace: str = "default",
         max_workers: int = 50,
         domain_package: str = "in_cluster_checks.domains",
+        light_run: bool = False,
     ):
         """
         Initialize runner.
@@ -50,6 +51,7 @@ class InClusterCheckRunner:
             namespace: Namespace for debug pods (default: "default")
             max_workers: Maximum number of concurrent workers for parallel execution
             domain_package: Python package path for domain discovery
+            light_run: Enable light-run mode (exclude resource-intensive rules, default: False)
         """
         self.logger = logging.getLogger(__name__)
         self.domain_package = domain_package
@@ -63,6 +65,7 @@ class InClusterCheckRunner:
             debug_rule_name_val=debug_rule_name,
             namespace_val=namespace,
             max_workers_val=max_workers,
+            light_run_val=light_run,
         )
 
     def discover_domains(self) -> Dict[str, type]:
@@ -114,7 +117,8 @@ class InClusterCheckRunner:
         rule_component_map = {}
 
         for domain_name, domain in domains.items():
-            for rule_class in domain.get_rule_classes():
+            rule_classes = domain._filter_rules_for_light_run(domain.get_rule_classes())
+            for rule_class in rule_classes:
                 # Get unique name without instantiation (uses class variable if available)
                 rule_name = rule_class.get_unique_name_classmethod()
                 if rule_name:

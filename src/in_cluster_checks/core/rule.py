@@ -32,6 +32,8 @@ class Rule(Operator):
     - objective_hosts: List of Objectives where this rule should run (required)
     - links: List of reference URLs (optional)
               Format: ["https://docs.example.com", "https://access.redhat.com/..."]
+    - include_in_light_run: Whether to include this rule in light-run mode (default: True)
+              Set to False for resource-intensive rules that should only run in full mode
     """
 
     PREREQUISITES_CHECKS = []
@@ -40,6 +42,7 @@ class Rule(Operator):
     title = None
     links = None
     supported_profiles = {"general"}
+    include_in_light_run: bool = True
 
     def __init__(self, host_executor, node_executors=None):
         """

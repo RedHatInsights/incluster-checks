@@ -59,6 +59,23 @@ class RuleDomain(abc.ABC):
         """
         raise NotImplementedError(f"get_rule_classes() must be implemented in {self.__class__.__name__}")
 
+    def _filter_rules_for_light_run(self, rule_classes: List[type]) -> List[type]:
+        """
+        Filter rules based on light_run mode.
+
+        Args:
+            rule_classes: List of Rule classes to filter
+
+        Returns:
+            Filtered list based on light_run mode:
+            - Normal mode (light_run=False): Returns all rules
+            - Light mode (light_run=True): Returns only rules with include_in_light_run=True
+        """
+        if not global_config.light_run:
+            return rule_classes
+
+        return [rule_class for rule_class in rule_classes if rule_class.include_in_light_run]
+
     def verify(self, host_executors_dict: Dict[str, Any]) -> Dict[str, Any]:
         """
         Run all rules in this domain using HC's parallel execution pattern.
@@ -75,7 +92,7 @@ class RuleDomain(abc.ABC):
         """
         self.logger.info(f"Running domain: {self.domain_name()}")
 
-        rule_classes = self.get_rule_classes()
+        rule_classes = self._filter_rules_for_light_run(self.get_rule_classes())
         self.logger.debug(f"Domain has {len(rule_classes)} rule classes")
 
         printer = StructedPrinter()

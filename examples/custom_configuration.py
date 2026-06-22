@@ -19,6 +19,8 @@ def main():
         debug_rule_name="",
         # Set maximum concurrent workers (default: 50)
         max_workers=75,
+        # Run only lightweight rules (default: False)
+        light_run=False,
     )
 
     # Define output path

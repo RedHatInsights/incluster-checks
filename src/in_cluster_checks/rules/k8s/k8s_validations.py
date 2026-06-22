@@ -1716,7 +1716,7 @@ class VerifyMdrOperatorHealth(SubscriptionOperatorRule):
     title = "Verify MDR operator pods are healthy"
     supported_profiles = {"telco-base"}
     links = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/K8s-%E2%80%90-Verify-MDR-operator-health",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418399/Verify+MDR+operator+health",
         "https://docs.redhat.com/en/documentation/workload_availability_for_red_hat_openshift"
         "/23.3/html/remediation_fencing_and_maintenance/machine-deletion-remediation-operator-remediate-nodes",
     ]

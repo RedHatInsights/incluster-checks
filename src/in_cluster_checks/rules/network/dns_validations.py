@@ -85,7 +85,7 @@ class VerifyDnsReachability(Rule):
     unique_name = "verify_dns_reachability"
     title = "Verify DNS server reachability"
     links: ClassVar[list] = [
-        "https://github.com/RedHatInsights/incluster-checks/wiki/Network-%E2%80%90-Verify-DNS-reachability",
+        "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418450933/Verify+DNS+reachability",
     ]
     RESOLV_CONF_PATH = "/etc/resolv.conf"
 

@@ -9,18 +9,20 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     ValidateAllDaemonsetsScheduled,
     ValidateAllPoliciesCompliant,
     ValidateNamespaceStatus,
-    VerifyAcmOperatorHealth,
     VerifyClusterOperatorsAvailable,
-    VerifyFarContainerNonRoot,
-    VerifyFARControllerReplicas,
-    VerifyFarOperatorHealth,
+VerifyFARControllerReplicas,
     VerifyInternalRegistry,
-    VerifyMdrOperatorHealth,
     VerifyNetworkDiagnosticsDisabled,
+    VerifyWebConsoleDisabled,
+)
+from in_cluster_checks.rules.k8s.subscription_operator_validations import (
+    VerifyAcmOperatorHealth,
+    VerifyFarContainerNonRoot,
+    VerifyFarOperatorHealth,
+    VerifyMdrOperatorHealth,
     VerifyNfdOperatorHealth,
     VerifyNfdPodRestartCount,
     VerifyNmoOperatorHealth,
-    VerifyWebConsoleDisabled,
 )
 
 

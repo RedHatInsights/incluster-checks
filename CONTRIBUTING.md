@@ -83,7 +83,7 @@ Logical groupings of related rules. Each domain:
 The main orchestrator that:
 - Auto-discovers all domain classes in the `domains` package
 - Executes rules in parallel across multiple nodes
-- Aggregates results and generates JSON output
+- Aggregates results and generates output (JSON or JUnit XML)
 - Manages `oc debug` connections and cleanup
 
 **Location:** `src/in_cluster_checks/runner.py`
@@ -511,6 +511,9 @@ in-cluster-checks --debug-rule your_rule_name
 
 # Run all checks with debug logging
 in-cluster-checks --log-level DEBUG --output ./test-results.json
+
+# Run all checks with JUnit XML output (for CI integration)
+in-cluster-checks --format junit --output ./test-results.xml
 ```
 
 ### Writing Tests

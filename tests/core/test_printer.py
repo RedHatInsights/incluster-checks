@@ -1,9 +1,10 @@
 """
-Tests for StructedPrinter (JSON formatter).
+Tests for StructedPrinter (JSON and JUnit XML formatter).
 """
 
 import json
 import tempfile
+import xml.etree.ElementTree as ET
 from collections import OrderedDict
 from pathlib import Path
 
@@ -11,6 +12,31 @@ import pytest
 
 from in_cluster_checks.core.printer import StructedPrinter
 from in_cluster_checks.utils.enums import Status
+
+
+def _make_report(domain, key, status, component=None, details=None):
+    if component is None:
+        component = f"in_cluster_checks.{domain}.{key}"
+    if details is None:
+        details = [
+            {
+                "node_ip": "192.168.1.10",
+                "node_name": "node1",
+                "status": status,
+                "bash_cmd_lines": [],
+                "rule_log": [],
+                "timestamp": "2026-01-18 10:00:00",
+            }
+        ]
+    return {
+        "rule_id": f"{domain}|{key}",
+        "component": component,
+        "key": key,
+        "status": status,
+        "description": f"Test {key}",
+        "domain": domain,
+        "details": details,
+    }
 
 
 class TestStructedPrinter:
@@ -349,3 +375,270 @@ class TestStructedPrinter:
         # Aggregated status should be 'warning' (worst among passed/warning)
         assert result[0]['status'] == Status.WARNING.value
         assert len(result[0]['details']) == 3
+
+
+class TestJUnitOutput:
+    """Test JUnit XML output formatting."""
+
+    def test_print_to_junit_creates_valid_xml(self, tmp_path):
+        output_file = tmp_path / "results.xml"
+        reports = [_make_report("hw", "check_disk", Status.PASSED.value)]
+
+        StructedPrinter.print_to_junit(reports, str(output_file))
+
+        assert output_file.exists()
+        tree = ET.parse(output_file)
+        root = tree.getroot()
+        assert root.tag == "testsuites"
+
+        suites = root.findall("testsuite")
+        assert len(suites) == 1
+        assert suites[0].get("name") == "hw"
+
+        cases = suites[0].findall("testcase")
+        assert len(cases) == 1
+        assert cases[0].get("name") == "check_disk [node1]"
+        assert cases[0].get("classname") == "in_cluster_checks.hw.check_disk"
+
+        assert cases[0].find("failure") is None
+        assert cases[0].find("skipped") is None
+
+    def test_print_to_junit_failed_status(self, tmp_path):
+        output_file = tmp_path / "results.xml"
+        details = [
+            {
+                "node_ip": "192.168.1.10",
+                "node_name": "node1",
+                "status": Status.FAILED.value,
+                "message": "Disk usage at 98%",
+                "bash_cmd_lines": [],
+                "rule_log": [],
+                "timestamp": "2026-01-18 10:00:00",
+            }
+        ]
+        reports = [_make_report("hw", "check_disk", Status.FAILED.value, details=details)]
+
+        StructedPrinter.print_to_junit(reports, str(output_file))
+
+        tree = ET.parse(output_file)
+        case = tree.getroot().find(".//testcase")
+        failure = case.find("failure")
+        assert failure is not None
+        assert failure.get("message") == "Disk usage at 98%"
+        assert failure.get("type") == "failure"
+
+    def test_print_to_junit_warning_status(self, tmp_path):
+        output_file = tmp_path / "results.xml"
+        details = [
+            {
+                "node_ip": "192.168.1.10",
+                "node_name": "node1",
+                "status": Status.WARNING.value,
+                "message": "Disk usage at 80%",
+                "bash_cmd_lines": [],
+                "rule_log": [],
+                "timestamp": "2026-01-18 10:00:00",
+            }
+        ]
+        reports = [_make_report("hw", "check_disk", Status.WARNING.value, details=details)]
+
+        StructedPrinter.print_to_junit(reports, str(output_file))
+
+        tree = ET.parse(output_file)
+        case = tree.getroot().find(".//testcase")
+        failure = case.find("failure")
+        assert failure is not None
+        assert failure.get("message") == "Disk usage at 80%"
+        assert failure.get("type") == "warning"
+
+    def test_print_to_junit_skip_status(self, tmp_path):
+        output_file = tmp_path / "results.xml"
+        details = [
+            {
+                "node_ip": "192.168.1.10",
+                "node_name": "node1",
+                "status": Status.SKIP.value,
+                "message": "Command timed out",
+                "bash_cmd_lines": [],
+                "rule_log": [],
+                "timestamp": "2026-01-18 10:00:00",
+            }
+        ]
+        reports = [_make_report("hw", "check_disk", Status.SKIP.value, details=details)]
+
+        StructedPrinter.print_to_junit(reports, str(output_file))
+
+        tree = ET.parse(output_file)
+        case = tree.getroot().find(".//testcase")
+        skipped = case.find("skipped")
+        assert skipped is not None
+        assert skipped.get("message") == "Command timed out"
+        assert case.find("failure") is None
+
+    def test_print_to_junit_not_applicable_status(self, tmp_path):
+        output_file = tmp_path / "results.xml"
+        details = [
+            {
+                "node_ip": "192.168.1.10",
+                "node_name": "node1",
+                "status": Status.NOT_APPLICABLE.value,
+                "message": "Prerequisite not met",
+                "bash_cmd_lines": [],
+                "rule_log": [],
+                "timestamp": "2026-01-18 10:00:00",
+            }
+        ]
+        reports = [_make_report("hw", "check_disk", Status.NOT_APPLICABLE.value, details=details)]
+
+        StructedPrinter.print_to_junit(reports, str(output_file))
+
+        tree = ET.parse(output_file)
+        case = tree.getroot().find(".//testcase")
+        skipped = case.find("skipped")
+        assert skipped is not None
+        assert skipped.get("message") == "Prerequisite not met"
+
+    def test_print_to_junit_info_status(self, tmp_path):
+        output_file = tmp_path / "results.xml"
+        reports = [_make_report("hw", "sys_info", Status.INFO.value)]
+
+        StructedPrinter.print_to_junit(reports, str(output_file))
+
+        tree = ET.parse(output_file)
+        case = tree.getroot().find(".//testcase")
+        assert case.find("failure") is None
+        assert case.find("skipped") is None
+
+    def test_print_to_junit_multi_host(self, tmp_path):
+        output_file = tmp_path / "results.xml"
+        details = [
+            {
+                "node_ip": "192.168.1.10",
+                "node_name": "master-0",
+                "status": Status.PASSED.value,
+                "bash_cmd_lines": [],
+                "rule_log": [],
+                "timestamp": "2026-01-25 14:30:00",
+            },
+            {
+                "node_ip": "192.168.1.11",
+                "node_name": "master-1",
+                "status": Status.FAILED.value,
+                "message": "Port bond0 is missing",
+                "bash_cmd_lines": [],
+                "rule_log": [],
+                "timestamp": "2026-01-25 14:30:01",
+            },
+            {
+                "node_ip": "192.168.1.20",
+                "node_name": "worker-0",
+                "status": Status.PASSED.value,
+                "bash_cmd_lines": [],
+                "rule_log": [],
+                "timestamp": "2026-01-25 14:30:02",
+            },
+        ]
+        reports = [_make_report("network", "ovs_check", Status.FAILED.value, details=details)]
+
+        StructedPrinter.print_to_junit(reports, str(output_file))
+
+        tree = ET.parse(output_file)
+        suite = tree.getroot().find("testsuite")
+        assert suite.get("tests") == "3"
+        assert suite.get("failures") == "1"
+
+        cases = suite.findall("testcase")
+        assert len(cases) == 3
+        assert cases[0].get("name") == "ovs_check [master-0]"
+        assert cases[0].find("failure") is None
+        assert cases[1].get("name") == "ovs_check [master-1]"
+        assert cases[1].find("failure") is not None
+        assert cases[2].get("name") == "ovs_check [worker-0]"
+        assert cases[2].find("failure") is None
+
+    def test_print_to_junit_multi_domain(self, tmp_path):
+        output_file = tmp_path / "results.xml"
+        reports = [
+            _make_report("hw", "check_disk", Status.PASSED.value),
+            _make_report("network", "ovs_check", Status.PASSED.value),
+        ]
+
+        StructedPrinter.print_to_junit(reports, str(output_file))
+
+        tree = ET.parse(output_file)
+        suites = tree.getroot().findall("testsuite")
+        assert len(suites) == 2
+        suite_names = {s.get("name") for s in suites}
+        assert suite_names == {"hw", "network"}
+
+    def test_print_to_junit_rule_log_in_system_out(self, tmp_path):
+        output_file = tmp_path / "results.xml"
+        details = [
+            {
+                "node_ip": "192.168.1.10",
+                "node_name": "node1",
+                "status": Status.PASSED.value,
+                "bash_cmd_lines": [],
+                "rule_log": ["line 1", "line 2", "line 3"],
+                "timestamp": "2026-01-18 10:00:00",
+            }
+        ]
+        reports = [_make_report("hw", "check_disk", Status.PASSED.value, details=details)]
+
+        StructedPrinter.print_to_junit(reports, str(output_file))
+
+        tree = ET.parse(output_file)
+        case = tree.getroot().find(".//testcase")
+        system_out = case.find("system-out")
+        assert system_out is not None
+        assert "line 1" in system_out.text
+        assert "line 2" in system_out.text
+        assert "line 3" in system_out.text
+
+    def test_print_to_junit_testcase_time(self, tmp_path):
+        output_file = tmp_path / "results.xml"
+        details = [
+            {
+                "node_ip": "192.168.1.10",
+                "node_name": "node1",
+                "status": Status.PASSED.value,
+                "bash_cmd_lines": [],
+                "rule_log": [],
+                "run_time": 2.5,
+                "timestamp": "2026-01-18 10:00:00",
+            }
+        ]
+        reports = [_make_report("hw", "check_disk", Status.PASSED.value, details=details)]
+
+        StructedPrinter.print_to_junit(reports, str(output_file))
+
+        tree = ET.parse(output_file)
+        case = tree.getroot().find(".//testcase")
+        assert case.get("time") == "2.5"
+
+    def test_print_to_junit_strips_illegal_xml_chars(self, tmp_path):
+        output_file = tmp_path / "results.xml"
+        details = [
+            {
+                "node_ip": "192.168.1.10",
+                "node_name": "node1",
+                "status": Status.FAILED.value,
+                "message": "bad\x00output\x07here",
+                "bash_cmd_lines": [],
+                "rule_log": ["line\x01one", "line\x1ftwo"],
+                "timestamp": "2026-01-18 10:00:00",
+            }
+        ]
+        reports = [_make_report("hw", "check_disk", Status.FAILED.value, details=details)]
+
+        StructedPrinter.print_to_junit(reports, str(output_file))
+
+        tree = ET.parse(output_file)
+        case = tree.getroot().find(".//testcase")
+        failure = case.find("failure")
+        assert failure.get("message") == "badoutputhere"
+        system_out = case.find("system-out")
+        assert "\x01" not in system_out.text
+        assert "\x1f" not in system_out.text
+        assert "lineone" in system_out.text
+        assert "linetwo" in system_out.text

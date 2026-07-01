@@ -50,6 +50,9 @@ pre-commit run --all-files          # Code quality checks
 # Run all checks (output saved to ./cluster-checks.json)
 in-cluster-checks --output ./cluster-checks.json
 
+# Output as JUnit XML (for CI dashboard integration)
+in-cluster-checks --format junit --output ./cluster-checks.xml
+
 # Run only lightweight rules (excludes resource-intensive rules marked with include_in_light_run=False)
 # Currently excludes: hw_fw_details domain (hardware/firmware inventory collection)
 in-cluster-checks --light-run --output ./quick-check.json

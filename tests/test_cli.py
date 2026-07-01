@@ -8,6 +8,7 @@ import pytest
 
 from in_cluster_checks.cli import (
     check_oc_available,
+    get_default_output,
     list_domains,
     list_rules,
     main,
@@ -128,9 +129,85 @@ class TestCLI:
         mock_runner = Mock()
         mock_runner.run.return_value = "/tmp/results.json"
         mock_runner_class.return_value = mock_runner
-        
+
         test_args = ['in-cluster-checks', '--debug-rule', 'test_rule', '--output', '/tmp/test.json']
         with patch.object(sys, 'argv', test_args):
             with pytest.raises(SystemExit) as exc_info:
                 main()
             assert exc_info.value.code == 0
+
+    @patch('in_cluster_checks.cli.InClusterCheckRunner')
+    @patch('in_cluster_checks.cli.check_oc_available')
+    def test_main_default_format_is_json(self, mock_check_oc, mock_runner_class):
+        """Test that default format is json when --format is not specified."""
+        mock_runner = Mock()
+        mock_runner.run.return_value = "/tmp/results.json"
+        mock_runner_class.return_value = mock_runner
+
+        test_args = ['in-cluster-checks', '--output', '/tmp/test.json']
+        with patch.object(sys, 'argv', test_args):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
+            mock_runner.run.assert_called_once()
+            call_kwargs = mock_runner.run.call_args
+            assert call_kwargs.kwargs.get("output_format", "json") == "json"
+
+    @patch('in_cluster_checks.cli.InClusterCheckRunner')
+    @patch('in_cluster_checks.cli.check_oc_available')
+    def test_main_with_format_json(self, mock_check_oc, mock_runner_class):
+        """Test main with --format json."""
+        mock_runner = Mock()
+        mock_runner.run.return_value = "/tmp/results.json"
+        mock_runner_class.return_value = mock_runner
+
+        test_args = ['in-cluster-checks', '--format', 'json', '--output', '/tmp/test.json']
+        with patch.object(sys, 'argv', test_args):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
+            mock_runner.run.assert_called_once()
+            call_kwargs = mock_runner.run.call_args
+            assert call_kwargs.kwargs.get("output_format") == "json"
+
+    @patch('in_cluster_checks.cli.InClusterCheckRunner')
+    @patch('in_cluster_checks.cli.check_oc_available')
+    def test_main_with_format_junit(self, mock_check_oc, mock_runner_class):
+        """Test main with --format junit."""
+        mock_runner = Mock()
+        mock_runner.run.return_value = "/tmp/results.xml"
+        mock_runner_class.return_value = mock_runner
+
+        test_args = ['in-cluster-checks', '--format', 'junit', '--output', '/tmp/test.xml']
+        with patch.object(sys, 'argv', test_args):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
+            mock_runner.run.assert_called_once()
+            call_kwargs = mock_runner.run.call_args
+            assert call_kwargs.kwargs.get("output_format") == "junit"
+
+    def test_get_default_output_json(self):
+        """Test default output path for json format."""
+        assert get_default_output("json") == "./cluster-checks.json"
+
+    def test_get_default_output_junit(self):
+        """Test default output path for junit format."""
+        assert get_default_output("junit") == "./cluster-checks.xml"
+
+    @patch('in_cluster_checks.cli.InClusterCheckRunner')
+    @patch('in_cluster_checks.cli.check_oc_available')
+    def test_main_junit_default_output_is_xml(self, mock_check_oc, mock_runner_class):
+        """Test that --format junit without --output defaults to .xml extension."""
+        mock_runner = Mock()
+        mock_runner.run.return_value = "./cluster-checks.xml"
+        mock_runner_class.return_value = mock_runner
+
+        test_args = ['in-cluster-checks', '--format', 'junit']
+        with patch.object(sys, 'argv', test_args):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+            assert exc_info.value.code == 0
+            call_args = mock_runner.run.call_args
+            output_path = call_args.kwargs.get("output_path") or call_args[1].get("output_path") or call_args[0][0]
+            assert str(output_path).endswith(".xml")

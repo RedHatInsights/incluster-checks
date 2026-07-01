@@ -99,3 +99,45 @@ class TestInClusterCheckRunner:
                     # In debug mode, JSON output should NOT be called
                     mock_print.assert_not_called()
                     assert result == str(output_path)
+
+    @patch('in_cluster_checks.runner.NodeExecutorFactory')
+    def test_run_json_format_calls_print_to_json(self, mock_executor_factory):
+        """Test that format='json' calls print_to_json."""
+        mock_factory_instance = Mock()
+        mock_factory_instance.build_host_executors.return_value = []
+        mock_factory_instance.connect_all.return_value = None
+        mock_factory_instance.disconnect_all.return_value = None
+        mock_executor_factory.return_value = mock_factory_instance
+
+        runner = InClusterCheckRunner()
+        output_path = Path("/tmp/test-results.json")
+
+        with patch.object(runner, 'discover_domains', return_value={}):
+            with patch('in_cluster_checks.runner.StructedPrinter.format_results', return_value=[]):
+                with patch('in_cluster_checks.runner.StructedPrinter.print_to_json') as mock_json:
+                    with patch('in_cluster_checks.runner.StructedPrinter.print_to_junit') as mock_junit:
+                        runner.run(output_path=output_path, output_format="json")
+
+                        mock_json.assert_called_once()
+                        mock_junit.assert_not_called()
+
+    @patch('in_cluster_checks.runner.NodeExecutorFactory')
+    def test_run_junit_format_calls_print_to_junit(self, mock_executor_factory):
+        """Test that format='junit' calls print_to_junit."""
+        mock_factory_instance = Mock()
+        mock_factory_instance.build_host_executors.return_value = []
+        mock_factory_instance.connect_all.return_value = None
+        mock_factory_instance.disconnect_all.return_value = None
+        mock_executor_factory.return_value = mock_factory_instance
+
+        runner = InClusterCheckRunner()
+        output_path = Path("/tmp/test-results.xml")
+
+        with patch.object(runner, 'discover_domains', return_value={}):
+            with patch('in_cluster_checks.runner.StructedPrinter.format_results', return_value=[]):
+                with patch('in_cluster_checks.runner.StructedPrinter.print_to_json') as mock_json:
+                    with patch('in_cluster_checks.runner.StructedPrinter.print_to_junit') as mock_junit:
+                        runner.run(output_path=output_path, output_format="junit")
+
+                        mock_junit.assert_called_once()
+                        mock_json.assert_not_called()

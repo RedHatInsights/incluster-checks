@@ -1,17 +1,13 @@
----
-name: create-wiki-page
-description: Use when creating documentation for an in-cluster-checks validation rule - follows 7-section template with proper formatting
----
+# Confluence Documentation Guidelines
 
-Create a Confluence documentation page for an in-cluster-checks validation rule.
+This guide provides detailed instructions for creating Confluence documentation pages for in-cluster validation rules.
 
-$ARGUMENTS
+## Overview
 
-Follow the 7-section documentation template and project documentation standards.
+Every new rule MUST have a corresponding documentation page in Confluence hosted at:  
+https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418417677/In-Cluster+Checks+Rules
 
-Documentation is hosted in Confluence: https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418417677/In-Cluster+Checks+Rules
-
----
+Create the documentation page in Confluence under the appropriate domain (DPF, Hardware, K8s, Linux, Network, Resources, Security).
 
 ## Step 1: Understand the Rule
 
@@ -23,10 +19,10 @@ Read the rule's source code to understand:
 
 Example location: `src/in_cluster_checks/rules/network/ovs_validations.py`
 
-## Step 2: Create Wiki Page
+## Step 2: Create Confluence Page
 
-**Naming convention:** `<Domain>-<Rule-Name>.md`
-- Examples: `Network-OVS-Physical-Port-Health-Check.md`, `Storage-Disk-Space-Check.md`
+**Naming convention:** `<Domain>-<Rule-Name>`
+- Examples: `Network-OVS-Physical-Port-Health-Check`, `Storage-Disk-Space-Check`
 
 **Template sections (in order):**
 1. **Description** - What the rule checks and when it fails (1-3 sentences)
@@ -138,7 +134,23 @@ Expected result.
 
 ## Step 6: Write Solution Section
 
-Solutions must be written manually based on rule failure scenarios.
+**CRITICAL SAFETY REQUIREMENTS:**
+
+Solutions must be **safe and verified** with **zero risk** to user environments:
+
+- ✅ **ONLY provide solutions you are absolutely certain are safe**
+- ✅ **Include verification steps** before and after any changes
+- ✅ **Use dry-run flags** wherever possible (e.g., `--dry-run=client`)
+- ✅ **Warn about maintenance windows** for operations requiring downtime
+- ❌ **NEVER suggest destructive operations** (node reboots, deletions, force operations) without explicit warnings
+- ❌ **NEVER provide solutions you are uncertain about**
+
+**When uncertain about the correct solution:**
+- Direct users to contact support teams or consult official documentation
+- Provide diagnostic commands to gather information
+- Clearly state when expert assistance is recommended
+
+Before finalizing the solution section, verify that all commands are safe and include appropriate warnings for potentially dangerous operations.
 
 **Format - Use numbered steps or command blocks with descriptions:**
 ```markdown
@@ -223,16 +235,7 @@ Or use numbered steps for multi-step procedures:
 - [nmstate - NodeNetworkConfigurationPolicy](https://nmstate.io/)
 ```
 
-## Checklist
+## Documentation Page Examples
 
-- [ ] All 7 sections present (Description, Prerequisites, Impact, Root Cause, Diagnostics, Solution, Resources)
-- [ ] Description is concise (1-3 sentences, no metadata fields)
-- [ ] Root Cause is SHORT (2-5 causes, brief bullets only)
-- [ ] Diagnostics is CONCISE (command block + expected result, no troubleshooting)
-- [ ] All commands use placeholders (e.g., `<interface-name>`, not `bond0`)
-- [ ] Placeholders have inline comments with examples
-- [ ] Resources KB article verified against source code Reference: line
-- [ ] Resources use markdown link format `[Description](URL)`
-- [ ] Solutions use numbered steps or command blocks with descriptions
-- [ ] Verification commands included where needed
-- [ ] Critical warnings included (e.g., MachineConfig + nmcli for OVS VLANs)
+- [Security - TLS certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482936)
+- [Security - Node certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418558)

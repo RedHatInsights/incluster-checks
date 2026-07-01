@@ -117,6 +117,16 @@ All documentation pages should follow this standard structure:
 **Documentation Page Examples:**
 - See existing templates: [Security - TLS certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482936), [Security - Node certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418558)
 
+**Detailed Documentation Creation:**
+For comprehensive guidelines on creating Confluence documentation pages, see [@.claude/rules/confluence-guidelines.md](confluence-guidelines.md).
+
+The guide covers:
+- Understanding the rule's source code
+- Creating Confluence pages with proper naming conventions
+- Writing all 7 required sections (Description, Prerequisites, Impact, Root Cause, Diagnostics, Solution, Resources)
+- Formatting rules, placeholder conventions, and safety guidelines
+- Examples and templates
+
 ## Existing Domains
 
 - **HWValidationDomain** (`domains/hw_domain.py`): Hardware checks (disk usage, CPU, memory, temperature)

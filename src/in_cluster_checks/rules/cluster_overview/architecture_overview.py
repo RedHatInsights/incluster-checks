@@ -6,7 +6,6 @@ topology, network, storage, identity providers, and installed operators —
 via the cluster API. Contributed from the ocp-analyzer project.
 """
 
-from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.rule import OrchestratorRule
 from in_cluster_checks.core.rule_result import RuleResult
 from in_cluster_checks.utils.enums import Objectives
@@ -31,6 +30,7 @@ class ClusterArchitectureOverview(OrchestratorRule):
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "cluster_architecture_overview"
     title = "Cluster architecture overview"
+    supported_profiles = {"general"}
     links = [
         "https://docs.openshift.com/container-platform/latest/architecture/architecture.html",
     ]
@@ -178,9 +178,8 @@ class ClusterArchitectureOverview(OrchestratorRule):
 
     def _collect_operators(self) -> list:
         """Collect installed operator subscriptions (name, namespace, channel, CSV)."""
-        try:
-            subscriptions = self.oc_api.get_operator_subscriptions()
-        except UnExpectedSystemOutput:
+        subscriptions = self._get_resource(["subscriptions.operators.coreos.com", "--all-namespaces"])
+        if not subscriptions:
             return []
 
         operators = []

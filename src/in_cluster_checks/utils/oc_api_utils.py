@@ -20,7 +20,9 @@ Usage:
             ...
 """
 
+import json
 import logging
+from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 import openshift_client as oc
@@ -42,6 +44,27 @@ class OcApiUtils:
     to provide consistent cluster API access via `self.oc_api`.
     """
 
+    # Fields to show in debug output for common resource types (equivalent to -o wide)
+    DEBUG_FIELDS_MAP = {
+        "pod": ["namespace", "name", "ready", "status", "restarts", "age", "ip", "node"],
+        "deployment": ["namespace", "name", "ready", "up-to-date", "available", "age"],
+        "statefulset": ["namespace", "name", "ready", "age"],
+        "node": [
+            "name",
+            "status",
+            "roles",
+            "age",
+            "version",
+            "internal-ip",
+            "external-ip",
+            "os-image",
+            "kernel-version",
+            "container-runtime",
+        ],
+        "namespace": ["name", "status", "age"],
+        "daemonset": ["namespace", "name", "desired", "current", "ready", "up-to-date", "available", "age"],
+    }
+
     def __init__(self, operator):
         """
         Initialize with operator instance.
@@ -52,6 +75,277 @@ class OcApiUtils:
         """
         self.operator = operator
         self.logger = logging.getLogger(__name__)
+
+    def _debug_log(self, message: str, obj=None, resource_type: str = None, text: str = None):
+        """
+        Print debug output in standardized format when --debug-rule is active.
+
+        Args:
+            message: Debug message to print
+            obj: Optional resource object or list of objects to format as JSON
+            resource_type: Optional resource type (e.g., 'pod', 'deployment') for field filtering
+            text: Optional pre-formatted text to print (e.g., command output)
+        """
+        if not global_config.debug_rule_flag:
+            return
+
+        print(f"\n[DEBUG] {message}", flush=True)
+
+        if obj is not None:
+            # Convert single object to list for uniform handling
+            objects = obj if isinstance(obj, list) else [obj]
+
+            if not objects:
+                print("[DEBUG] No resources found", flush=True)
+            else:
+                # Extract relevant fields for each object
+                formatted_objects = []
+                for resource_obj in objects:
+                    resource_dict = self._extract_debug_fields(resource_obj, resource_type)
+                    if resource_dict:
+                        formatted_objects.append(resource_dict)
+
+                # Print as pretty JSON
+                print(json.dumps(formatted_objects, indent=2), flush=True)
+
+        if text is not None:
+            print(self._truncate_output(text), flush=True)
+
+        print("=" * 60, flush=True)
+
+    def _truncate_output(self, text: str, max_lines: int = 100) -> str:
+        """
+        Truncate long text output for debug display.
+
+        Args:
+            text: Text to truncate
+            max_lines: Maximum number of lines to show (default: 100)
+
+        Returns:
+            Truncated text with indicator if lines were cut
+        """
+        if not text:
+            return ""
+
+        lines = text.splitlines()
+        if len(lines) <= max_lines:
+            return text
+
+        truncated = "\n".join(lines[:max_lines])
+        truncated += f"\n... ({len(lines) - max_lines} more lines truncated)"
+        return truncated
+
+    def _extract_debug_fields(self, resource_obj, resource_type: str = None) -> dict:
+        """
+        Extract relevant fields from resource object for debug output.
+
+        Shows only fields equivalent to 'oc get <resource> -o wide' output.
+        Uses DEBUG_FIELDS_MAP to determine which fields to extract for each resource type.
+
+        Args:
+            resource_obj: Resource object from openshift_client
+            resource_type: Resource type (e.g., 'pod', 'deployment')
+
+        Returns:
+            Dictionary with relevant fields for debug output, in the order defined by DEBUG_FIELDS_MAP
+        """
+        if not resource_obj:
+            return {}
+
+        # Get full resource dict
+        try:
+            full_dict = resource_obj.as_dict()
+        except Exception:
+            # Fallback if as_dict() fails
+            return {"name": str(resource_obj)}
+
+        metadata = full_dict.get("metadata", {})
+        spec = full_dict.get("spec", {})
+        status = full_dict.get("status", {})
+
+        # Detect resource type from object if not provided
+        if not resource_type:
+            kind = full_dict.get("kind", "").lower()
+            resource_type = kind if kind else "unknown"
+
+        # Get field mapping for this resource type
+        field_list = self.DEBUG_FIELDS_MAP.get(resource_type)
+        if not field_list:
+            # Generic resource - return name, namespace (if applicable), and age
+            result = {"name": metadata.get("name", "unknown")}
+            if resource_type not in ("node", "namespace"):
+                result["namespace"] = metadata.get("namespace", "")
+            result["age"] = self._calculate_age(metadata.get("creationTimestamp", ""))
+            return result
+
+        # Build result dict in the order defined by DEBUG_FIELDS_MAP
+        result = {}
+        for field in field_list:
+            result[field] = self._get_field_value(field, metadata, spec, status, resource_type)
+
+        return result
+
+    def _get_field_value(self, field: str, metadata: dict, spec: dict, status: dict, resource_type: str) -> Any:
+        """
+        Get the value for a specific field from the resource object.
+
+        Args:
+            field: Field name from DEBUG_FIELDS_MAP
+            metadata: Resource metadata dict
+            spec: Resource spec dict
+            status: Resource status dict
+            resource_type: Resource type (e.g., 'pod', 'deployment')
+
+        Returns:
+            Field value (str, int, or other types depending on the field)
+        """
+        # Common fields across all resources
+        if field == "name":
+            return metadata.get("name", "unknown")
+        if field == "namespace":
+            return metadata.get("namespace", "")
+        if field == "age":
+            return self._calculate_age(metadata.get("creationTimestamp", ""))
+
+        # Pod-specific fields
+        if resource_type == "pod":
+            if field == "ready":
+                return self._get_pod_ready_status(status)
+            if field == "status":
+                return status.get("phase", "Unknown")
+            if field == "restarts":
+                return self._get_pod_restarts(status)
+            if field == "ip":
+                return status.get("podIP", "")
+            if field == "node":
+                return spec.get("nodeName", "")
+
+        # Deployment-specific fields
+        elif resource_type == "deployment":
+            if field == "ready":
+                replicas = spec.get("replicas", 0)
+                ready_replicas = status.get("readyReplicas", 0)
+                return f"{ready_replicas}/{replicas}"
+            if field == "up-to-date":
+                return status.get("updatedReplicas", 0)
+            if field == "available":
+                return status.get("availableReplicas", 0)
+
+        # StatefulSet-specific fields
+        elif resource_type == "statefulset":
+            if field == "ready":
+                replicas = spec.get("replicas", 0)
+                ready_replicas = status.get("readyReplicas", 0)
+                return f"{ready_replicas}/{replicas}"
+
+        # Node-specific fields
+        elif resource_type == "node":
+            if field == "status":
+                return self._get_node_status(status)
+            if field == "roles":
+                return ",".join(
+                    [
+                        role.replace("node-role.kubernetes.io/", "")
+                        for role in metadata.get("labels", {}).keys()
+                        if role.startswith("node-role.kubernetes.io/")
+                    ]
+                )
+            if field == "version":
+                return status.get("nodeInfo", {}).get("kubeletVersion", "")
+            if field in ("internal-ip", "external-ip"):
+                addresses = status.get("addresses", [])
+                addr_type = "InternalIP" if field == "internal-ip" else "ExternalIP"
+                for addr in addresses:
+                    if addr.get("type") == addr_type:
+                        return addr.get("address", "")
+                return "<none>" if field == "external-ip" else ""
+            if field == "os-image":
+                return status.get("nodeInfo", {}).get("osImage", "")
+            if field == "kernel-version":
+                return status.get("nodeInfo", {}).get("kernelVersion", "")
+            if field == "container-runtime":
+                return status.get("nodeInfo", {}).get("containerRuntimeVersion", "")
+
+        # Namespace-specific fields
+        elif resource_type == "namespace":
+            if field == "status":
+                return status.get("phase", "Unknown")
+
+        # DaemonSet-specific fields
+        elif resource_type == "daemonset":
+            if field == "desired":
+                return status.get("desiredNumberScheduled", 0)
+            if field == "current":
+                return status.get("currentNumberScheduled", 0)
+            if field == "ready":
+                return status.get("numberReady", 0)
+            if field == "up-to-date":
+                return status.get("updatedNumberScheduled", 0)
+            if field == "available":
+                return status.get("numberAvailable", 0)
+
+        # Unknown field
+        return ""
+
+    def _get_pod_ready_status(self, status: dict) -> str:
+        """Get pod ready status in 'X/Y' format."""
+        container_statuses = status.get("containerStatuses", [])
+        if not container_statuses:
+            return "0/0"
+        ready_count = sum(1 for c in container_statuses if c.get("ready", False))
+        total_count = len(container_statuses)
+        return f"{ready_count}/{total_count}"
+
+    def _get_pod_restarts(self, status: dict) -> int:
+        """Get total pod restart count across all containers."""
+        container_statuses = status.get("containerStatuses", [])
+        return sum(c.get("restartCount", 0) for c in container_statuses)
+
+    def _get_node_status(self, status: dict) -> str:
+        """Get node status from conditions."""
+        conditions = status.get("conditions", [])
+        for condition in conditions:
+            if condition.get("type") == "Ready":
+                return "Ready" if condition.get("status") == "True" else "NotReady"
+        return "Unknown"
+
+    def _calculate_age(self, creation_timestamp: str) -> str:
+        """
+        Calculate age in human-readable format (e.g., '5d', '3h', '45m', '30s').
+
+        Args:
+            creation_timestamp: ISO 8601 timestamp string (e.g., '2024-01-15T10:30:00Z')
+
+        Returns:
+            Age string in format used by 'oc get -o wide' (e.g., '5d', '3h', '45m', '30s')
+        """
+        if not creation_timestamp:
+            return "unknown"
+
+        try:
+            # Parse the creation timestamp
+            created_dt = datetime.fromisoformat(creation_timestamp.replace("Z", "+00:00"))
+            now = datetime.now(timezone.utc)
+            age_seconds = int((now - created_dt).total_seconds())
+
+            # Calculate days, hours, minutes, seconds
+            days = age_seconds // 86400
+            if days > 0:
+                return f"{days}d"
+
+            hours = age_seconds // 3600
+            if hours > 0:
+                return f"{hours}h"
+
+            minutes = age_seconds // 60
+            if minutes > 0:
+                return f"{minutes}m"
+
+            return f"{age_seconds}s"
+
+        except (ValueError, AttributeError):
+            # If parsing fails, return the original timestamp
+            return creation_timestamp
 
     def select_resources(
         self,
@@ -103,8 +397,7 @@ class OcApiUtils:
         self.operator._add_cmd_to_log(cmd_str)
 
         # In debug mode, print command BEFORE execution
-        if global_config.debug_rule_flag:
-            print(f"\n[DEBUG] Executing: {cmd_str}", flush=True)
+        self._debug_log(f"Executing command via oc.selector: {cmd_str}")
 
         with oc.timeout(timeout):
             # Build selector kwargs
@@ -123,16 +416,20 @@ class OcApiUtils:
                 selector = oc.selector(resource_type, **selector_kwargs)
                 result = selector.object(ignore_not_found=True) if single else selector.objects()
 
-            # In debug mode, print results after execution
-            if global_config.debug_rule_flag:
-                if single:
-                    print(f"[DEBUG] Result: {result.name() if result else 'None'}", flush=True)
-                else:
-                    print(f"[DEBUG] Found {len(result)} resources", flush=True)
-                    if result:
-                        for obj in result:
-                            print(f"[DEBUG]   - {obj.name()}", flush=True)
-                print("=" * 60, flush=True)
+            # In debug mode, print results after execution with limited fields
+            # Extract base resource type (e.g., "pod" from "pod" or "deployment" from "deployment.apps")
+            base_type = resource_type.split("/")[-1].split(".")[0]
+
+            if single:
+                result_name = result.name() if result else "None"
+                self._debug_log(
+                    f"Command result: {result_name} (showing limited fields equivalent to -o wide)",
+                    obj=result,
+                    resource_type=base_type,
+                )
+            else:
+                msg = f"Found {len(result)} {base_type}(s) (showing limited fields equivalent to -o wide)"
+                self._debug_log(msg, obj=result, resource_type=base_type)
 
             return result
 
@@ -238,11 +535,20 @@ class OcApiUtils:
         cmd_str = f"oc {command} {' '.join(args)}"
         self.operator._add_cmd_to_log(cmd_str)
 
+        self._debug_log(f"Executing command via oc.invoke: {cmd_str}")
+
         with oc.timeout(timeout):
             result = oc.invoke(command, args, auto_raise=False)
             rc = result.status()
             out = result.out()
             err = result.err()
+
+            # Print command output in debug mode
+            self._debug_log(f"Command returned code: rc={rc}")
+            if out:
+                self._debug_log("Command output:", text=out)
+            if err:
+                self._debug_log("Command error:", text=err)
 
             if rc != 0 and raise_on_error:
                 raise UnExpectedSystemOutput(

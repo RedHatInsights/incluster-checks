@@ -79,6 +79,12 @@ The framework is built around these core components:
 
 See [@.claude/rules/in-cluster-check.md](rules/in-cluster-check.md) for detailed architecture documentation.
 
+## Debug Rule Flag
+
+When using `--debug-rule`, the framework provides standardized debug logging through `_debug_log()` helper.
+
+See [@.claude/rules/debug-rule.md](rules/debug-rule.md) for detailed debug logging guidelines.
+
 ## GitHub Operations
 
 **IMPORTANT**: Always use the GitHub MCP plugin for GitHub-related operations (listing PRs, reading issues, searching code, etc.) instead of the `gh` CLI.

@@ -194,3 +194,7 @@ def has_resource(self) -> bool:
 ## Prefer Utility Functions
 
 **Check `src/in_cluster_checks/utils` for suitable functions before executing shell commands or implementing new logic.**
+
+## Debug Logging
+
+See [@.claude/rules/debug-rule.md](debug-rule.md) for debug logging guidelines.

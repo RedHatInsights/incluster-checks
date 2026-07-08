@@ -305,7 +305,7 @@ class TestNodeExecutorFactory:
         )
 
         # Reset global config
-        global_config.namespace = "default"
+        global_config.namespace = "test-default"
 
     @patch("in_cluster_checks.core.executor_factory.oc")
     def test_validate_namespace_permissions_success(self, mock_oc):
@@ -326,7 +326,7 @@ class TestNodeExecutorFactory:
         mock_oc.invoke.assert_called_once_with("auth", ["can-i", "create", "pods", "--namespace=test-namespace"])
 
         # Reset global config
-        global_config.namespace = "default"
+        global_config.namespace = "test-default"
 
     @patch("in_cluster_checks.core.executor_factory.oc")
     def test_validate_namespace_permissions_denied(self, mock_oc):
@@ -344,7 +344,7 @@ class TestNodeExecutorFactory:
             factory.validate_namespace_permissions()
 
         # Reset global config
-        global_config.namespace = "default"
+        global_config.namespace = "test-default"
 
     @patch("in_cluster_checks.core.executor_factory.oc")
     def test_validate_namespace_permissions_error(self, mock_oc):
@@ -360,4 +360,4 @@ class TestNodeExecutorFactory:
             factory.validate_namespace_permissions()
 
         # Reset global config
-        global_config.namespace = "default"
+        global_config.namespace = "test-default"

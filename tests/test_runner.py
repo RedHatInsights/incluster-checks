@@ -20,7 +20,7 @@ class TestInClusterCheckRunner:
         assert global_config.debug_rule_flag is False
         assert global_config.debug_rule_name == ""
         assert global_config.max_workers == 50
-        assert global_config.namespace == "default"
+        assert global_config.namespace.startswith("incluster-checks-")
 
     def test_init_custom_config(self):
         """Test runner initialization with custom parameters."""
@@ -42,12 +42,16 @@ class TestInClusterCheckRunner:
         # Verify global config was set with custom namespace
         assert global_config.namespace == "openshift-debug"
 
-    def test_init_namespace_default(self):
-        """Test runner initialization uses default namespace."""
-        runner = InClusterCheckRunner()
+    def test_init_namespace_auto_generated(self):
+        """Test runner initialization generates unique namespace."""
+        runner1 = InClusterCheckRunner()
+        ns1 = global_config.namespace
+        runner2 = InClusterCheckRunner()
+        ns2 = global_config.namespace
 
-        # Verify global config was set with default namespace
-        assert global_config.namespace == "default"
+        assert ns1.startswith("incluster-checks-")
+        assert ns2.startswith("incluster-checks-")
+        assert ns1 != ns2
 
     @patch('in_cluster_checks.runner.NodeExecutorFactory')
     def test_run_success(self, mock_executor_factory):

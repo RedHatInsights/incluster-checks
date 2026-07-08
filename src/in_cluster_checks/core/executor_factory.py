@@ -5,6 +5,7 @@ Adapted from support's OpenshiftHostExecutorFactory.
 Provides centralized creation and management of NodeExecutor instances.
 """
 
+import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Dict, List
@@ -53,6 +54,7 @@ class NodeExecutorFactory:
 
         self.logger = logging.getLogger(__name__)
         self._host_executors_dict: Dict[str, NodeExecutor] = {}
+        self._namespace_created = False
 
     def build_host_executors(self) -> Dict[str, NodeExecutor]:
         """
@@ -205,6 +207,70 @@ class NodeExecutorFactory:
             Dictionary of {node_name: NodeExecutor}
         """
         return self._host_executors_dict
+
+    def ensure_namespace(self):
+        """
+        Create the configured namespace if it doesn't already exist.
+
+        Only creates/manages the namespace when using the default namespace
+        (i.e. user did not explicitly supply --namespace). When the user provides
+        a custom namespace, it is assumed to already exist and be managed externally.
+
+        Sets pod-security labels to allow privileged workloads (required for debug pods).
+        """
+        if global_config.namespace_user_provided:
+            self.logger.info(f"Using user-provided namespace '{global_config.namespace}' (will not auto-create)")
+            return
+
+        namespace = global_config.namespace
+
+        with oc.timeout(30):
+            result = oc.invoke("get", ["namespace", namespace], auto_raise=False)
+            if result.status() == 0:
+                raise RuntimeError(
+                    f"Namespace '{namespace}' already exists. "
+                    f"This is unexpected for an auto-generated namespace. "
+                    f"Delete it manually or re-run to generate a new one."
+                )
+
+        self.logger.info(f"Creating namespace '{namespace}'...")
+        ns_manifest = {
+            "apiVersion": "v1",
+            "kind": "Namespace",
+            "metadata": {
+                "name": namespace,
+                "labels": {
+                    "pod-security.kubernetes.io/enforce": "privileged",
+                    "pod-security.kubernetes.io/audit": "restricted",
+                    "pod-security.kubernetes.io/warn": "restricted",
+                    "created-by": "in-cluster-checks",
+                },
+            },
+        }
+        with oc.timeout(30):
+            oc.create(json.dumps(ns_manifest))
+        self._namespace_created = True
+        self.logger.info(f"Created namespace '{namespace}'")
+
+    def delete_namespace(self):
+        """
+        Delete the namespace if it was created by ensure_namespace().
+
+        Skips deletion if the namespace already existed before the run.
+        """
+        if not self._namespace_created:
+            return
+
+        namespace = global_config.namespace
+        self.logger.info(f"Deleting namespace '{namespace}'...")
+        try:
+            with oc.timeout(60):
+                oc.invoke("delete", ["namespace", namespace, "--wait=false"])
+            self.logger.info(f"Namespace '{namespace}' deletion initiated")
+        except Exception as e:
+            self.logger.warning(f"Failed to delete namespace '{namespace}': {e}")
+        finally:
+            self._namespace_created = False
 
     def validate_namespace_permissions(self) -> bool:
         """

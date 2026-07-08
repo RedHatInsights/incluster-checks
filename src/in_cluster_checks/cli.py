@@ -204,12 +204,22 @@ def main() -> None:
     parser.add_argument(
         "--namespace",
         type=str,
-        default="default",
-        help="Namespace for debug pods (default: default). "
-        "Note: User must have permissions to create debug pods in the specified namespace.",
+        default=None,
+        help="Namespace for debug pods (default: auto-generated unique name per run). "
+        "When provided, namespace creation, NetworkPolicy, RBAC, and cleanup are skipped. "
+        "User must have permissions to create debug pods in the specified namespace.",
     )
 
     args = parser.parse_args()
+    namespace_user_provided = args.namespace is not None
+
+    if args.namespace == "default":
+        print(
+            "Error: The 'default' namespace is not allowed for debug pods. "
+            "Omit --namespace for an auto-generated namespace, or specify a dedicated one.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     # Setup logging
     try:
@@ -230,7 +240,8 @@ def main() -> None:
             active_profile=args.profile,
             debug_rule_flag=(args.debug_rule != ""),
             debug_rule_name=args.debug_rule,
-            namespace=args.namespace,
+            namespace=args.namespace or "",
+            namespace_user_provided=namespace_user_provided,
             max_workers=50,
             light_run=args.light_run,
         )

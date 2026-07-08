@@ -97,7 +97,12 @@ class NodeExecutor:
     DEFAULT_POD_TIMEOUT_HOURS = 4
 
     def __init__(
-        self, node_name: str, node_ip: str, roles: list = None, node_labels: str = "", namespace: str = "default"
+        self,
+        node_name: str,
+        node_ip: str,
+        roles: list = None,
+        node_labels: str = "",
+        namespace: str = "default",
     ):
         """
         Initialize node executor.
@@ -107,7 +112,7 @@ class NodeExecutor:
             node_ip: IP address of the node
             roles: List of Objectives (roles) for this node (e.g., [Objectives.MASTERS, Objectives.ALL_NODES])
             node_labels: String with node role labels (e.g., "master,worker" or "control-plane")
-            namespace: Namespace to create debug pod in (default: default)
+            namespace: Namespace to create debug pod in
         """
         if oc is None:
             raise ImportError("openshift_client library is required for NodeExecutor")

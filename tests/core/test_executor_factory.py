@@ -308,6 +308,98 @@ class TestNodeExecutorFactory:
         global_config.namespace = "test-default"
 
     @patch("in_cluster_checks.core.executor_factory.oc")
+    def test_ensure_namespace_skips_when_user_provided(self, mock_oc):
+        """Test that ensure_namespace skips creation when namespace is user-provided."""
+        global_config.namespace = "my-custom-ns"
+        global_config.namespace_user_provided = True
+        factory = NodeExecutorFactory()
+
+        factory.ensure_namespace()
+
+        mock_oc.invoke.assert_not_called()
+        assert factory._namespace_created is False
+
+        global_config.namespace_user_provided = False
+
+    @patch("in_cluster_checks.core.executor_factory.oc")
+    def test_ensure_namespace_raises_if_already_exists(self, mock_oc):
+        """Test that ensure_namespace raises RuntimeError if namespace already exists."""
+        global_config.namespace = "incluster-checks-abc123"
+        global_config.namespace_user_provided = False
+        factory = NodeExecutorFactory()
+
+        mock_result = Mock()
+        mock_result.status.return_value = 0
+        mock_oc.invoke.return_value = mock_result
+        mock_oc.timeout.return_value.__enter__ = Mock()
+        mock_oc.timeout.return_value.__exit__ = Mock(return_value=False)
+
+        with pytest.raises(RuntimeError, match="already exists"):
+            factory.ensure_namespace()
+
+        assert factory._namespace_created is False
+
+    @patch("in_cluster_checks.core.executor_factory.oc")
+    def test_ensure_namespace_creates_successfully(self, mock_oc):
+        """Test that ensure_namespace creates namespace with correct labels."""
+        global_config.namespace = "incluster-checks-abc123"
+        global_config.namespace_user_provided = False
+        factory = NodeExecutorFactory()
+
+        mock_result = Mock()
+        mock_result.status.return_value = 1
+        mock_oc.invoke.return_value = mock_result
+        mock_oc.timeout.return_value.__enter__ = Mock()
+        mock_oc.timeout.return_value.__exit__ = Mock(return_value=False)
+
+        factory.ensure_namespace()
+
+        assert factory._namespace_created is True
+        mock_oc.create.assert_called_once()
+
+    @patch("in_cluster_checks.core.executor_factory.oc")
+    def test_delete_namespace_skips_when_not_created(self, mock_oc):
+        """Test that delete_namespace is a no-op when namespace was not created."""
+        factory = NodeExecutorFactory()
+        factory._namespace_created = False
+
+        factory.delete_namespace()
+
+        mock_oc.invoke.assert_not_called()
+
+    @patch("in_cluster_checks.core.executor_factory.oc")
+    def test_delete_namespace_deletes_when_created(self, mock_oc):
+        """Test that delete_namespace deletes the namespace when it was created."""
+        global_config.namespace = "incluster-checks-abc123"
+        factory = NodeExecutorFactory()
+        factory._namespace_created = True
+
+        mock_oc.timeout.return_value.__enter__ = Mock()
+        mock_oc.timeout.return_value.__exit__ = Mock(return_value=False)
+
+        factory.delete_namespace()
+
+        mock_oc.invoke.assert_called_once_with(
+            "delete", ["namespace", "incluster-checks-abc123", "--wait=false"]
+        )
+        assert factory._namespace_created is False
+
+    @patch("in_cluster_checks.core.executor_factory.oc")
+    def test_delete_namespace_handles_failure_gracefully(self, mock_oc):
+        """Test that delete_namespace warns on failure and resets flag."""
+        global_config.namespace = "incluster-checks-abc123"
+        factory = NodeExecutorFactory()
+        factory._namespace_created = True
+
+        mock_oc.timeout.return_value.__enter__ = Mock()
+        mock_oc.timeout.return_value.__exit__ = Mock(return_value=False)
+        mock_oc.invoke.side_effect = Exception("delete failed")
+
+        factory.delete_namespace()
+
+        assert factory._namespace_created is False
+
+    @patch("in_cluster_checks.core.executor_factory.oc")
     def test_validate_namespace_permissions_success(self, mock_oc):
         """Test namespace permission validation when user has permissions."""
         global_config.namespace = "test-namespace"

@@ -210,9 +210,11 @@ class NodeExecutorFactory:
 
     def ensure_namespace(self):
         """
-        Create the configured namespace if it doesn't already exist.
+        Create the auto-generated namespace for this run.
 
-        Only creates/manages the namespace when using the default namespace
+        Raises RuntimeError if the namespace already exists (unexpected for UUID-based names).
+
+        Only creates/manages the namespace when using the auto-generated namespace
         (i.e. user did not explicitly supply --namespace). When the user provides
         a custom namespace, it is assumed to already exist and be managed externally.
 

@@ -9,7 +9,7 @@ import importlib
 import logging
 import pkgutil
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 from in_cluster_checks import global_config
 from in_cluster_checks.core.data_collector_runner import DataCollectorRunner
@@ -37,7 +37,7 @@ class InClusterCheckRunner:
         debug_rule_flag: bool = False,
         debug_rule_name: str = "",
         namespace: str = "",
-        namespace_user_provided: bool = False,
+        namespace_user_provided: Optional[bool] = None,
         max_workers: int = 50,
         domain_package: str = "in_cluster_checks.domains",
         light_run: bool = False,
@@ -50,11 +50,15 @@ class InClusterCheckRunner:
             debug_rule_flag: Enable debug mode for detailed output
             debug_rule_name: Name of specific rule to run in debug mode
             namespace: Namespace for debug pods (auto-generated if empty)
-            namespace_user_provided: Whether the namespace was explicitly provided by the user
+            namespace_user_provided: Whether the namespace was explicitly provided by the user.
+                If None (default), derived from whether namespace is non-empty.
             max_workers: Maximum number of concurrent workers for parallel execution
             domain_package: Python package path for domain discovery
             light_run: Enable light-run mode (exclude resource-intensive rules, default: False)
         """
+        if namespace_user_provided is None:
+            namespace_user_provided = bool(namespace)
+
         self.logger = logging.getLogger(__name__)
         self.domain_package = domain_package
         self.factory = None
@@ -181,10 +185,10 @@ class InClusterCheckRunner:
         # 2. Ensure namespace exists (creates if needed, only for default namespace)
         self.factory.ensure_namespace()
 
-        # 3. Validate namespace permissions before attempting connections
-        self.factory.validate_namespace_permissions()
-
         try:
+            # 3. Validate namespace permissions before attempting connections
+            self.factory.validate_namespace_permissions()
+
             # 4. Connect to all nodes
             self.factory.connect_all()
             # 5. Discover and instantiate domains

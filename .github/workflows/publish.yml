@@ -34,16 +34,69 @@ jobs:
           name: python-package-distributions
           path: dist/
 
+      - name: Install SBOM tooling
+        run: pip install cyclonedx-bom
+
+      - name: Generate CycloneDX SBOM
+        run: |
+          python -m venv sbom-env
+          sbom-env/bin/python -m pip install dist/*.whl
+          cyclonedx-py environment sbom-env/bin/python \
+            --sv 1.6 --of JSON --output-reproducible \
+            --pyproject pyproject.toml --mc-type library \
+            --validate -o sbom.cdx.json
+
+      - name: Store the SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom
+          path: sbom.cdx.json
+
+  attestations:
+    name: Generate attestations
+    needs:
+      - build
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Download distribution packages
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Download SBOM
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: sbom
+
+      - name: Generate SLSA build provenance
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: "dist/*"
+
+      - name: Generate SBOM attestation
+        uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+        with:
+          subject-path: "dist/*"
+          sbom-path: "sbom.cdx.json"
+
   publish-to-pypi:
     name: Publish to PyPI
     needs:
       - build
+      - attestations
     runs-on: ubuntu-latest
     environment:
       name: pypi
       url: https://pypi.org/p/in-cluster-checks
     permissions:
-      id-token: write  # IMPORTANT: mandatory for trusted publishing
+      actions: read
+      id-token: write
 
     steps:
       - name: Download all the dists
@@ -54,6 +107,27 @@ jobs:
 
       - name: Publish distribution to PyPI
         uses: pypa/gh-action-pypi-publish@cef221092ed1bacb1cc03d23a2d87d1d172e277b # release/v1
+
+  release-assets:
+    name: Attach SBOM to GitHub Release
+    needs:
+      - publish-to-pypi
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Download SBOM
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: sbom
+
+      - name: Upload SBOM to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" sbom.cdx.json --clobber
 
   # Uncomment this job if you want to publish to TestPyPI first for testing
   # publish-to-testpypi:

@@ -58,6 +58,7 @@ jobs:
       - build
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       id-token: write
       attestations: write
 
@@ -94,6 +95,7 @@ jobs:
       name: pypi
       url: https://pypi.org/p/in-cluster-checks
     permissions:
+      actions: read
       id-token: write
 
     steps:
@@ -112,6 +114,7 @@ jobs:
       - publish-to-pypi
     runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: write
 
     steps:

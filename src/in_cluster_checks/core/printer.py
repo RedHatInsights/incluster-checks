@@ -342,7 +342,7 @@ class StructedPrinter:
             domain_groups.setdefault(report["domain"], []).append(report)
 
         for domain_name, reports in domain_groups.items():
-            testsuite = ET.SubElement(testsuites, "testsuite", name=domain_name)
+            testsuite = ET.SubElement(testsuites, "testsuite", name=_strip_xml_illegal_chars(domain_name))
             test_count = 0
             failure_count = 0
             skipped_count = 0
@@ -350,10 +350,10 @@ class StructedPrinter:
             for report in reports:
                 for host_result in report["details"]:
                     test_count += 1
-                    node_name = host_result.get("node_name", "unknown")
+                    node_name = _strip_xml_illegal_chars(host_result.get("node_name", "unknown"))
                     tc_attrs = {
-                        "name": f"{report['key']} [{node_name}]",
-                        "classname": report["component"],
+                        "name": f"{_strip_xml_illegal_chars(report['key'])} [{node_name}]",
+                        "classname": _strip_xml_illegal_chars(report["component"]),
                     }
                     run_time = host_result.get("run_time")
                     if run_time is not None:

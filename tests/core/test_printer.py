@@ -664,6 +664,42 @@ class TestJUnitOutput:
         assert "lineone" in system_out.text
         assert "linetwo" in system_out.text
 
+    def test_print_to_junit_strips_illegal_chars_from_attributes(self, tmp_path):
+        """Verify that domain, node_name, key, and component are sanitized."""
+        output_file = tmp_path / "results.xml"
+        details = [
+            {
+                "node_ip": "192.168.1.10",
+                "node_name": "node\x00one",
+                "status": Status.PASSED.value,
+                "message": "",
+                "bash_cmd_lines": [],
+                "rule_log": [],
+                "timestamp": "2026-01-18 10:00:00",
+            }
+        ]
+        reports = [
+            {
+                "rule_id": "hw\x07bad|check\x01disk",
+                "component": "in_cluster\x0b.hw.check_disk",
+                "key": "check\x03disk",
+                "status": Status.PASSED.value,
+                "description": "Test",
+                "domain": "h\x08w",
+                "details": details,
+            }
+        ]
+
+        StructedPrinter.print_to_junit(reports, str(output_file))
+
+        tree = ET.parse(output_file)
+        suite = tree.getroot().find("testsuite")
+        assert suite.get("name") == "hw"
+
+        case = suite.find("testcase")
+        assert case.get("name") == "checkdisk [nodeone]"
+        assert case.get("classname") == "in_cluster.hw.check_disk"
+
     def test_print_to_junit_empty_results(self, tmp_path):
         output_file = tmp_path / "results.xml"
 

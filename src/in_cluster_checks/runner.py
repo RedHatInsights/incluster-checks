@@ -9,7 +9,7 @@ import importlib
 import logging
 import pkgutil
 from pathlib import Path
-from typing import Dict
+from typing import Dict, Optional
 
 from in_cluster_checks import global_config
 from in_cluster_checks.core.data_collector_runner import DataCollectorRunner
@@ -36,7 +36,8 @@ class InClusterCheckRunner:
         active_profile: str = "general",
         debug_rule_flag: bool = False,
         debug_rule_name: str = "",
-        namespace: str = "default",
+        namespace: str = "",
+        namespace_user_provided: Optional[bool] = None,
         max_workers: int = 50,
         domain_package: str = "in_cluster_checks.domains",
         light_run: bool = False,
@@ -48,11 +49,16 @@ class InClusterCheckRunner:
             active_profile: Active profile name (default: 'general'). Examples: 'general', 'nvidia', 'telco'
             debug_rule_flag: Enable debug mode for detailed output
             debug_rule_name: Name of specific rule to run in debug mode
-            namespace: Namespace for debug pods (default: "default")
+            namespace: Namespace for debug pods (auto-generated if empty)
+            namespace_user_provided: Whether the namespace was explicitly provided by the user.
+                If None (default), derived from whether namespace is non-empty.
             max_workers: Maximum number of concurrent workers for parallel execution
             domain_package: Python package path for domain discovery
             light_run: Enable light-run mode (exclude resource-intensive rules, default: False)
         """
+        if namespace_user_provided is None:
+            namespace_user_provided = bool(namespace)
+
         self.logger = logging.getLogger(__name__)
         self.domain_package = domain_package
         self.factory = None
@@ -64,6 +70,7 @@ class InClusterCheckRunner:
             debug_rule_flag_val=debug_rule_flag,
             debug_rule_name_val=debug_rule_name,
             namespace_val=namespace,
+            namespace_user_provided_val=namespace_user_provided,
             max_workers_val=max_workers,
             light_run_val=light_run,
         )
@@ -175,21 +182,24 @@ class InClusterCheckRunner:
         self.node_executors = self.factory.build_host_executors()
         self.logger.info(f"Built {len(self.node_executors)} node executor(s)")
 
-        # 2. Validate namespace permissions before attempting connections
-        self.factory.validate_namespace_permissions()
+        # 2. Ensure namespace exists (creates if needed, only for default namespace)
+        self.factory.ensure_namespace()
 
         try:
-            # 3. Connect to all nodes
+            # 3. Validate namespace permissions before attempting connections
+            self.factory.validate_namespace_permissions()
+
+            # 4. Connect to all nodes
             self.factory.connect_all()
-            # 4. Discover and instantiate domains
+            # 5. Discover and instantiate domains
             available_domain_classes = self.discover_domains()
             domains = {name: domain_class() for name, domain_class in available_domain_classes.items()}
             self.logger.info(f"Running {len(domains)} in-cluster domain(s): {', '.join(domains.keys())}")
 
-            # 5. Build component map for all rules
+            # 6. Build component map for all rules
             rule_component_map = self.build_component_map(domains)
 
-            # 6. Run in-cluster RuleDomains
+            # 7. Run in-cluster RuleDomains
             results = []
             for domain_name, domain in domains.items():
                 self.logger.info(f"Running in-cluster domain: {domain_name}")
@@ -199,24 +209,25 @@ class InClusterCheckRunner:
             # Clear data collector cache after all domains complete
             DataCollectorRunner.clear_data_collector_cache()
 
-            # 7. Aggregate and format results
+            # 8. Aggregate and format results
             reports = StructedPrinter.format_results(results, rule_component_map)
 
-            # 8. Generate JSON output (skip in debug mode)
+            # 9. Generate JSON output (skip in debug mode)
             if not global_config.debug_rule_flag:
                 StructedPrinter.print_to_json(reports, str(output_path))
                 self.logger.info(f"In-cluster check results saved to: {output_path}")
             else:
                 self.logger.info("Debug mode: JSON output disabled")
 
-            # 9. Log summary
+            # 10. Log summary
             self.log_summary(reports)
 
             return str(output_path)
 
         finally:
-            # 10. Cleanup: disconnect from all nodes
+            # 11. Cleanup: disconnect from all nodes, then delete namespace if we created it
             if self.factory:
                 self.factory.disconnect_all()
+                self.factory.delete_namespace()
 
             self.logger.info("Direct in-cluster rule checks completed")

@@ -19,7 +19,7 @@ class TestNodeExecutor:
     @patch('in_cluster_checks.core.executor.oc')
     def test_init(self, mock_oc):
         """Test NodeExecutor initialization."""
-        executor = NodeExecutor("test-node", "192.168.1.10", "default")
+        executor = NodeExecutor("test-node", "192.168.1.10")
 
         assert executor.node_name == "test-node"
         assert executor.ip == "192.168.1.10"

@@ -3,6 +3,8 @@ Tests for StructedPrinter (JSON formatter).
 """
 
 import json
+import os
+import stat
 import tempfile
 from collections import OrderedDict
 from pathlib import Path
@@ -17,7 +19,7 @@ class TestStructedPrinter:
     """Test StructedPrinter JSON formatting."""
 
     def test_print_to_json_creates_file(self, tmp_path):
-        """Test that print_to_json creates a JSON file."""
+        """Test that print_to_json creates a JSON file with restricted permissions."""
         output_file = tmp_path / "test_output.json"
 
         test_data = {
@@ -32,6 +34,25 @@ class TestStructedPrinter:
             loaded_data = json.load(f)
 
         assert loaded_data == test_data
+
+        file_mode = stat.S_IMODE(os.stat(output_file).st_mode)
+        assert file_mode == 0o600
+
+    def test_print_to_json_overwrites_existing_file(self, tmp_path):
+        """Test that print_to_json overwrites an existing file and sets restricted permissions."""
+        output_file = tmp_path / "test_output.json"
+        output_file.write_text('{"old": "data"}')
+        os.chmod(output_file, 0o644)
+
+        new_data = {"new": "data"}
+        StructedPrinter.print_to_json(new_data, str(output_file))
+
+        with open(output_file) as f:
+            loaded_data = json.load(f)
+        assert loaded_data == new_data
+
+        file_mode = stat.S_IMODE(os.stat(output_file).st_mode)
+        assert file_mode == 0o600
 
     def test_format_results_insights_format(self):
         """Test that format_results produces Insights-compatible format with grouped hosts."""

@@ -7,6 +7,7 @@ Outputs in Insights-compatible format similar to pg.json
 
 import json
 import logging
+import os
 from collections import OrderedDict
 from typing import Any, Dict
 
@@ -303,13 +304,15 @@ class StructedPrinter:
     @staticmethod
     def print_to_json(results: Dict[str, Any], output_file: str) -> None:
         """
-        Write rule results to JSON file.
+        Write rule results to JSON file with restricted permissions (owner-only).
 
         Args:
             results: Dictionary with rule results in Insights format
             output_file: Path to output JSON file
         """
-        with open(output_file, "w") as f:
+        file_descriptor = os.open(output_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(file_descriptor, "w") as f:
+            os.fchmod(f.fileno(), 0o600)
             json.dump(results, f, indent=2, default=str)
 
     @staticmethod

@@ -42,7 +42,7 @@ jobs:
           python -m venv sbom-env
           sbom-env/bin/python -m pip install dist/*.whl
           cyclonedx-py environment sbom-env/bin/python \
-            --sv 1.6 --of JSON --output-reproducible \
+            --sv 1.6 --of JSON \
             --pyproject pyproject.toml --mc-type library \
             --validate -o sbom.cdx.json
 

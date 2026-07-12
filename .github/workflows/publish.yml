@@ -127,7 +127,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name }}
-        run: gh release upload "$TAG" sbom.cdx.json --clobber
+        run: gh release upload "$TAG" sbom.cdx.json --clobber --repo "${{ github.repository }}"
 
   # Uncomment this job if you want to publish to TestPyPI first for testing
   # publish-to-testpypi:

@@ -22,6 +22,7 @@ Usage:
 
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -516,6 +517,86 @@ class OcApiUtils:
             self.logger.error(error_msg)
             return 1, "", error_msg
 
+    def _validate_args_safe(self, args: list) -> bool:
+        """
+        Validate oc command arguments against allowlist patterns.
+
+        Prevents argument injection where cluster-derived values could inject flags.
+
+        Allowed patterns:
+        - Exact: -o, -n, --no-headers, --all-namespaces, -A
+        - Prefixes: jsonpath=, --since=, --tail=, --field-selector=
+        - Resources: alphanumeric start, can contain ., /, -, :, _
+        """
+        exact_allowed = {"-o", "-n", "--no-headers", "--all-namespaces", "-A"}
+        since_pattern = re.compile(r"^--since=\d+[smhd]$")
+        tail_pattern = re.compile(r"^--tail=\d+$")
+        field_selector_pattern = re.compile(r"^--field-selector=[\w./=_-]+$")
+        resource_pattern = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9.\-/:_]*$")
+
+        for arg in args:
+            if arg in exact_allowed:
+                continue
+
+            if arg.startswith("jsonpath="):
+                if not self._validate_jsonpath_structure(arg):
+                    return False
+                continue
+
+            if (
+                since_pattern.match(arg)
+                or tail_pattern.match(arg)
+                or field_selector_pattern.match(arg)
+                or resource_pattern.match(arg)
+            ):
+                continue
+
+            return False
+
+        return True
+
+    def _validate_jsonpath_structure(self, arg: str) -> bool:
+        """
+        Validate JSONPath follows kubectl JSONPath grammar.
+
+        Grammar naturally prevents injection - valid syntax never produces space-hyphen.
+        """
+        jsonpath_value = arg.split("jsonpath=", 1)[1]
+
+        if not jsonpath_value:
+            return False
+
+        # Field: word chars, hyphens, with optional escaped dots (\.) or namespace (/)
+        # Examples: "name", "my-field", "k8s\\.v1\\.cni\\.cncf\\.io", "k8s\\.io/network-status"
+        field = r"[\w-]+(?:\\.[\w-]+)*(?:/[\w-]+(?:\\.[\w-]+)*)?"
+
+        # Dot-prefixed field
+        dot_field = rf"\.{field}"
+
+        # Bracket accessors: [*], [0], [0:5], [?(@.field=='value')]
+        brackets = r"\[(?:\*|\d+(?::\d+)?|\?\([^)]+\))\]"
+
+        # Path segment: .field optionally followed by brackets
+        # Allows: .items[*] or .metadata or .field[0][1]
+        path_segment = rf"{dot_field}(?:{brackets})*"
+
+        # Full path: one or more segments
+        # Allows: .items[*].metadata.name
+        full_path = rf"(?:{path_segment})+"
+
+        # Block content: keyword+path, path, keyword, or empty
+        # Allows: {range .items[*]}, {.field}, {end}, {}
+        content = rf"(?:range\s+{full_path}|if\s+{full_path}|{full_path}|end)?"
+
+        # Single block: {content}
+        block = rf"\{{{content}\}}"
+
+        # Full pattern: one or more blocks optionally separated by ||
+        # Allows: {...}{...}, {...}||{...}, or mixed like {range ...}{.name}||{.ns}||{end}
+        pattern = rf"^{block}(?:(?:\|\|)?{block})*$"
+
+        return re.match(pattern, jsonpath_value) is not None
+
     def run_oc_command(self, command: str, args: list, timeout: int = 120, raise_on_error: bool = True) -> tuple:
         """
         Run oc command using openshift_client library.
@@ -532,6 +613,12 @@ class OcApiUtils:
         Raises:
             UnExpectedSystemOutput: If command fails and raise_on_error is True
         """
+        if not self._validate_args_safe(args):
+            raise ValueError(
+                f"Unsafe arguments detected in oc command. "
+                f"Command: oc {command}, Args: {args}. "
+                f"Only safe arguments are allowed (see _validate_args_safe() docstring for allowed patterns)."
+            )
         cmd_str = f"oc {command} {' '.join(args)}"
         self.operator._add_cmd_to_log(cmd_str)
 

@@ -278,6 +278,12 @@ class OperatorTestBase:
             UnExpectedSystemOutput: If raise_on_error=True and return_code != 0
         """
         _ = timeout  # Acknowledge parameter
+
+        assert self.operator_object.oc_api._validate_args_safe(list(args)), (
+            f"Unsafe run_oc_command args detected: oc {command} {args}. "
+            f"All arguments must pass _validate_args_safe() validation."
+        )
+
         key = (command, tuple(args))
 
         assert key in self.oc_cmd_to_output_dict, (

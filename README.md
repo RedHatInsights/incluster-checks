@@ -90,6 +90,9 @@ You can run in-cluster-checks with the following options:
 # Run all checks. Use --output to save run results to ./cluster-checks.json
 in-cluster-checks --output ./cluster-checks.json
 
+# Output as JUnit XML (for CI dashboard integration)
+in-cluster-checks --format junit --output ./cluster-checks.xml
+
 # Run a specific rule (disables secret filtering)
 in-cluster-checks --debug-rule "check_disk_usage"
 

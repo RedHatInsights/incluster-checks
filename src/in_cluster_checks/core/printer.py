@@ -8,12 +8,21 @@ Outputs in Insights-compatible format similar to pg.json
 import json
 import logging
 import os
+import re
+import xml.etree.ElementTree as ET
 from collections import OrderedDict
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from in_cluster_checks import global_config
 from in_cluster_checks.utils.enums import Status
 from in_cluster_checks.utils.secret_filter import SecretFilter
+
+_XML_ILLEGAL_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x84\x86-\x9f]")
+
+
+def _strip_xml_illegal_chars(text: str) -> str:
+    """Remove control characters that are illegal in XML 1.0."""
+    return _XML_ILLEGAL_CHARS_RE.sub("", text)
 
 
 # ANSI color codes
@@ -314,6 +323,66 @@ class StructedPrinter:
         with os.fdopen(file_descriptor, "w") as f:
             os.fchmod(f.fileno(), 0o600)
             json.dump(results, f, indent=2, default=str)
+
+    @staticmethod
+    def print_to_junit(results: List[Dict[str, Any]], output_file: str) -> None:
+        """
+        Write rule results to JUnit XML file.
+
+        Emits one testcase per rule+host combination for CI dashboard granularity.
+
+        Args:
+            results: List of report dicts from format_results()
+            output_file: Path to output XML file
+        """
+        testsuites = ET.Element("testsuites")
+
+        domain_groups: Dict[str, list] = OrderedDict()
+        for report in results:
+            domain_groups.setdefault(report["domain"], []).append(report)
+
+        for domain_name, reports in domain_groups.items():
+            testsuite = ET.SubElement(testsuites, "testsuite", name=_strip_xml_illegal_chars(domain_name))
+            test_count = 0
+            failure_count = 0
+            skipped_count = 0
+
+            for report in reports:
+                for host_result in report["details"]:
+                    test_count += 1
+                    node_name = _strip_xml_illegal_chars(host_result.get("node_name", "unknown"))
+                    tc_attrs = {
+                        "name": f"{_strip_xml_illegal_chars(report['key'])} [{node_name}]",
+                        "classname": _strip_xml_illegal_chars(report["component"]),
+                    }
+                    run_time = host_result.get("run_time")
+                    if run_time is not None:
+                        tc_attrs["time"] = str(run_time)
+
+                    testcase = ET.SubElement(testsuite, "testcase", **tc_attrs)
+                    status = host_result.get("status")
+                    message = _strip_xml_illegal_chars(host_result.get("message", ""))
+
+                    if status in (Status.FAILED.value, Status.WARNING.value):
+                        failure_count += 1
+                        failure_type = "warning" if status == Status.WARNING.value else "failure"
+                        ET.SubElement(testcase, "failure", message=message, type=failure_type)
+                    elif status in (Status.SKIP.value, Status.NOT_APPLICABLE.value):
+                        skipped_count += 1
+                        ET.SubElement(testcase, "skipped", message=message)
+
+                    rule_log = host_result.get("rule_log", [])
+                    if rule_log:
+                        system_out = ET.SubElement(testcase, "system-out")
+                        system_out.text = "\n".join(_strip_xml_illegal_chars(line) for line in rule_log)
+
+            testsuite.set("tests", str(test_count))
+            testsuite.set("failures", str(failure_count))
+            testsuite.set("skipped", str(skipped_count))
+
+        tree = ET.ElementTree(testsuites)
+        ET.indent(tree)
+        tree.write(output_file, encoding="unicode", xml_declaration=True)
 
     @staticmethod
     def format_results(flow_results: list, rule_component_map: Dict[str, str]) -> Dict[str, Any]:

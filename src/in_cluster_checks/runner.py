@@ -165,15 +165,16 @@ class InClusterCheckRunner:
         self.logger.info(f"  Not Applicable: {not_applicable}")
         self.logger.info("=" * 60)
 
-    def run(self, output_path: Path) -> str:
+    def run(self, output_path: Path, output_format: str = "json") -> str:
         """
         Run complete in-cluster check workflow.
 
         Args:
-            output_path: Full path where JSON output will be saved
+            output_path: Full path where output will be saved
+            output_format: Output format - "json" or "junit" (default: "json")
 
         Returns:
-            Path to generated JSON file
+            Path to generated output file
         """
         self.logger.info("Starting direct in-cluster rule checks")
 
@@ -212,12 +213,15 @@ class InClusterCheckRunner:
             # 8. Aggregate and format results
             reports = StructedPrinter.format_results(results, rule_component_map)
 
-            # 9. Generate JSON output (skip in debug mode)
+            # 9. Generate output (skip in debug mode)
             if not global_config.debug_rule_flag:
-                StructedPrinter.print_to_json(reports, str(output_path))
+                if output_format == "junit":
+                    StructedPrinter.print_to_junit(reports, str(output_path))
+                else:
+                    StructedPrinter.print_to_json(reports, str(output_path))
                 self.logger.info(f"In-cluster check results saved to: {output_path}")
             else:
-                self.logger.info("Debug mode: JSON output disabled")
+                self.logger.info("Debug mode: output disabled")
 
             # 10. Log summary
             self.log_summary(reports)

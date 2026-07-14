@@ -23,7 +23,7 @@ The in-cluster check framework runs direct rule checks on live clusters using `o
 2. **Executor Creation**: Creates `NodeExecutor` instances for each node using `oc debug`
 3. **Domain Discovery**: `InClusterCheckRunner.discover_domains()` auto-discovers all `RuleDomain` subclasses
 4. **Domain Execution**: Each `RuleDomain` runs its rules via `ParallelRunner`
-5. **Result Aggregation**: `StructedPrinter` collects results and generates JSON output
+5. **Result Aggregation**: `StructedPrinter` collects results and generates output (JSON or JUnit XML)
 6. **Cleanup**: Disconnect from all nodes
 
 ## Rule Types
@@ -50,7 +50,7 @@ All rules use the `Status` enum (`utils/enums.py`):
 - `DataCollector` (`core/operations.py`): Base class for data collection
 - `NodeExecutor` (`core/executor.py`): Runs commands on nodes via `oc debug`
 - `NodeExecutorFactory` (`core/executor_factory.py`): Node discovery and executor creation
-- `StructedPrinter` (`core/printer.py`): Result collection, formatting, and JSON output
+- `StructedPrinter` (`core/printer.py`): Result collection, formatting, and output (JSON/JUnit XML)
 
 ## Development Guidelines
 

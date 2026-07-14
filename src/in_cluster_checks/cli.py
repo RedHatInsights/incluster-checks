@@ -14,6 +14,24 @@ from pathlib import Path
 from in_cluster_checks.runner import InClusterCheckRunner
 from profiles.loader import ProfileLoader
 
+OUTPUT_DEFAULTS = {
+    "json": "./cluster-checks.json",
+    "junit": "./cluster-checks.xml",
+}
+
+
+def get_default_output(output_format: str) -> str:
+    """
+    Return the default output file path for the given format.
+
+    Args:
+        output_format: Output format ("json" or "junit")
+
+    Returns:
+        Default output file path with the appropriate extension
+    """
+    return OUTPUT_DEFAULTS.get(output_format, OUTPUT_DEFAULTS["json"])
+
 
 def setup_logging(level: str) -> None:
     """
@@ -156,8 +174,16 @@ def main() -> None:
         "--output",
         "-o",
         type=str,
-        default="./cluster-checks.json",
-        help="Output file path for JSON results (default: ./cluster-checks.json)",
+        default=None,
+        help="Output file path for results (default: ./cluster-checks.json or ./cluster-checks.xml for junit)",
+    )
+
+    parser.add_argument(
+        "--format",
+        type=str,
+        choices=["json", "junit"],
+        default="json",
+        help="Output format (default: json)",
     )
 
     parser.add_argument(
@@ -221,6 +247,9 @@ def main() -> None:
         )
         sys.exit(2)
 
+    if args.output is None:
+        args.output = get_default_output(args.format)
+
     # Setup logging
     try:
         setup_logging(args.log_level)
@@ -278,7 +307,7 @@ def main() -> None:
             logger.info("Secret filtering is DISABLED in debug mode")
             logger.info("JSON output is DISABLED in debug mode")
 
-        result_path = runner.run(output_path=output_path)
+        result_path = runner.run(output_path=output_path, output_format=args.format)
 
         logger.info("=" * 60)
         logger.info("Checks completed successfully")

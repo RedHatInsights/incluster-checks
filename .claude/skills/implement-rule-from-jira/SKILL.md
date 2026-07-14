@@ -144,15 +144,26 @@ Ensure all tests pass before proceeding.
 
 ### 6a. Review Existing Template
 
-Read an existing Confluence page as a template:
-- [TLS certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482936)
-- [Node certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418558)
+Read an existing Confluence page as a template using Confluence MCP:
+- [TLS certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482936) (page ID: 418482936)
+- [Node certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418558) (page ID: 418418558)
 
-### 6b. Generate Documentation Content
+### 6b. Create Documentation Page via Confluence MCP
 
-Create documentation page content following the standard structure:
+Create the page directly using `mcp__plugin_atlassian_atlassian__createConfluencePage`.
 
-**Standard Structure**:
+**Page title**: Use the rule's `title` field exactly (e.g., "Verify infrastructure pods are ready and running").
+
+**Domain parent page IDs** (space ID: `377096307`):
+- DPF: `418450735`
+- Hardware: `418418340`
+- K8s: `418516155`
+- Linux: `418482835`
+- Network: `418482854`
+- Resources: `418450807`
+- Security: `418516403`
+
+**Standard Structure** (use `contentFormat: "html"`):
 - **Description**: What the rule checks, why it's important, severity, failure thresholds
 - **Prerequisites**: Required access, tools, or conditions
 - **Impact**: What happens if the condition fails
@@ -161,28 +172,13 @@ Create documentation page content following the standard structure:
 - **Solution**: Step-by-step remediation with code examples
 - **Resources**: Links to official docs, KCS articles, guides
 
-### 6c. Present Documentation Content
+See @.claude/rules/confluence-guidelines.md for detailed formatting rules.
 
-Show the complete page content in a markdown code block for easy copy-paste:
+### 6c. Add Confluence Link to Rule
 
-```
-Here's the documentation page content for your new rule.
-
-**IMPORTANT - Manual Steps Required:**
-
-1. **Navigate to**: https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418417677/In-Cluster+Checks+Rules
-2. Open the appropriate **domain page** (e.g., Network, K8s, Security)
-3. Click **Create** to add a child page
-4. Set the title to the rule's title
-5. Paste the content from below
-6. **Publish** the page
-7. **Copy the page URL** and add it to the rule's `links` field
-
-```markdown
-[Documentation content here]
-```
-
-**Note**: After creating the page, copy the Confluence URL and update the rule's `links` field to match.
+After page creation, the MCP tool returns the page ID. Add the link to the rule's `links` field:
+```python
+links = ["https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/{PAGE_ID}"]
 ```
 
 ## Step 7: Run All Tests
@@ -276,7 +272,6 @@ Use `mcp__plugin_github_github__create_pull_request`:
   
   ## Documentation
   Confluence page: https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/{PAGE_ID}
-  (Will be created after PR approval)
   ```
 
 Return the PR URL to the user.
@@ -328,10 +323,8 @@ Before marking complete, verify:
 - [ ] Tests written with passed and failed scenarios
 - [ ] All tests passing
 - [ ] Pre-commit checks passing
-- [ ] Documentation page content created and provided to user
-- [ ] User instructed to create Confluence page under appropriate domain
+- [ ] Confluence documentation page created via MCP under appropriate domain
 - [ ] Confluence link added to rule's `links` field
-- [ ] User reminded to verify Confluence link matches actual page URL
 - [ ] Committed with conventional commit format
 - [ ] Rebased on upstream/main
 - [ ] Pushed to origin
@@ -352,7 +345,7 @@ Expected flow:
 6. Create rule in src/in_cluster_checks/rules/network/
 7. Register in NetworkValidationDomain
 8. Create tests in tests/rules/network/
-9. Generate documentation page content and provide to user
+9. Create Confluence documentation page via MCP under Network domain
 10. Run tests → all pass ✓
 11. Commit with: feat(PDRIVE-505): add network connectivity validation
 12. Rebase on upstream/main

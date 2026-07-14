@@ -101,8 +101,9 @@ All rules use the `Status` enum (`utils/enums.py`):
 **Creating Documentation Page Content:**
 - **Workflow**:
   1. Read an existing Confluence page as a template (e.g., [TLS certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482936))
-  2. Create the new documentation page in Confluence under the appropriate domain
+  2. Create the new documentation page in Confluence under the appropriate domain using `mcp__plugin_atlassian_atlassian__createConfluencePage`
   3. Add the Confluence page URL to the rule's `links` field
+- **Page title**: Use the rule's `title` field exactly (e.g., "Verify infrastructure pods are ready and running"), not a `Domain-Rule-Name` format
 
 **Documentation Page Structure:**
 All documentation pages should follow this standard structure:
@@ -115,7 +116,7 @@ All documentation pages should follow this standard structure:
   - **Resources**: Links to official documentation, KCS articles, troubleshooting guides
 
 **Documentation Page Examples:**
-- See existing templates: [Security - TLS certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482936), [Security - Node certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418558)
+- See existing templates: [TLS certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482936), [Node certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418558)
 
 **Detailed Documentation Creation:**
 For comprehensive guidelines on creating Confluence documentation pages, see [@.claude/rules/confluence-guidelines.md](confluence-guidelines.md).

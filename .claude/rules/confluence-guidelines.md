@@ -21,8 +21,32 @@ Example location: `src/in_cluster_checks/rules/network/ovs_validations.py`
 
 ## Step 2: Create Confluence Page
 
-**Naming convention:** `<Domain>-<Rule-Name>`
-- Examples: `Network-OVS-Physical-Port-Health-Check`, `Storage-Disk-Space-Check`
+**Title convention:** Use the rule's `title` field exactly as defined in the class.
+- Examples: `Verify infrastructure pods are ready and running`, `TLS certificate expiry`, `Check deployment replicas status`
+- The page is placed under the appropriate domain parent page (K8s, Network, Security, etc.), so no domain prefix is needed in the title.
+
+**Domain parent page IDs** (under [In-Cluster Checks Rules](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418417677)):
+- DPF: `418450735`
+- Hardware: `418418340`
+- K8s: `418516155`
+- Linux: `418482835`
+- Network: `418482854`
+- Resources: `418450807`
+- Security: `418516403`
+
+**Space ID:** `377096307`
+
+**Create pages using the Confluence MCP tool:**
+```python
+mcp__plugin_atlassian_atlassian__createConfluencePage(
+  cloudId: "redhat.atlassian.net",
+  spaceId: "377096307",
+  parentId: "<domain-parent-page-id>",
+  title: "<rule-title>",
+  contentFormat: "html",
+  body: "<page-content>"
+)
+```
 
 **Template sections (in order):**
 1. **Description** - What the rule checks and when it fails (1-3 sentences)
@@ -237,5 +261,6 @@ Or use numbered steps for multi-step procedures:
 
 ## Documentation Page Examples
 
-- [Security - TLS certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482936)
-- [Security - Node certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418558)
+- [TLS certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482936)
+- [Node certificate expiry](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418558)
+- [Verify infrastructure pods are ready and running](https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/435226813)

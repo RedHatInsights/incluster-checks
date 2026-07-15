@@ -53,6 +53,12 @@ def set_config(
     if not active_profile_val:
         raise ValueError("active_profile must be provided and cannot be empty")
 
+    if namespace_val == "default":
+        raise ValueError(
+            "The 'default' namespace is not allowed for debug pods. "
+            "Use namespace='' for an auto-generated namespace, or specify a dedicated one."
+        )
+
     debug_rule_flag = debug_rule_flag_val
     debug_rule_name = debug_rule_name_val
     max_workers = max_workers_val

@@ -6,6 +6,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from in_cluster_checks import global_config
+from in_cluster_checks.core.rule import Rule
 from src.profiles.loader import ProfileLoader
 from src.profiles.profile import Profiles
 
@@ -276,8 +278,6 @@ class TestRuleProfileEnablement:
     @pytest.fixture
     def loaded_profiles(self, rule_profiles_yaml):
         """Load profiles for testing."""
-        from in_cluster_checks import global_config
-
         profile = Profiles()
         ProfileLoader.load(profile, rule_profiles_yaml)
         global_config.profiles_hierarchy = profile
@@ -286,8 +286,6 @@ class TestRuleProfileEnablement:
 
     def test_default_rule_runs_for_all_profiles(self, loaded_profiles):
         """Test that default rule (supported_profiles={'general'}) runs for all profiles."""
-        from in_cluster_checks import global_config
-        from in_cluster_checks.core.rule import Rule
 
         class DefaultRule(Rule):
             title = "Default Rule"
@@ -305,8 +303,6 @@ class TestRuleProfileEnablement:
 
     def test_nvidia_rule_only_runs_for_nvidia_ai(self, loaded_profiles):
         """Test that nvidia-specific rule only runs for nvidia/ai profiles."""
-        from in_cluster_checks import global_config
-        from in_cluster_checks.core.rule import Rule
 
         class NvidiaRule(Rule):
             title = "Nvidia Rule"
@@ -331,8 +327,6 @@ class TestRuleProfileEnablement:
 
     def test_telco_rule_only_runs_for_telco(self, loaded_profiles):
         """Test that telco-specific rule only runs for telco profiles."""
-        from in_cluster_checks import global_config
-        from in_cluster_checks.core.rule import Rule
 
         class TelcoRule(Rule):
             title = "Telco Rule"
@@ -354,8 +348,6 @@ class TestRuleProfileEnablement:
 
     def test_multi_profile_rule(self, loaded_profiles):
         """Test rule that supports multiple profiles."""
-        from in_cluster_checks import global_config
-        from in_cluster_checks.core.rule import Rule
 
         class MultiRule(Rule):
             title = "Multi Profile Rule"
@@ -384,8 +376,6 @@ class TestRuleProfileEnablement:
 
     def test_transitive_inclusion(self, loaded_profiles):
         """Test that rules work with transitive profile inclusion."""
-        from in_cluster_checks import global_config
-        from in_cluster_checks.core.rule import Rule
 
         class TelcoBaseRule(Rule):
             title = "Telco Base Rule"
@@ -415,8 +405,6 @@ class TestGlobalConfig:
 
     def test_set_config_requires_active_profile(self):
         """Test that set_config() raises ValueError when active_profile is empty."""
-        from in_cluster_checks import global_config
-
         with pytest.raises(ValueError) as exc_info:
             global_config.set_config(active_profile_val="")
 
@@ -424,10 +412,17 @@ class TestGlobalConfig:
         assert "active_profile" in error_message
         assert "cannot be empty" in error_message
 
+    def test_set_config_rejects_default_namespace(self):
+        """Test that set_config() raises ValueError when namespace is 'default'."""
+        with pytest.raises(ValueError) as exc_info:
+            global_config.set_config(active_profile_val="general", namespace_val="default")
+
+        error_message = str(exc_info.value)
+        assert "default" in error_message
+        assert "not allowed" in error_message
+
     def test_set_config_with_valid_profile(self):
         """Test that set_config() works correctly with a valid profile."""
-        from in_cluster_checks import global_config
-
         # Should not raise any exception
         global_config.set_config(active_profile_val="general")
 
@@ -438,8 +433,6 @@ class TestGlobalConfig:
 
     def test_set_config_with_custom_profile(self):
         """Test that set_config() works with different profile values."""
-        from in_cluster_checks import global_config
-
         # Test with nvidia profile
         global_config.set_config(active_profile_val="nvidia")
         assert global_config.active_profile == "nvidia"

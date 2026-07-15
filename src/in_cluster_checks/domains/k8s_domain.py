@@ -19,18 +19,18 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     ValidateAllDaemonsetsScheduled,
     ValidateAllPoliciesCompliant,
     ValidateNamespaceStatus,
-    VerifyAcmOperatorHealth,
     VerifyClusterOperatorsAvailable,
-    VerifyFarContainerNonRoot,
     VerifyFARControllerReplicas,
-    VerifyFarOperatorHealth,
     VerifyInternalRegistry,
-    VerifyMdrOperatorHealth,
     VerifyNetworkDiagnosticsDisabled,
+    VerifyWebConsoleDisabled,
+)
+from in_cluster_checks.rules.k8s.subscription_operator_validations import (
+    VerifyAcmOperatorHealth,
+    VerifyFarContainerNonRoot,
     VerifyNfdOperatorHealth,
     VerifyNfdPodRestartCount,
-    VerifyNmoOperatorHealth,
-    VerifyWebConsoleDisabled,
+    VerifyWorkloadAvailabilityNamespaceHealth,
 )
 
 
@@ -70,9 +70,7 @@ class K8sValidationDomain(RuleDomain):
             VerifyNfdOperatorHealth,
             VerifyNfdPodRestartCount,
             VerifyAcmOperatorHealth,
-            VerifyNmoOperatorHealth,
-            VerifyFarOperatorHealth,
+            VerifyWorkloadAvailabilityNamespaceHealth,
             VerifyFARControllerReplicas,
             VerifyFarContainerNonRoot,
-            VerifyMdrOperatorHealth,
         ]

@@ -9,18 +9,18 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     ValidateAllDaemonsetsScheduled,
     ValidateAllPoliciesCompliant,
     ValidateNamespaceStatus,
-    VerifyAcmOperatorHealth,
     VerifyClusterOperatorsAvailable,
-    VerifyFarContainerNonRoot,
-    VerifyFARControllerReplicas,
-    VerifyFarOperatorHealth,
+VerifyFARControllerReplicas,
     VerifyInternalRegistry,
-    VerifyMdrOperatorHealth,
     VerifyNetworkDiagnosticsDisabled,
+    VerifyWebConsoleDisabled,
+)
+from in_cluster_checks.rules.k8s.subscription_operator_validations import (
+    VerifyAcmOperatorHealth,
+    VerifyFarContainerNonRoot,
     VerifyNfdOperatorHealth,
     VerifyNfdPodRestartCount,
-    VerifyNmoOperatorHealth,
-    VerifyWebConsoleDisabled,
+    VerifyWorkloadAvailabilityNamespaceHealth,
 )
 
 
@@ -35,7 +35,7 @@ def test_k8s_domain_rules():
     domain = K8sValidationDomain()
     rules = domain.get_rule_classes()
 
-    assert len(rules) == 22
+    assert len(rules) == 20
     assert AllPodsReadyAndRunning in rules
     assert NodesAreReady in rules
     assert NodesCpuAndMemoryStatus in rules
@@ -52,6 +52,4 @@ def test_k8s_domain_rules():
     assert VerifyNfdOperatorHealth in rules
     assert VerifyNfdPodRestartCount in rules
     assert VerifyAcmOperatorHealth in rules
-    assert VerifyNmoOperatorHealth in rules
-    assert VerifyFarOperatorHealth in rules
-    assert VerifyMdrOperatorHealth in rules
+    assert VerifyWorkloadAvailabilityNamespaceHealth in rules

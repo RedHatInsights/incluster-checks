@@ -81,11 +81,11 @@ class TestOperator:
 
             # Check debug output was printed
             captured = capsys.readouterr()
-            assert "[DEBUG] Executing on test-node: test command" in captured.out
-            assert "[DEBUG] Return code: 1" in captured.out
-            assert "[DEBUG] STDOUT:" in captured.out
+            assert "[DEBUG] [test-node] Executing: test command" in captured.out
+            assert "[DEBUG] [test-node] Return code: 1" in captured.out
+            assert "[DEBUG] [test-node] STDOUT:" in captured.out
             assert "stdout_output" in captured.out
-            assert "[DEBUG] STDERR:" in captured.out
+            assert "[DEBUG] [test-node] STDERR:" in captured.out
             assert "stderr_output" in captured.out
         finally:
             global_config.debug_rule_flag = original_debug
@@ -131,9 +131,9 @@ class TestOperator:
 
             # Check debug output
             captured = capsys.readouterr()
-            assert "[DEBUG] Executing on test-node: test command" in captured.out
-            assert "[DEBUG] Return code: 0" in captured.out
-            assert "[DEBUG] STDOUT:" in captured.out
+            assert "[DEBUG] [test-node] Executing: test command" in captured.out
+            assert "[DEBUG] [test-node] Return code: 0" in captured.out
+            assert "[DEBUG] [test-node] STDOUT:" in captured.out
             assert "command output" in captured.out
         finally:
             global_config.debug_rule_flag = original_debug
@@ -158,8 +158,8 @@ class TestOperator:
 
             # Check debug output (comes from run_cmd which is called internally)
             captured = capsys.readouterr()
-            assert "[DEBUG] Executing on test-node: test command" in captured.out
-            assert "[DEBUG] Return code: 1" in captured.out
+            assert "[DEBUG] [test-node] Executing: test command" in captured.out
+            assert "[DEBUG] [test-node] Return code: 1" in captured.out
         finally:
             global_config.debug_rule_flag = original_debug
 

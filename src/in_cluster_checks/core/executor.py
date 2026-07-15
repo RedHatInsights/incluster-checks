@@ -22,7 +22,6 @@ except ImportError:
     # Will be handled at runtime if NodeExecutor is used
     oc = None
 
-from in_cluster_checks import global_config
 from in_cluster_checks.core.exceptions import HostNotReachable
 from in_cluster_checks.utils.enums import ORCHESTRATOR_HOST_IP, ORCHESTRATOR_HOST_NAME, Objectives
 from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
@@ -133,11 +132,6 @@ class NodeExecutor:
         self._pod_id = None
         self._connection_error_details = ""
         self._threadLock = threading.Lock()
-
-    def _debug_log(self, message: str):
-        """Print debug message when --debug-rule is active."""
-        if global_config.debug_rule_flag:
-            print(f"\n[DEBUG] [{self.node_name}] {message}", flush=True)
 
     def connect(self):
         """

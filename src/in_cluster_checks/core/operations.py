@@ -35,6 +35,9 @@ class Operator:
     # e.g., [Objectives.ALL_NODES], [Objectives.ICE_CONTAINER], etc.
     objective_hosts = []
 
+    # Thread-safe debug output lock (prevents interleaved output in parallel execution)
+    _debug_lock = threading.RLock()
+
     def __init__(self, host_executor):
         """
         Initialize operator with a host executor.
@@ -67,6 +70,11 @@ class Operator:
         """Get node role labels (e.g., 'control-plane,worker')."""
         return self._host_executor.node_labels
 
+    def _debug_log(self, message: str):
+        """Print debug message when --debug-rule is active."""
+        if global_config.debug_rule_flag:
+            print(f"\n[DEBUG] [{self.get_host_name()}] {message}", flush=True)
+
     def run_cmd(self, cmd: SafeCmdString, timeout: int = 120, add_bash_timeout: bool = False) -> tuple:
         """
         Run command on host/container and log it.
@@ -81,22 +89,20 @@ class Operator:
         """
         self._add_cmd_to_log(cmd)
 
-        # In debug mode, print command BEFORE execution
-        if global_config.debug_rule_flag:
-            host_name = self.get_host_name()
-            print(f"\n[DEBUG] Executing on {host_name}: {cmd}", flush=True)
-
+        # Execute command (parallelized, no lock)
         return_code, out, err = self._host_executor.execute_cmd(cmd, timeout, add_bash_timeout=add_bash_timeout)
 
-        # Handle debug validation mode vs normal mode differently
+        # In debug mode, print results with lock to prevent output interleaving
         if global_config.debug_rule_flag:
-            # Debug validation: print output after execution
-            print(f"[DEBUG] Return code: {return_code}", flush=True)
-            if out:
-                print(f"[DEBUG] STDOUT:\n{out}", flush=True)
-            if err:
-                print(f"[DEBUG] STDERR:\n{err}", flush=True)
-            print("=" * 60, flush=True)
+            with self._debug_lock:
+                self._debug_log(f"Executing: {cmd}")
+                self._debug_log(f"Return code: {return_code}")
+                if out:
+                    self._debug_log(f"STDOUT:\n{out}")
+                if err:
+                    self._debug_log(f"STDERR:\n{err}")
+                print("=" * 60, flush=True)
+
         # Note: In normal mode, we don't log failed commands since many failures are expected
         # (e.g., prerequisite checks testing if commands exist). The JSON output contains
         # exception details when validations fail.

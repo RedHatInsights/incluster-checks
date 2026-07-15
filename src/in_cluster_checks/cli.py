@@ -239,14 +239,6 @@ def main() -> None:
     args = parser.parse_args()
     namespace_user_provided = args.namespace is not None
 
-    if args.namespace == "default":
-        print(
-            "Error: The 'default' namespace is not allowed for debug pods. "
-            "Omit --namespace for an auto-generated namespace, or specify a dedicated one.",
-            file=sys.stderr,
-        )
-        sys.exit(2)
-
     if args.output is None:
         args.output = get_default_output(args.format)
 

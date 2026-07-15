@@ -5,6 +5,7 @@ Direct port from: HealthChecks/flows/K8s/k8s_components/k8s_sanity_checks.py
 """
 
 import json
+from datetime import datetime, timezone
 
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.rule import OrchestratorRule
@@ -96,6 +97,160 @@ class AllPodsReadyAndRunning(OrchestratorRule):
                 ready_pods.append(pod_info)
 
         return ready_pods, not_running_pods
+
+
+class InfraPodsReadyAndRunning(OrchestratorRule):
+    """Verify pods in infrastructure namespaces are ready and running.
+
+    Scoped replacement for AllPodsReadyAndRunning that only checks critical
+    OpenShift infrastructure namespaces, avoiding scale/memory issues and
+    false positives from user workload pods.
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "infra_pods_ready_and_running"
+    title = "Verify infrastructure pods are ready and running"
+    links = ["https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/435226813"]
+
+    HISTORICAL_POD_AGE_THRESHOLD = 86400  # 24 hours in seconds
+
+    INFRA_NAMESPACES = [
+        "openshift-etcd",
+        "openshift-kube-apiserver",
+        "openshift-kube-controller-manager",
+        "openshift-kube-scheduler",
+        "openshift-apiserver",
+        "openshift-controller-manager",
+        "openshift-machine-api",
+        "openshift-machine-config-operator",
+        "openshift-ingress",
+        "openshift-dns",
+        "openshift-sdn",
+        "openshift-ovn-kubernetes",
+        "openshift-multus",
+        "openshift-monitoring",
+        "openshift-image-registry",
+        "openshift-authentication",
+        "openshift-oauth-apiserver",
+        "openshift-operator-lifecycle-manager",
+        "openshift-marketplace",
+        "openshift-console",
+        "openshift-cluster-storage-operator",
+        "openshift-network-operator",
+    ]
+
+    def run_rule(self):
+        """Check if infrastructure pods are ready and running."""
+        ready_pods, not_running_pods, old_failed_pods = self._get_pods_lists()
+
+        if len(ready_pods) == 0 and len(not_running_pods) == 0 and len(old_failed_pods) == 0:
+            return RuleResult.failed("Did not get any pods from infrastructure namespaces")
+
+        threshold_hours = self.HISTORICAL_POD_AGE_THRESHOLD // 3600
+
+        if not_running_pods:
+            message = "Not all infrastructure pods are running\n"
+            message += "Following pods are not running or partially not ready:\n"
+            for pod_info in not_running_pods:
+                namespace = pod_info["namespace"]
+                pod_name = pod_info["name"]
+                status = pod_info["status"]
+                ready = pod_info["ready"]
+                message += f"  {namespace}/{pod_name} - Ready: {ready}, Status: {status}\n"
+            if old_failed_pods:
+                message += f"\nOld (>{threshold_hours}h) failed pods (non-critical):\n"
+                for pod_info in old_failed_pods:
+                    message += f"  {pod_info['namespace']}/{pod_info['name']}\n"
+            return RuleResult.failed(message)
+
+        if old_failed_pods:
+            message = f"Found old (>{threshold_hours}h) failed pods in infrastructure namespaces:\n"
+            for pod_info in old_failed_pods:
+                message += f"  {pod_info['namespace']}/{pod_info['name']}\n"
+            return RuleResult.warning(message)
+
+        return RuleResult.passed()
+
+    def _get_pods_lists(self):
+        """Get lists of ready, not-ready, and old failed pods from infrastructure namespaces.
+
+        Old Failed Job/CronJob pods are skipped entirely.
+        Other old Failed pods are collected separately for warning.
+
+        Returns:
+            tuple: (ready_pods_list, not_running_pods_list, old_failed_pods_list)
+        """
+        ready_pods = []
+        not_running_pods = []
+        old_failed_pods = []
+
+        for namespace in self.INFRA_NAMESPACES:
+            pod_objects = self.oc_api.get_pods(namespace=namespace, timeout=30)
+            if not pod_objects:
+                continue
+
+            for pod in pod_objects:
+                pod_data = pod.as_dict()
+                pod_name = pod_data["metadata"]["name"]
+                status_dict = pod_data.get("status", {})
+                phase = status_dict.get("phase", "Unknown")
+
+                if phase == "Succeeded":
+                    continue
+
+                if phase == "Failed" and self._is_old_pod(pod_data, self.HISTORICAL_POD_AGE_THRESHOLD):
+                    if self._is_job_or_cronjob_owned(pod_data):
+                        continue
+                    old_failed_pods.append({"namespace": namespace, "name": pod_name})
+                    continue
+
+                container_statuses = status_dict.get("containerStatuses", [])
+                total_containers = len(container_statuses)
+                ready_containers = sum(1 for c in container_statuses if c.get("ready", False))
+                ready_str = f"{ready_containers}/{total_containers}"
+
+                pod_info = {
+                    "namespace": namespace,
+                    "name": pod_name,
+                    "status": phase,
+                    "ready": ready_str,
+                }
+
+                if phase != "Running" or total_containers == 0 or ready_containers != total_containers:
+                    not_running_pods.append(pod_info)
+                else:
+                    ready_pods.append(pod_info)
+
+        return ready_pods, not_running_pods, old_failed_pods
+
+    @staticmethod
+    def _is_job_or_cronjob_owned(pod_data: dict) -> bool:
+        """Check if a pod is owned by a Job or CronJob."""
+        owner_references = pod_data.get("metadata", {}).get("ownerReferences", [])
+        return any(ref.get("kind") in ("Job", "CronJob") for ref in owner_references)
+
+    @staticmethod
+    def _is_old_pod(pod_data: dict, threshold_seconds: int) -> bool:
+        """Check if a pod is older than the given threshold.
+
+        Uses the most recent container finishedAt if available, otherwise falls back to creationTimestamp.
+        """
+        finished_timestamps = []
+        for cs in pod_data.get("status", {}).get("containerStatuses", []):
+            finished_at = cs.get("state", {}).get("terminated", {}).get("finishedAt")
+            if finished_at:
+                finished_timestamps.append(finished_at)
+        timestamp_str = max(finished_timestamps) if finished_timestamps else None
+        if not timestamp_str:
+            timestamp_str = pod_data.get("metadata", {}).get("creationTimestamp")
+        if not timestamp_str:
+            return False
+        try:
+            parsed_time = datetime.fromisoformat(timestamp_str.replace("Z", "+00:00"))
+            age_seconds = (datetime.now(timezone.utc) - parsed_time).total_seconds()
+            return age_seconds > threshold_seconds
+        except (ValueError, AttributeError) as err:
+            raise UnExpectedSystemOutput(f"Failed to parse pod timestamp: {timestamp_str}") from err
 
 
 class NodesAreReady(OrchestratorRule):

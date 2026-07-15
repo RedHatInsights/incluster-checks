@@ -13,6 +13,7 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
     AllDeploymentsAvailable,
     AllPodsReadyAndRunning,
     AllStatefulsetsReady,
+    InfraPodsReadyAndRunning,
     CheckDeploymentsReplicaStatus,
     NodesAreReady,
     NodesCpuAndMemoryStatus,
@@ -99,6 +100,230 @@ class TestAllPodsReadyAndRunning:
         result = tested_object.run_rule()
         assert result.status == Status.FAILED
         assert "Did not get any pods" in result.message
+
+
+def create_mock_infra_pod(
+    namespace, name, phase, ready_containers, total_containers, owner_kind=None, creation_timestamp=None,
+    finished_at=None,
+):
+    """Create a mock pod object with optional owner and timestamp fields."""
+    mock_pod = Mock()
+    container_statuses = [{"ready": i < ready_containers} for i in range(total_containers)]
+    if finished_at and container_statuses:
+        container_statuses[0]["state"] = {"terminated": {"finishedAt": finished_at}}
+    pod_dict = {
+        "metadata": {"namespace": namespace, "name": name},
+        "status": {
+            "phase": phase,
+            "containerStatuses": container_statuses,
+        },
+    }
+    if owner_kind:
+        pod_dict["metadata"]["ownerReferences"] = [{"kind": owner_kind}]
+    if creation_timestamp:
+        pod_dict["metadata"]["creationTimestamp"] = creation_timestamp
+    mock_pod.as_dict.return_value = pod_dict
+    return mock_pod
+
+
+class TestInfraPodsReadyAndRunning:
+    """Test InfraPodsReadyAndRunning rule."""
+
+    @pytest.fixture
+    def tested_object(self):
+        """Create instance of InfraPodsReadyAndRunning for testing."""
+        return InfraPodsReadyAndRunning(host_executor=Mock(), node_executors={})
+
+    def test_all_infra_pods_running(self, tested_object):
+        """Test when all infrastructure pods are running and ready."""
+        def mock_get_pods(namespace, timeout=30):
+            if namespace == "openshift-etcd":
+                return [create_mock_infra_pod("openshift-etcd", "etcd-master-0", "Running", 3, 3)]
+            if namespace == "openshift-kube-apiserver":
+                return [create_mock_infra_pod("openshift-kube-apiserver", "kube-apiserver-master-0", "Running", 2, 2)]
+            return []
+
+        tested_object.oc_api.get_pods = Mock(side_effect=mock_get_pods)
+        result = tested_object.run_rule()
+        assert result.status == Status.PASSED
+
+    def test_infra_pod_not_running(self, tested_object):
+        """Test when an infrastructure pod is in Pending state."""
+        def mock_get_pods(namespace, timeout=30):
+            if namespace == "openshift-etcd":
+                return [
+                    create_mock_infra_pod("openshift-etcd", "etcd-master-0", "Running", 3, 3),
+                    create_mock_infra_pod("openshift-etcd", "etcd-master-1", "Pending", 0, 3),
+                ]
+            return []
+
+        tested_object.oc_api.get_pods = Mock(side_effect=mock_get_pods)
+        result = tested_object.run_rule()
+        assert result.status == Status.FAILED
+        assert "etcd-master-1" in result.message
+        assert "Pending" in result.message
+
+    def test_infra_pod_partially_ready(self, tested_object):
+        """Test when a pod is Running but not all containers are ready."""
+        def mock_get_pods(namespace, timeout=30):
+            if namespace == "openshift-monitoring":
+                return [
+                    create_mock_infra_pod("openshift-monitoring", "prometheus-0", "Running", 1, 3),
+                ]
+            return []
+
+        tested_object.oc_api.get_pods = Mock(side_effect=mock_get_pods)
+        result = tested_object.run_rule()
+        assert result.status == Status.FAILED
+        assert "prometheus-0" in result.message
+        assert "1/3" in result.message
+
+    def test_completed_pods_ignored(self, tested_object):
+        """Test that Succeeded pods are skipped."""
+        def mock_get_pods(namespace, timeout=30):
+            if namespace == "openshift-etcd":
+                return [
+                    create_mock_infra_pod("openshift-etcd", "etcd-master-0", "Running", 3, 3),
+                    create_mock_infra_pod("openshift-etcd", "installer-1-completed", "Succeeded", 0, 1),
+                ]
+            return []
+
+        tested_object.oc_api.get_pods = Mock(side_effect=mock_get_pods)
+        result = tested_object.run_rule()
+        assert result.status == Status.PASSED
+
+    def test_no_infra_pods_found(self, tested_object):
+        """Test when no pods are found in any infrastructure namespace."""
+        tested_object.oc_api.get_pods = Mock(return_value=[])
+        result = tested_object.run_rule()
+        assert result.status == Status.FAILED
+        assert "Did not get any pods from infrastructure namespaces" in result.message
+
+    def test_old_failed_job_pod_skipped(self, tested_object):
+        """Test that old (>24h) Failed Job pods are skipped."""
+        def mock_get_pods(namespace, timeout=30):
+            if namespace == "openshift-image-registry":
+                return [
+                    create_mock_infra_pod("openshift-image-registry", "registry-pod", "Running", 1, 1),
+                    create_mock_infra_pod(
+                        "openshift-image-registry", "image-pruner-28000-abc",
+                        "Failed", 0, 1, owner_kind="Job",
+                        creation_timestamp="2020-01-01T00:00:00Z",
+                    ),
+                ]
+            return []
+
+        tested_object.oc_api.get_pods = Mock(side_effect=mock_get_pods)
+        result = tested_object.run_rule()
+        assert result.status == Status.PASSED
+
+    def test_recent_failed_job_pod_not_skipped(self, tested_object):
+        """Test that recent Failed Job pods are NOT skipped."""
+        from datetime import datetime, timezone
+
+        recent_time = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        def mock_get_pods(namespace, timeout=30):
+            if namespace == "openshift-image-registry":
+                return [
+                    create_mock_infra_pod("openshift-image-registry", "registry-pod", "Running", 1, 1),
+                    create_mock_infra_pod(
+                        "openshift-image-registry", "image-pruner-28001-xyz",
+                        "Failed", 0, 1, owner_kind="Job",
+                        creation_timestamp=recent_time,
+                    ),
+                ]
+            return []
+
+        tested_object.oc_api.get_pods = Mock(side_effect=mock_get_pods)
+        result = tested_object.run_rule()
+        assert result.status == Status.FAILED
+        assert "image-pruner-28001-xyz" in result.message
+
+    def test_old_failed_non_job_pod_warning(self, tested_object):
+        """Test that old Failed pods NOT owned by Job/CronJob produce a warning."""
+        def mock_get_pods(namespace, timeout=30):
+            if namespace == "openshift-etcd":
+                return [
+                    create_mock_infra_pod("openshift-etcd", "etcd-master-0", "Running", 3, 3),
+                    create_mock_infra_pod(
+                        "openshift-etcd", "installer-1-master-0",
+                        "Failed", 0, 1, owner_kind="ConfigMap",
+                        creation_timestamp="2020-01-01T00:00:00Z",
+                    ),
+                ]
+            return []
+
+        tested_object.oc_api.get_pods = Mock(side_effect=mock_get_pods)
+        result = tested_object.run_rule()
+        assert result.status == Status.WARNING
+        assert "installer-1-master-0" in result.message
+
+    def test_mixed_failed_and_old_failed_pods(self, tested_object):
+        """Test that FAILED result includes both not-running and old failed pods."""
+        def mock_get_pods(namespace, timeout=30):
+            if namespace == "openshift-etcd":
+                return [
+                    create_mock_infra_pod("openshift-etcd", "etcd-master-0", "Running", 3, 3),
+                    create_mock_infra_pod("openshift-etcd", "etcd-quorum-guard", "Pending", 0, 1),
+                ]
+            if namespace == "openshift-kube-apiserver":
+                return [
+                    create_mock_infra_pod(
+                        "openshift-kube-apiserver", "installer-1-master-0",
+                        "Failed", 0, 1, owner_kind="ConfigMap",
+                        creation_timestamp="2020-01-01T00:00:00Z",
+                    ),
+                ]
+            return []
+
+        tested_object.oc_api.get_pods = Mock(side_effect=mock_get_pods)
+        result = tested_object.run_rule()
+        assert result.status == Status.FAILED
+        assert "etcd-quorum-guard" in result.message
+        assert "installer-1-master-0" in result.message
+        assert "non-critical" in result.message
+
+    def test_old_failed_cronjob_pod_skipped(self, tested_object):
+        """Test that old (>24h) Failed CronJob pods are skipped."""
+        def mock_get_pods(namespace, timeout=30):
+            if namespace == "openshift-image-registry":
+                return [
+                    create_mock_infra_pod("openshift-image-registry", "registry-pod", "Running", 1, 1),
+                    create_mock_infra_pod(
+                        "openshift-image-registry", "image-pruner-cronjob-abc",
+                        "Failed", 0, 1, owner_kind="CronJob",
+                        finished_at="2020-01-01T00:00:00Z",
+                    ),
+                ]
+            return []
+
+        tested_object.oc_api.get_pods = Mock(side_effect=mock_get_pods)
+        result = tested_object.run_rule()
+        assert result.status == Status.PASSED
+
+    def test_pod_with_zero_containers_not_running(self, tested_object):
+        """Test that a Running pod with 0/0 containers is treated as not running."""
+        def mock_get_pods(namespace, timeout=30):
+            if namespace == "openshift-monitoring":
+                return [
+                    create_mock_infra_pod("openshift-monitoring", "empty-pod", "Running", 0, 0),
+                ]
+            return []
+
+        tested_object.oc_api.get_pods = Mock(side_effect=mock_get_pods)
+        result = tested_object.run_rule()
+        assert result.status == Status.FAILED
+        assert "empty-pod" in result.message
+        assert "0/0" in result.message
+
+    def test_only_queries_infra_namespaces(self, tested_object):
+        """Test that get_pods is only called for infrastructure namespaces."""
+        tested_object.oc_api.get_pods = Mock(return_value=[])
+        tested_object.run_rule()
+
+        called_namespaces = [call.kwargs.get("namespace") for call in tested_object.oc_api.get_pods.call_args_list]
+        assert set(called_namespaces) == set(InfraPodsReadyAndRunning.INFRA_NAMESPACES)
 
 
 def create_mock_node(name, ready_status, other_conditions=None):

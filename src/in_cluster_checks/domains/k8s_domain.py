@@ -8,11 +8,11 @@ Based on HealthChecks/flows/K8s/k8s_components/K8s_flow.py
 from typing import List
 
 from in_cluster_checks.core.domain import RuleDomain
-from in_cluster_checks.rules.k8s.k8s_validations import (
+from in_cluster_checks.rules.k8s.k8s_validations import (  # AllPodsReadyAndRunning disabled (PDRIVE-806)
     AllDeploymentsAvailable,
-    AllPodsReadyAndRunning,
     AllStatefulsetsReady,
     CheckDeploymentsReplicaStatus,
+    InfraPodsReadyAndRunning,
     NodesAreReady,
     NodesCpuAndMemoryStatus,
     OpenshiftOperatorStatus,
@@ -53,7 +53,8 @@ class K8sValidationDomain(RuleDomain):
             List of Rule classes
         """
         return [
-            AllPodsReadyAndRunning,
+            # AllPodsReadyAndRunning,  # Disabled: replaced by InfraPodsReadyAndRunning (PDRIVE-806)
+            InfraPodsReadyAndRunning,
             NodesAreReady,
             NodesCpuAndMemoryStatus,
             ValidateNamespaceStatus,

@@ -218,7 +218,7 @@ class NodeExecutor:
             with oc.project(self.namespace):
                 result = oc.invoke(
                     "rsh",
-                    cmd_args=[self._pod_id, "bash", "-c", f"chroot /host {cmd}"],
+                    cmd_args=[self._pod_id, "chroot", "/host", "bash", "-c", cmd],
                     auto_raise=False,  # Don't raise exception on non-zero exit codes
                 )
         return result

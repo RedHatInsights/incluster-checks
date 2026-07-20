@@ -440,3 +440,13 @@ class TestGlobalConfig:
         # Test with telco profile
         global_config.set_config(active_profile_val="telco")
         assert global_config.active_profile == "telco"
+
+    def test_spectrum_x_profile_resolves_correctly(self):
+        """Test that spectrum-x profile resolves with general."""
+        global_config.set_config(active_profile_val="spectrum-x")
+        assert global_config.active_profile == "spectrum-x"
+
+        spectrum_x_deps = global_config.profiles_hierarchy["spectrum-x"]
+        assert "spectrum-x" in spectrum_x_deps
+        assert "general" in spectrum_x_deps
+        assert len(spectrum_x_deps) == 2

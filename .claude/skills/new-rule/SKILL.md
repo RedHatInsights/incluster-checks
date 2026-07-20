@@ -249,9 +249,23 @@ self.oc_api.run_rsh_cmd(namespace, pod, cmd2)
 - One SafeCmdString per line (except `SafeCmdString() + SafeCmdString()` is allowed)
 
 
+## Step 6: Set Supported Profile
+
+If the rule may be specific to a deployment type (e.g., telco, AI, Spectrum-X), **ask the user which profile it should target** before finalizing.
+
+Check `src/profiles/profiles.yaml` for available profiles and their hierarchy. Only leave the default `{"general"}` if the rule applies to ALL cluster types.
+
+```python
+class MyRuleName(Rule):
+    supported_profiles = {"spectrum-x"}  # Only runs for spectrum-x profile
+```
+
+See "Supported Profiles" in @.claude/rules/in-cluster-check.md for details.
+
 ## Checklist
 
 - [ ] Rule class created with `objective_hosts`, `unique_name`, `title`
+- [ ] Asked user about `supported_profiles` if rule may be specific to a deployment type
 - [ ] `run_rule()` implemented returning `RuleResult`
 - [ ] `is_prerequisite_fulfilled()` added if rule requires specific tools/conditions
 - [ ] `UnExpectedSystemOutput` used for command failures

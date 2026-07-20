@@ -65,7 +65,7 @@ All rules use the `Status` enum (`utils/enums.py`):
 - Set `supported_profiles` as a class variable with a set of profile names (e.g., `supported_profiles = {"telco-base"}`)
 - Only omit `supported_profiles` (leaving default `{"general"}`) for truly generic rules that apply to ANY cluster type
 - Rules are automatically filtered based on the active profile — only rules matching the profile hierarchy are executed
-- Common profiles: `"general"` (default, all clusters), `"telco-base"` (telco-specific checks)
+- Check `src/profiles/profiles.yaml` for the full list of available profiles and their hierarchy
 - Example:
   ```python
   class VerifyNFDOperatorHealth(Rule):

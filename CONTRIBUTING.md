@@ -598,6 +598,27 @@ We recommend developing and testing directly on a machine with OpenShift cluster
 
 If all tests pass and pre-commit runs successfully, your development environment is ready!
 
+### Accessing OpenShift Clusters from Local Machine
+
+**Prerequisite**: You must be able to run `oc` commands successfully against your target OpenShift cluster from your local machine before using `in-cluster-checks`.
+
+**Setup requirements**:
+
+1. **Install OpenShift CLI (`oc`)**: Refer to [OpenShift CLI documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/4.17/html/cli_tools/openshift-cli-oc)
+
+2. **Configure cluster access**: Ensure `oc get nodes` works from your local machine
+   - For direct access: Configure your `KUBECONFIG` to point to the cluster
+   - For restricted networks: Set up SSH port forwarding or VPN access to reach the cluster API server
+
+Refer to [OpenShift CLI documentation](https://docs.redhat.com/en/documentation/openshift_container_platform/4.17/html/cli_tools/openshift-cli-oc) for detailed cluster access configuration.
+
+**Verify access**:
+
+```bash
+export KUBECONFIG=/path/to/your/kubeconfig
+oc get nodes  # Should list cluster nodes
+```
+
 ### Making Code Changes
 
 1. **Create a new branch**:

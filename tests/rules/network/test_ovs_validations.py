@@ -168,17 +168,15 @@ class TestIsOVNKubernetesCollector(DataCollectorTestBase):
             "OVN-Kubernetes cluster",
             {},
             scenario_res=True,
+            tested_object_mock_dict={"oc_api.select_single_resource": Mock(return_value=network_mock_ovn)},
         ),
         DataCollectorScenarioParams(
             "non-OVN cluster",
             {},
             scenario_res=False,
+            tested_object_mock_dict={"oc_api.select_single_resource": Mock(return_value=network_mock_other)},
         ),
     ]
-
-    # Set tested_object_mock_dict for each scenario
-    scenarios[0].tested_object_mock_dict = {"oc_api.select_resources": Mock(return_value=network_mock_ovn)}
-    scenarios[1].tested_object_mock_dict = {"oc_api.select_resources": Mock(return_value=network_mock_other)}
 
     @pytest.mark.parametrize("scenario_params", scenarios)
     def test_collect_data(self, scenario_params, tested_object):

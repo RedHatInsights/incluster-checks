@@ -182,7 +182,7 @@ class HwFwRule(OrchestratorRule):
 
         # Process each node group
         for group_label, executors in node_groups.items():
-            group_result = OrderedDict()
+            group_result: OrderedDict[str, Any] = OrderedDict()
             group_result["node_count"] = len(executors)
             group_result["nodes"] = [e.node_name for e in executors]
             group_result[category_key] = OrderedDict()
@@ -223,9 +223,10 @@ class HwFwRule(OrchestratorRule):
                     collector_result["value"] = self._get_list_of_id_host_name_data(group_data)
 
                 # Create nested structure: topic -> name -> result (HC Blueprint format)
-                if topic not in group_result[category_key]:
-                    group_result[category_key][topic] = OrderedDict()
-                group_result[category_key][topic][name] = collector_result
+                category_data: OrderedDict = group_result[category_key]
+                if topic not in category_data:
+                    category_data[topic] = OrderedDict()
+                category_data[topic][name] = collector_result
 
             result_data[group_label] = group_result
 

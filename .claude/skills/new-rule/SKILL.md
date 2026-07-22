@@ -107,7 +107,7 @@ class MyOrchestratorRule(OrchestratorRule):
 ```python
 # Use existing oc_api methods when available
 pods = self.oc_api.get_pods(namespace="openshift-etcd")
-network = self.oc_api.select_resources("network.operator/cluster", single=True)
+network = self.oc_api.select_single_resource("network.operator/cluster")
 
 # Run commands inside pods
 cmd = SafeCmdString("etcdctl version")

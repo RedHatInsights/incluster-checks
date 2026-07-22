@@ -2369,7 +2369,7 @@ class TestVerifyFARControllerReplicas(RuleTestBase):
         RuleScenarioParams(
             "FAR deployment has 2 replicas and all are ready",
             tested_object_mock_dict={
-                "oc_api.select_resources": Mock(return_value=create_mock_infrastructure_for_far("HighlyAvailable")),
+                "oc_api.select_single_resource": Mock(return_value=create_mock_infrastructure_for_far("HighlyAvailable")),
                 "oc_api.get_all_deployments": Mock(
                     return_value=[
                         create_mock_deployment(
@@ -2389,7 +2389,7 @@ class TestVerifyFARControllerReplicas(RuleTestBase):
         RuleScenarioParams(
         "FAR deployment disappears before rule execution",
         tested_object_mock_dict={
-                "oc_api.select_resources": Mock(
+                "oc_api.select_single_resource": Mock(
                 return_value=create_mock_infrastructure_for_far("HighlyAvailable")
                 ),
                 "oc_api.get_all_deployments": Mock(return_value=[]),
@@ -2402,7 +2402,7 @@ class TestVerifyFARControllerReplicas(RuleTestBase):
         RuleScenarioParams(
             "FAR deployment has wrong spec replicas",
             tested_object_mock_dict={
-                "oc_api.select_resources": Mock(return_value=create_mock_infrastructure_for_far("HighlyAvailable")),
+                "oc_api.select_single_resource": Mock(return_value=create_mock_infrastructure_for_far("HighlyAvailable")),
                 "oc_api.get_all_deployments": Mock(
                     return_value=[
                         create_mock_deployment(
@@ -2419,7 +2419,7 @@ class TestVerifyFARControllerReplicas(RuleTestBase):
         RuleScenarioParams(
             "FAR deployment has correct spec but not all replicas ready",
             tested_object_mock_dict={
-                "oc_api.select_resources": Mock(return_value=create_mock_infrastructure_for_far("HighlyAvailable")),
+                "oc_api.select_single_resource": Mock(return_value=create_mock_infrastructure_for_far("HighlyAvailable")),
                 "oc_api.get_all_deployments": Mock(
                     return_value=[
                         create_mock_deployment(
@@ -2457,7 +2457,7 @@ class TestVerifyFARControllerReplicas(RuleTestBase):
 
     def test_sno_cluster_skipped(self, tested_object):
         """Test that rule is skipped on SNO (Single Node OpenShift) cluster."""
-        tested_object.oc_api.select_resources = Mock(return_value=create_mock_infrastructure_for_far("SingleReplica"))
+        tested_object.oc_api.select_single_resource = Mock(return_value=create_mock_infrastructure_for_far("SingleReplica"))
         tested_object.oc_api.get_all_deployments = Mock(
             return_value=[
                 create_mock_deployment(

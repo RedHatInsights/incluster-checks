@@ -4,6 +4,8 @@ Subscription operator validations for OpenShift clusters.
 Validates health and status of subscription operators.
 """
 
+from typing import Any
+
 from in_cluster_checks.core.rule import OrchestratorRule
 from in_cluster_checks.core.rule_result import PrerequisiteResult, RuleResult
 from in_cluster_checks.utils.enums import Objectives
@@ -39,7 +41,7 @@ class SubscriptionOperatorRule(OrchestratorRule):
             f"{self.operator_display_name} operator is not installed on this cluster"
         )
 
-    def _check_pod_security_context(self, pod_name: str, security_context: dict[str, object] | None) -> list[str]:
+    def _check_pod_security_context(self, pod_name: str, security_context: dict[str, Any] | None) -> list[str]:
         """Validate pod-level security context has runAsNonRoot set to true.
 
         Args:
@@ -61,7 +63,7 @@ class SubscriptionOperatorRule(OrchestratorRule):
             )
         return errors
 
-    def _check_containers_non_root(self, pod_name: str, all_containers: list[dict[str, object]]) -> list[str]:
+    def _check_containers_non_root(self, pod_name: str, all_containers: list[dict[str, Any]]) -> list[str]:
         """Validate no container runs as root (runAsUser != 0, runAsNonRoot not false).
 
         Args:

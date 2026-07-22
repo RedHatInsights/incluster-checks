@@ -76,7 +76,7 @@ class TestCephOsdTreeWorks(RuleTestBase):
             tested_object_mock_dict={
                 # Both tools and operator pods return None
                 "oc_api.get_pod_name": Mock(return_value=None),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         )
     ]
@@ -86,7 +86,7 @@ class TestCephOsdTreeWorks(RuleTestBase):
             "operator pod available",
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-operator-abc123"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         )
     ]
@@ -102,7 +102,7 @@ class TestCephOsdTreeWorks(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         ),
         RuleScenarioParams(
@@ -116,7 +116,7 @@ class TestCephOsdTreeWorks(RuleTestBase):
             tested_object_mock_dict={
                 # First call returns None (no tools pod), second call returns operator pod
                 "oc_api.get_pod_name": Mock(side_effect=[None, "rook-ceph-operator-abc123"]),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         )
     ]
@@ -131,7 +131,7 @@ class TestCephOsdTreeWorks(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
             failed_msg="ceph osd tree is not working.\nError: connection refused",
         ),
@@ -144,7 +144,7 @@ class TestCephOsdTreeWorks(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(side_effect=[None, "rook-ceph-operator-abc123"]),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
             failed_msg="ceph osd tree is not working.\nError: failed to connect",
         )
@@ -216,7 +216,7 @@ class TestIsCephHealthOk(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         ),
         RuleScenarioParams(
@@ -230,7 +230,7 @@ class TestIsCephHealthOk(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         ),
         RuleScenarioParams(
@@ -244,7 +244,7 @@ class TestIsCephHealthOk(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(side_effect=[None, "rook-ceph-operator-abc123"]),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         ),
     ]
@@ -261,7 +261,7 @@ class TestIsCephHealthOk(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
             failed_msg=(
                 "Ceph health is not ok.\n"
@@ -288,7 +288,7 @@ class TestIsCephHealthOk(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
             failed_msg=(
                 "Ceph health is not ok.\n"
@@ -313,7 +313,7 @@ class TestIsCephHealthOk(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
             failed_msg="Failed to get ceph health status.\nError: connection timeout",
         ),
@@ -328,7 +328,7 @@ class TestIsCephHealthOk(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(side_effect=[None, "rook-ceph-operator-abc123"]),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
             failed_msg="Failed to get ceph health status.\nError: cluster unreachable",
         ),
@@ -382,7 +382,7 @@ class TestIsCephOSDsNearFull(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         )
     ]
@@ -397,7 +397,7 @@ class TestIsCephOSDsNearFull(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
             failed_msg=(
                 "There are OSDs disk usage near or already over the limit.\n"
@@ -421,7 +421,7 @@ class TestIsCephOSDsNearFull(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
             failed_msg=(
                 "There are OSDs disk usage near or already over the limit.\n"
@@ -442,7 +442,7 @@ class TestIsCephOSDsNearFull(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
             failed_msg="Failed to get ceph osd df status.\nError: command not found",
         ),
@@ -493,7 +493,7 @@ class TestIsOSDsUp(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         )
     ]
@@ -508,7 +508,7 @@ class TestIsOSDsUp(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
             failed_msg="The following OSDs are in down state: [osd.1, osd.2]",
         ),
@@ -521,7 +521,7 @@ class TestIsOSDsUp(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
             failed_msg="Failed to get ceph osd tree status.\nError: ceph cluster not available",
         ),
@@ -572,7 +572,7 @@ class TestIsOSDsWeightOK(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         )
     ]
@@ -587,7 +587,7 @@ class TestIsOSDsWeightOK(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
             failed_msg=(
                 "The following OSDs weight not in acceptable range:\n\n"
@@ -603,7 +603,7 @@ class TestIsOSDsWeightOK(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
             failed_msg=(
                 "The following OSDs weight not in acceptable range:\n\n"
@@ -622,7 +622,7 @@ class TestIsOSDsWeightOK(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
             failed_msg="Failed to get ceph osd df status.\nError: timeout",
         ),
@@ -656,7 +656,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         ),
         RuleScenarioParams(
@@ -673,7 +673,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         ),
         RuleScenarioParams(
@@ -685,7 +685,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         ),
         RuleScenarioParams(
@@ -702,7 +702,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         ),
     ]
@@ -722,7 +722,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         ),
     ]
@@ -752,7 +752,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         ),
         RuleScenarioParams(
@@ -777,7 +777,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         ),
         RuleScenarioParams(
@@ -804,7 +804,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         ),
     ]
@@ -834,7 +834,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         ),
         RuleScenarioParams(
@@ -861,7 +861,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         ),
     ]
@@ -891,7 +891,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         ),
         RuleScenarioParams(
@@ -920,7 +920,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         ),
         RuleScenarioParams(
@@ -945,7 +945,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         ),
         RuleScenarioParams(
@@ -972,7 +972,7 @@ class TestOrphanCsiVolumes(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-xyz"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
             failed_msg="Failed to list CSI subvolumes from Ceph.\nError: Error: unable to connect to ceph cluster",
         ),
@@ -1008,7 +1008,7 @@ class TestOsdJournalError(RuleTestBase):
             "all OSD pods healthy",
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
                 "_get_osd_pods": Mock(
                     return_value=[
                         create_pod_mock("rook-ceph-osd-0", phase="Running", ready=True, restarts=0),
@@ -1024,7 +1024,7 @@ class TestOsdJournalError(RuleTestBase):
             "OSD pod not running",
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
                 "_get_osd_pods": Mock(
                     return_value=[
                         create_pod_mock("rook-ceph-osd-0", phase="Pending", ready=False, restarts=0),
@@ -1044,7 +1044,7 @@ class TestOsdJournalError(RuleTestBase):
             "OSD pod with recent restarts",
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
                 "_get_osd_pods": Mock(
                     return_value=[
                         create_pod_mock(
@@ -1070,7 +1070,7 @@ class TestOsdJournalError(RuleTestBase):
             "OSD pod in CrashLoopBackOff",
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
                 "_get_osd_pods": Mock(
                     return_value=[
                         create_pod_mock("rook-ceph-osd-0", phase="Running", ready=False, waiting_reason="CrashLoopBackOff"),
@@ -1114,7 +1114,7 @@ class TestCheckPoolSize(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         )
     ]
@@ -1130,7 +1130,7 @@ class TestCheckPoolSize(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
             failed_msg="ceph replication factor is less than 2 in following pools:\nname2",
         ),
@@ -1144,7 +1144,7 @@ class TestCheckPoolSize(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
             failed_msg="ceph replication factor is less than 2 in following pools:\npool1\npool2",
         ),
@@ -1160,7 +1160,7 @@ class TestCheckPoolSize(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
             failed_msg="Failed to get ceph pool details.\nError: connection refused",
         ),
@@ -1194,7 +1194,7 @@ class TestCephSlowOps(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         ),
     ]
@@ -1213,7 +1213,7 @@ class TestCephSlowOps(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
             failed_msg=(
                 "There are slow ops observed on this cluster. "
@@ -1231,7 +1231,7 @@ class TestCephSlowOps(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
             failed_msg=(
                 "There are slow ops observed on this cluster. "
@@ -1251,7 +1251,7 @@ class TestCephSlowOps(RuleTestBase):
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_resources": Mock(return_value=Mock()),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
             failed_msg="Failed to get ceph health detail.\nError: connection refused",
         ),

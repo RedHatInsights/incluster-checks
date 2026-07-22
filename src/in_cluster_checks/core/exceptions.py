@@ -44,7 +44,8 @@ class UnExpectedSystemOutput(ExecutionException):
 
         # Sanitize command before including in exception message
         safe_cmd = SecretFilter.sanitize(self.cmd)
-        super().__init__(f"{message} on {ip}: {safe_cmd}\nOutput: {output[:500]}")  # Limit output length
+        safe_output = SecretFilter.sanitize(output[:500])
+        super().__init__(f"{message} on {ip}: {safe_cmd}\nOutput: {safe_output}")
 
     def __str__(self):
         """Return formatted exception string (HC-style)."""

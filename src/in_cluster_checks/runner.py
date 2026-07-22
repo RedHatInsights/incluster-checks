@@ -14,6 +14,7 @@ from typing import Dict, Optional
 from in_cluster_checks import global_config
 from in_cluster_checks.core.data_collector_runner import DataCollectorRunner
 from in_cluster_checks.core.domain import RuleDomain
+from in_cluster_checks.core.executor import NodeExecutor
 from in_cluster_checks.core.executor_factory import NodeExecutorFactory
 from in_cluster_checks.core.printer import StructedPrinter
 from in_cluster_checks.utils.enums import Status
@@ -61,8 +62,8 @@ class InClusterCheckRunner:
 
         self.logger = logging.getLogger(__name__)
         self.domain_package = domain_package
-        self.factory = None
-        self.node_executors = None
+        self.factory: NodeExecutorFactory | None = None
+        self.node_executors: Dict[str, NodeExecutor] | None = None
 
         # Set global config so other components can access it
         global_config.set_config(

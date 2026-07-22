@@ -163,7 +163,7 @@ class BondDnsCollector(OvsOperatorBase, DataCollector):
 
         return all_bonds_dns
 
-    def collect_data(self, **kwargs) -> dict:
+    def collect_data(self, **kwargs) -> dict | None:
         """
         Collect DNS server data from all bond interfaces.
 

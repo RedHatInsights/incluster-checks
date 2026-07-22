@@ -78,7 +78,7 @@ class Rule(Operator):
         return self.objective_hosts
 
     @classmethod
-    def get_unique_name_classmethod(cls) -> str:
+    def get_unique_name_classmethod(cls) -> str | None:
         """
         Get unique operation name without instantiation.
 

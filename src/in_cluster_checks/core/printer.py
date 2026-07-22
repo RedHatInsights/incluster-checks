@@ -311,12 +311,12 @@ class StructedPrinter:
             logger.info("")  # Empty line after host validations
 
     @staticmethod
-    def print_to_json(results: Dict[str, Any], output_file: str) -> None:
+    def print_to_json(results: List[Dict[str, Any]], output_file: str) -> None:
         """
         Write rule results to JSON file with restricted permissions (owner-only).
 
         Args:
-            results: Dictionary with rule results in Insights format
+            results: List of report dicts from format_results()
             output_file: Path to output JSON file
         """
         file_descriptor = os.open(output_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -359,7 +359,7 @@ class StructedPrinter:
                     if run_time is not None:
                         tc_attrs["time"] = str(run_time)
 
-                    testcase = ET.SubElement(testsuite, "testcase", **tc_attrs)
+                    testcase = ET.SubElement(testsuite, "testcase", tc_attrs)
                     status = host_result.get("status")
                     message = _strip_xml_illegal_chars(host_result.get("message", ""))
 
@@ -380,7 +380,7 @@ class StructedPrinter:
         tree.write(output_file, encoding="unicode", xml_declaration=True)
 
     @staticmethod
-    def format_results(flow_results: list, rule_component_map: Dict[str, str]) -> Dict[str, Any]:
+    def format_results(flow_results: list, rule_component_map: Dict[str, str]) -> List[Dict[str, Any]]:
         """
         Format multiple flow results into Insights-compatible structure.
 
@@ -393,21 +393,17 @@ class StructedPrinter:
             rule_component_map: Map of {rule_name: full_component_path}
 
         Returns:
-            Formatted results dictionary:
+            List of report dicts, each containing:
             {
-                "in_cluster_rules": [
-                    {
-                        "rule_id": "domain|rule",
-                        "component": "...",
-                        "key": "rule",
-                        "status": "aggregated_status",  # Worst status across all hosts
-                        "description": "...",
-                        "domain": "...",
-                        "details": [  # Array of host results
-                            {"node_ip": "...", "node_name": "...", "status": "...", ...},
-                            {"node_ip": "...", "node_name": "...", "status": "...", ...}
-                        ]
-                    }
+                "rule_id": "domain|rule",
+                "component": "...",
+                "key": "rule",
+                "status": "aggregated_status",  # Worst status across all hosts
+                "description": "...",
+                "domain": "...",
+                "details": [  # Array of host results
+                    {"node_ip": "...", "node_name": "...", "status": "...", ...},
+                    {"node_ip": "...", "node_name": "...", "status": "...", ...}
                 ]
             }
         """

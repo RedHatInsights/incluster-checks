@@ -35,6 +35,8 @@ class Operator:
     # e.g., [Objectives.ALL_NODES], [Objectives.ICE_CONTAINER], etc.
     objective_hosts = []
 
+    unique_name: str | None = None
+
     # Thread-safe debug output lock (prevents interleaved output in parallel execution)
     _debug_lock = threading.RLock()
 
@@ -76,7 +78,11 @@ class Operator:
             print(f"\n[DEBUG] [{self.get_host_name()}] {message}", flush=True)
 
     def run_cmd(
-        self, cmd: SafeCmdString, timeout: int = 120, hosts_cached_pool: dict = None, add_bash_timeout: bool = False
+        self,
+        cmd: SafeCmdString,
+        timeout: int = 120,
+        hosts_cached_pool: dict | None = None,
+        add_bash_timeout: bool = False,
     ) -> tuple:
         """
         Run command on host/container and log it.
@@ -141,7 +147,7 @@ class Operator:
         return res
 
     def get_output_from_run_cmd(
-        self, cmd: SafeCmdString, timeout: int = 30, message: str = None, hosts_cached_pool: dict = None
+        self, cmd: SafeCmdString, timeout: int = 30, message: str | None = None, hosts_cached_pool: dict | None = None
     ) -> str:
         """
         Run command, log it, and return stdout if successful.
@@ -315,13 +321,9 @@ class Operator:
                 f"Add as class variable: unique_name = 'your_unique_name'"
             )
 
-    def get_unique_name(self) -> str:
+    def get_unique_name(self) -> str | None:
         """Get unique operation name (accessible as class or instance attribute)."""
         return self.unique_name
-
-    def get_severity(self) -> str:
-        """Get severity level (HC-style interface)."""
-        return self._severity if self._severity else "NA"
 
     def get_implication_tags(self) -> list:
         """Get implication tags (HC-style interface)."""
@@ -505,7 +507,9 @@ class OrchestratorDataCollector(DataCollector):
             objective_hosts = [Objectives.ORCHESTRATOR]
 
             def collect_data(self):
-                network_obj = self.oc_api.select_resources("network.operator/cluster", single=True)
+                network_obj = self.oc_api.select_single_resource("network.operator/cluster")
+                if not network_obj:
+                    return None
                 return network_obj.model.spec.defaultNetwork.type
     """
 
@@ -531,7 +535,11 @@ class OrchestratorDataCollector(DataCollector):
         pass
 
     def run_cmd(
-        self, cmd: SafeCmdString, timeout: int = 120, hosts_cached_pool: dict = None, add_bash_timeout: bool = False
+        self,
+        cmd: SafeCmdString,
+        timeout: int = 120,
+        hosts_cached_pool: dict | None = None,
+        add_bash_timeout: bool = False,
     ) -> tuple:
         """
         Not available for OrchestratorDataCollector - use oc_api methods instead.

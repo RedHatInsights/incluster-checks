@@ -104,7 +104,7 @@ def get_dict_from_string(text: str, delimiter: str = None) -> Dict[str, Union[st
     Returns:
         Dictionary mapping keys to values (auto-converts values to int when possible)
     """
-    result = {}
+    result: Dict[str, Union[str, int]] = {}
     delimiter = delimiter or " "
 
     for line in text.splitlines():

@@ -76,10 +76,18 @@ class VerifyAllNNCPsAvailable(OrchestratorRule):
         for nncp in nncps:
             # Validate required metadata field
             if not hasattr(nncp, "model") or not hasattr(nncp.model, "metadata"):
-                raise UnExpectedSystemOutput(f"NNCP object missing required 'model.metadata' structure: {nncp}")
+                raise UnExpectedSystemOutput(
+                    ip=self.get_host_ip(),
+                    cmd="oc get nodenetworkconfigurationpolicies -A",
+                    output=str(nncp),
+                    message=f"NNCP object missing required 'model.metadata' structure: {nncp}",
+                )
             if not hasattr(nncp.model.metadata, "name"):
                 raise UnExpectedSystemOutput(
-                    f"NNCP object missing required 'model.metadata.name' field: {nncp.model.metadata}"
+                    ip=self.get_host_ip(),
+                    cmd="oc get nodenetworkconfigurationpolicies -A",
+                    output=str(nncp.model.metadata),
+                    message=f"NNCP object missing required 'model.metadata.name' field: {nncp.model.metadata}",
                 )
 
             nncp_name = nncp.model.metadata.name
@@ -107,9 +115,19 @@ class VerifyAllNNCPsAvailable(OrchestratorRule):
         condition_map = {}
         for cond in conditions:
             if not hasattr(cond, "type"):
-                raise UnExpectedSystemOutput(f"NNCP {nncp_name} condition missing required 'type' field: {cond}")
+                raise UnExpectedSystemOutput(
+                    ip=self.get_host_ip(),
+                    cmd="oc get nodenetworkconfigurationpolicies -A",
+                    output=str(cond),
+                    message=f"NNCP {nncp_name} condition missing required 'type' field: {cond}",
+                )
             if not hasattr(cond, "status"):
-                raise UnExpectedSystemOutput(f"NNCP {nncp_name} condition missing required 'status' field: {cond}")
+                raise UnExpectedSystemOutput(
+                    ip=self.get_host_ip(),
+                    cmd="oc get nodenetworkconfigurationpolicies -A",
+                    output=str(cond),
+                    message=f"NNCP {nncp_name} condition missing required 'status' field: {cond}",
+                )
             condition_map[cond.type] = cond
 
         # Check Available condition

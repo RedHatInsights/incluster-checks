@@ -13,6 +13,7 @@ from typing import Any, Dict
 
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.executor import OrchestratorExecutor
+from in_cluster_checks.core.operations import DataCollector
 from in_cluster_checks.core.parallel_runner import ParallelRunner
 from in_cluster_checks.utils.dict_utils import convert_dict_to_sorted_json_str
 from in_cluster_checks.utils.enums import ORCHESTRATOR_HOST_NAME, Objectives
@@ -37,7 +38,7 @@ class DataCollectorRunner:
 
     @classmethod
     def execute_data_collector(
-        cls, rule_instance, collector_class: type, use_parallel: bool = True, **kwargs
+        cls, rule_instance, collector_class: type[DataCollector], use_parallel: bool = True, **kwargs
     ) -> Dict[str, Any]:
         """
         Execute a DataCollector on all hosts and return aggregated results.
@@ -193,7 +194,12 @@ class DataCollectorRunner:
 
     @classmethod
     def run_collectors(
-        cls, collector_instances: list, use_parallel: bool, collector_class: type, rule_instance, **kwargs
+        cls,
+        collector_instances: list,
+        use_parallel: bool,
+        collector_class: type[DataCollector],
+        rule_instance,
+        **kwargs,
     ) -> Dict[str, Dict]:
         """
         Run collectors with caching for many-to-one relationships.
@@ -391,7 +397,7 @@ class DataCollectorRunner:
 
     @staticmethod
     def handle_collector_failures(
-        rule_instance, collector_class: type, host_exceptions: Dict[str, str], hosts_dict: Dict[str, Any]
+        rule_instance, collector_class: type[DataCollector], host_exceptions: Dict[str, str], hosts_dict: Dict[str, Any]
     ):
         """
         Handle collector failures and track success.
@@ -428,7 +434,7 @@ class DataCollectorRunner:
         Returns:
             True if all hosts failed, False otherwise
         """
-        return host_exceptions_dict and set(host_exceptions_dict.keys()) == set(hosts_dict.keys())
+        return bool(host_exceptions_dict) and set(host_exceptions_dict.keys()) == set(hosts_dict.keys())
 
     @staticmethod
     def format_collector_exceptions(collector_name: str, host_exceptions_dict: Dict[str, str]) -> list:

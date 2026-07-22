@@ -16,7 +16,7 @@ Usage:
 
     class MyCollector(OrchestratorDataCollector):
         def collect_data(self):
-            network_obj = self.oc_api.select_resources("network.operator/cluster", single=True)
+            network_obj = self.oc_api.select_single_resource("network.operator/cluster")
             ...
 """
 
@@ -347,48 +347,22 @@ class OcApiUtils:
             # If parsing fails, return the original timestamp
             return creation_timestamp
 
-    def select_resources(
+    def _log_and_build_selector_kwargs(
         self,
         resource_type: str,
         namespace: str | None = None,
         labels: Dict[str, str] | None = None,
-        field_selector: dict | None = None,
+        field_selector: Dict[str, str] | None = None,
         all_namespaces: bool = False,
-        timeout: int = 30,
-        single: bool = False,
-    ) -> list | Any | None:
-        """Execute oc.selector with consistent error handling and timeout management.
-
-        This is a generic wrapper around oc.selector() that provides:
-        - Consistent timeout management
-        - Standardized error handling with contextual logging
-        - Support for both .objects() (list) and .object() (single) patterns
-        - Validation of mutually exclusive parameters
-
-        Args:
-            resource_type: Resource type to select (e.g., "node", "pod", "network.operator/cluster")
-            namespace: Specific namespace to search in (mutually exclusive with all_namespaces)
-            labels: Dictionary of label selectors (e.g., {"app": "myapp"})
-            field_selector: Dictionary of field selectors for server-side filtering.
-                           Prefix key with '!' for != logic.
-                           (e.g., {"!status.phase": "Succeeded"} for status.phase!=Succeeded)
-            all_namespaces: Search across all namespaces (mutually exclusive with namespace)
-            timeout: Timeout in seconds (default: 30)
-            single: If True, return single object via .object() instead of list via .objects()
-
-        Returns:
-            - If single=True: Single resource object or None if not found
-            - If single=False: List of resource objects (empty list if none found)
+    ) -> Dict[str, Any]:
+        """Validate params, log the command, and build selector kwargs.
 
         Raises:
             ValueError: If both namespace and all_namespaces are specified
-            OpenShiftPythonException: If command fails (e.g., invalid resource type, timeout)
         """
-        # Validate mutually exclusive parameters
         if namespace and all_namespaces:
             raise ValueError("Cannot specify both 'namespace' and 'all_namespaces' parameters")
 
-        # Build command string for logging
         cmd_parts = ["oc", "get", resource_type]
         if namespace:
             cmd_parts.extend(["-n", namespace])
@@ -405,42 +379,109 @@ class OcApiUtils:
         cmd_str = " ".join(cmd_parts)
         self.operator._add_cmd_to_log(cmd_str)
 
-        # In debug mode, print command BEFORE execution
         self._debug_log(f"Executing command via oc.selector: {cmd_str}")
 
-        with oc.timeout(timeout):
-            # Build selector kwargs
-            selector_kwargs = {}
-            if labels:
-                selector_kwargs["labels"] = labels
-            if field_selector:
-                selector_kwargs["field_selectors"] = field_selector
-            if all_namespaces:
-                selector_kwargs["all_namespaces"] = True
+        selector_kwargs: Dict[str, Any] = {}
+        if labels:
+            selector_kwargs["labels"] = labels
+        if field_selector:
+            selector_kwargs["field_selectors"] = field_selector
+        if all_namespaces:
+            selector_kwargs["all_namespaces"] = True
 
-            # Create selector with appropriate context
+        return selector_kwargs
+
+    def select_resources(
+        self,
+        resource_type: str,
+        namespace: str | None = None,
+        labels: Dict[str, str] | None = None,
+        field_selector: Dict[str, str] | None = None,
+        all_namespaces: bool = False,
+        timeout: int = 30,
+    ) -> list[oc.APIObject]:
+        """Select multiple resources of a given type.
+
+        Args:
+            resource_type: Resource type to select (e.g., "node", "pod")
+            namespace: Specific namespace to search in (mutually exclusive with all_namespaces)
+            labels: Dictionary of label selectors (e.g., {"app": "myapp"})
+            field_selector: Dictionary of field selectors for server-side filtering.
+                           Prefix key with '!' for != logic.
+                           (e.g., {"!status.phase": "Succeeded"} for status.phase!=Succeeded)
+            all_namespaces: Search across all namespaces (mutually exclusive with namespace)
+            timeout: Timeout in seconds (default: 30)
+
+        Returns:
+            List of resource objects (empty list if none found)
+
+        Raises:
+            ValueError: If both namespace and all_namespaces are specified
+            OpenShiftPythonException: If command fails (e.g., invalid resource type, timeout)
+        """
+        selector_kwargs = self._log_and_build_selector_kwargs(
+            resource_type, namespace, labels, field_selector, all_namespaces
+        )
+
+        with oc.timeout(timeout):
             if namespace:
                 with oc.project(namespace):
-                    selector = oc.selector(resource_type, **selector_kwargs)
-                    result = selector.object(ignore_not_found=True) if single else selector.objects()
+                    result = oc.selector(resource_type, **selector_kwargs).objects()
             else:
-                selector = oc.selector(resource_type, **selector_kwargs)
-                result = selector.object(ignore_not_found=True) if single else selector.objects()
+                result = oc.selector(resource_type, **selector_kwargs).objects()
 
-            # In debug mode, print results after execution with limited fields
-            # Extract base resource type (e.g., "pod" from "pod" or "deployment" from "deployment.apps")
             base_type = resource_type.split("/")[-1].split(".")[0]
+            msg = f"Found {len(result)} {base_type}(s) (showing limited fields equivalent to -o wide)"
+            self._debug_log(msg, obj=result, resource_type=base_type)
 
-            if single:
-                result_name = result.name() if result else "None"
-                self._debug_log(
-                    f"Command result: {result_name} (showing limited fields equivalent to -o wide)",
-                    obj=result,
-                    resource_type=base_type,
-                )
+            return result
+
+    def select_single_resource(
+        self,
+        resource_type: str,
+        namespace: str | None = None,
+        labels: Dict[str, str] | None = None,
+        field_selector: Dict[str, str] | None = None,
+        all_namespaces: bool = False,
+        timeout: int = 30,
+    ) -> Any | None:
+        """Select a single resource of a given type.
+
+        Args:
+            resource_type: Resource type to select (e.g., "network.operator/cluster")
+            namespace: Specific namespace to search in (mutually exclusive with all_namespaces)
+            labels: Dictionary of label selectors (e.g., {"app": "myapp"})
+            field_selector: Dictionary of field selectors for server-side filtering.
+                           Prefix key with '!' for != logic.
+                           (e.g., {"!status.phase": "Succeeded"} for status.phase!=Succeeded)
+            all_namespaces: Search across all namespaces (mutually exclusive with namespace)
+            timeout: Timeout in seconds (default: 30)
+
+        Returns:
+            Single resource object or None if not found
+
+        Raises:
+            ValueError: If both namespace and all_namespaces are specified
+            OpenShiftPythonException: If command fails (e.g., invalid resource type, timeout)
+        """
+        selector_kwargs = self._log_and_build_selector_kwargs(
+            resource_type, namespace, labels, field_selector, all_namespaces
+        )
+
+        with oc.timeout(timeout):
+            if namespace:
+                with oc.project(namespace):
+                    result = oc.selector(resource_type, **selector_kwargs).object(ignore_not_found=True)
             else:
-                msg = f"Found {len(result)} {base_type}(s) (showing limited fields equivalent to -o wide)"
-                self._debug_log(msg, obj=result, resource_type=base_type)
+                result = oc.selector(resource_type, **selector_kwargs).object(ignore_not_found=True)
+
+            base_type = resource_type.split("/")[-1].split(".")[0]
+            result_name = result.name() if result else "None"
+            self._debug_log(
+                f"Command result: {result_name} (showing limited fields equivalent to -o wide)",
+                obj=result,
+                resource_type=base_type,
+            )
 
             return result
 
@@ -448,7 +489,7 @@ class OcApiUtils:
         self,
         namespace: str = None,
         labels: dict = None,
-        field_selector: dict = None,
+        field_selector: Dict[str, str] | None = None,
         timeout: int = 30,
     ) -> list:
         """Get pods from namespace with optional label and field selector filtering.
@@ -505,7 +546,7 @@ class OcApiUtils:
             self.logger.info(error_msg)
         return None
 
-    def run_rsh_cmd(self, namespace: str, pod: str, command: SafeCmdString, timeout: int = 120) -> tuple:
+    def run_rsh_cmd(self, namespace: str | None, pod: str | None, command: SafeCmdString, timeout: int = 120) -> tuple:
         """
         Run command in a pod using oc rsh.
 
@@ -519,8 +560,21 @@ class OcApiUtils:
             Tuple of (return_code, stdout, stderr)
 
         Raises:
+            UnExpectedSystemOutput: If namespace or pod is None
             TypeError: If command is not a SafeCmdString instance
         """
+        if not namespace:
+            raise UnExpectedSystemOutput(
+                ip=self.operator.get_host_ip(), cmd=str(command), output="", message="Namespace not provided"
+            )
+        if not pod:
+            raise UnExpectedSystemOutput(
+                ip=self.operator.get_host_ip(),
+                cmd=str(command),
+                output="",
+                message=f"Pod not found in namespace {namespace}",
+            )
+
         # Enforce SafeCmdString usage to prevent shell injection
         if not isinstance(command, SafeCmdString):
             raise TypeError(

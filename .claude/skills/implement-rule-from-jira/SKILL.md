@@ -72,7 +72,8 @@ Extract from the ticket description and acceptance criteria:
 2. **Domain**: Identify which domain to use (hw, network, linux, storage, k8s, etcd, security) or create a new domain if none fit
 3. **Rule type**: Determine if it's a `Rule` or `OrchestratorRule`
 4. **Objective hosts**: Which nodes to run on (ALL_NODES, MASTERS, WORKERS, etc.)
-5. **Validation logic**: What command(s) to run and what to check
+5. **Supported profile**: Check `src/profiles/profiles.yaml` for available profiles and ask the user which profile this rule should target. Only use `"general"` if the rule applies to ALL cluster types.
+6. **Validation logic**: What command(s) to run and what to check
 
 Present this analysis to the user and ask for confirmation before proceeding.
 
@@ -317,6 +318,7 @@ Before marking complete, verify:
 - [ ] Ticket type validated as "Story"
 - [ ] Branch created with format: `TICKET-NUMBER_description`
 - [ ] Rule class created with all required fields
+- [ ] Asked user about `supported_profiles` if rule may be specific to a deployment type
 - [ ] All commands use `SafeCmdString`
 - [ ] No `self.logger` usage in rule
 - [ ] Rule registered in domain

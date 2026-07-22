@@ -2,9 +2,13 @@
 
 ## Supported Versions
 
-| Version | Supported |
-|---------|-----------|
-| Latest  | Yes       |
+Only the latest release is supported. Fixes (including security fixes) are
+shipped in new releases and are not backported to older versions.
+
+| Version | Supported          |
+|---------|--------------------|
+| 0.1.x   | :white_check_mark: |
+| < 0.1   | :x:                |
 
 ## Reporting a Vulnerability
 

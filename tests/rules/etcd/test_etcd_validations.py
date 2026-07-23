@@ -376,12 +376,12 @@ class TestEtcdWalFsyncPerformanceCheck(RuleTestBase):
     tested_type = EtcdWalFsyncPerformanceCheck
 
     # Metrics with 0.5% slow (under 1% threshold)
-    good_metrics = """etcd_disk_wal_fsync_duration_seconds_bucket{le="0.008"} 9950.0
+    good_metrics = """etcd_disk_wal_fsync_duration_seconds_bucket{le="0.01"} 9950.0
 etcd_disk_wal_fsync_duration_seconds_bucket{le="+Inf"} 10000.0
 etcd_disk_wal_fsync_duration_seconds_count 10000.0"""
 
     # Metrics with 5% slow (over 1% threshold)
-    slow_metrics = """etcd_disk_wal_fsync_duration_seconds_bucket{le="0.008"} 9500.0
+    slow_metrics = """etcd_disk_wal_fsync_duration_seconds_bucket{le="0.01"} 9500.0
 etcd_disk_wal_fsync_duration_seconds_bucket{le="+Inf"} 10000.0
 etcd_disk_wal_fsync_duration_seconds_count 10000.0"""
 
@@ -420,7 +420,7 @@ etcd_disk_wal_fsync_duration_seconds_count 10000.0"""
             tested_object_mock_dict={
                 "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
             },
-            failed_msg="Etcd WAL fsync performance is slow on 1 endpoint(s):\n  - https://10.0.0.1:2379: 5.00% of fsync operations exceed 8ms threshold",
+            failed_msg="Etcd WAL fsync performance is slow on 1 endpoint(s):\n  - https://10.0.0.1:2379: 5.00% of fsync operations exceed 10ms threshold",
         ),
     ]
 

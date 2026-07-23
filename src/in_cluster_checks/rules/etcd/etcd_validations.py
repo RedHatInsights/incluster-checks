@@ -403,7 +403,7 @@ class EtcdWalFsyncPerformanceCheck(EtcdRule):
 
     Ported from HealthChecks EtcdWalFsyncdurationCheck.
     Monitors Write-Ahead Log fsync performance from metrics.
-    Warns if more than 1% of fsync operations exceed 8ms threshold.
+    Warns if more than 1% of fsync operations exceed the threshold.
     """
 
     objective_hosts = [Objectives.ORCHESTRATOR]
@@ -453,7 +453,7 @@ class EtcdWalFsyncPerformanceCheck(EtcdRule):
                 continue  # Skip endpoints that fail to return metrics
 
             # Verify required histogram values are present
-            if not all(k in metrics_out for k in ("Inf", "0.008", "etcd_disk_wal_fsync_duration_seconds_count")):
+            if not all(k in metrics_out for k in ("Inf", "0.01", "etcd_disk_wal_fsync_duration_seconds_count")):
                 raise UnExpectedSystemOutput(
                     ip=endpoint,
                     cmd=f"curl {endpoint}/metrics",
@@ -471,12 +471,12 @@ class EtcdWalFsyncPerformanceCheck(EtcdRule):
                 if len(parts) >= 2:
                     if 'le="+Inf"' in line:
                         infinity_value = float(parts[-1])
-                    elif 'le="0.008"' in line:
+                    elif 'le="0.01"' in line:
                         check_value = float(parts[-1])
                     elif "etcd_disk_wal_fsync_duration_seconds_count" in line:
                         total_value = float(parts[-1])
 
-            # Calculate percentage of slow operations (> 8ms)
+            # Calculate percentage of slow operations (> 10ms)
             if total_value > 0:
                 slow_percent = ((infinity_value - check_value) / total_value) * 100
 
@@ -485,7 +485,7 @@ class EtcdWalFsyncPerformanceCheck(EtcdRule):
 
         if slow_endpoints:
             details = "\n".join(
-                [f"  - {ep}: {pct:.2f}% of fsync operations exceed 8ms threshold" for ep, pct in slow_endpoints]
+                [f"  - {ep}: {pct:.2f}% of fsync operations exceed 10ms threshold" for ep, pct in slow_endpoints]
             )
             return RuleResult.warning(
                 f"Etcd WAL fsync performance is slow on {len(slow_endpoints)} endpoint(s):\n{details}",

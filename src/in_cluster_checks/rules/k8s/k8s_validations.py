@@ -5,12 +5,15 @@ Direct port from: HealthChecks/flows/K8s/k8s_components/k8s_sanity_checks.py
 """
 
 import json
+import logging
 from datetime import datetime, timezone
 
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.rule import OrchestratorRule
 from in_cluster_checks.core.rule_result import PrerequisiteResult, RuleResult
 from in_cluster_checks.utils.enums import Objectives, Status
+
+logger = logging.getLogger(__name__)
 
 
 class AllPodsReadyAndRunning(OrchestratorRule):
@@ -113,6 +116,7 @@ class InfraPodsReadyAndRunning(OrchestratorRule):
     links = ["https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/435226813"]
 
     HISTORICAL_POD_AGE_THRESHOLD = 86400  # 24 hours in seconds
+    MAX_PODS_PER_NAMESPACE = 1000
 
     INFRA_NAMESPACES = [
         "openshift-etcd",
@@ -121,13 +125,17 @@ class InfraPodsReadyAndRunning(OrchestratorRule):
         "openshift-kube-scheduler",
         "openshift-apiserver",
         "openshift-controller-manager",
+        "openshift-cluster-version",
         "openshift-machine-api",
         "openshift-machine-config-operator",
         "openshift-ingress",
+        "openshift-ingress-operator",
         "openshift-dns",
         "openshift-sdn",
         "openshift-ovn-kubernetes",
         "openshift-multus",
+        "openshift-network-operator",
+        "openshift-network-diagnostics",
         "openshift-monitoring",
         "openshift-image-registry",
         "openshift-authentication",
@@ -135,15 +143,19 @@ class InfraPodsReadyAndRunning(OrchestratorRule):
         "openshift-operator-lifecycle-manager",
         "openshift-marketplace",
         "openshift-console",
+        "openshift-service-ca",
         "openshift-cluster-storage-operator",
-        "openshift-network-operator",
+        "openshift-kube-storage-version-migrator",
     ]
+
+    # Server-side filter: skip completed pods at the API level
+    _FIELD_SELECTOR = {"!status.phase": "Succeeded"}
 
     def run_rule(self):
         """Check if infrastructure pods are ready and running."""
-        ready_pods, not_running_pods, old_failed_pods = self._get_pods_lists()
+        ready_pod_count, not_running_pods, old_failed_pods = self._get_pods_lists()
 
-        if len(ready_pods) == 0 and len(not_running_pods) == 0 and len(old_failed_pods) == 0:
+        if ready_pod_count == 0 and len(not_running_pods) == 0 and len(old_failed_pods) == 0:
             return RuleResult.failed("Did not get any pods from infrastructure namespaces")
 
         threshold_hours = self.HISTORICAL_POD_AGE_THRESHOLD // 3600
@@ -174,29 +186,45 @@ class InfraPodsReadyAndRunning(OrchestratorRule):
     def _get_pods_lists(self):
         """Get lists of ready, not-ready, and old failed pods from infrastructure namespaces.
 
+        Uses server-side field selectors to skip Succeeded pods at the API level.
         Old Failed Job/CronJob pods are skipped entirely.
         Other old Failed pods are collected separately for warning.
 
         Returns:
-            tuple: (ready_pods_list, not_running_pods_list, old_failed_pods_list)
+            tuple: (ready_pod_count, not_running_pods_list, old_failed_pods_list)
         """
-        ready_pods = []
+        ready_pod_count = 0
         not_running_pods = []
         old_failed_pods = []
 
         for namespace in self.INFRA_NAMESPACES:
-            pod_objects = self.oc_api.get_pods(namespace=namespace, timeout=30)
+            try:
+                pod_objects = self.oc_api.get_pods(
+                    namespace=namespace,
+                    field_selector=self._FIELD_SELECTOR,
+                    timeout=30,
+                )
+            except Exception:
+                logger.warning("Failed to query pods in namespace %s, skipping", namespace)
+                continue
             if not pod_objects:
                 continue
+
+            if len(pod_objects) > self.MAX_PODS_PER_NAMESPACE:
+                logger.warning(
+                    "Namespace %s has %d pods (limit: %d), results may be truncated",
+                    namespace,
+                    len(pod_objects),
+                    self.MAX_PODS_PER_NAMESPACE,
+                )
+                pod_objects = pod_objects[: self.MAX_PODS_PER_NAMESPACE]
 
             for pod in pod_objects:
                 pod_data = pod.as_dict()
                 pod_name = pod_data["metadata"]["name"]
                 status_dict = pod_data.get("status", {})
                 phase = status_dict.get("phase", "Unknown")
-
-                if phase == "Succeeded":
-                    continue
+                container_statuses = status_dict.get("containerStatuses", [])
 
                 if phase == "Failed" and self._is_old_pod(pod_data, self.HISTORICAL_POD_AGE_THRESHOLD):
                     if self._is_job_or_cronjob_owned(pod_data):
@@ -204,24 +232,22 @@ class InfraPodsReadyAndRunning(OrchestratorRule):
                     old_failed_pods.append({"namespace": namespace, "name": pod_name})
                     continue
 
-                container_statuses = status_dict.get("containerStatuses", [])
                 total_containers = len(container_statuses)
                 ready_containers = sum(1 for c in container_statuses if c.get("ready", False))
-                ready_str = f"{ready_containers}/{total_containers}"
-
-                pod_info = {
-                    "namespace": namespace,
-                    "name": pod_name,
-                    "status": phase,
-                    "ready": ready_str,
-                }
 
                 if phase != "Running" or total_containers == 0 or ready_containers != total_containers:
-                    not_running_pods.append(pod_info)
+                    not_running_pods.append(
+                        {
+                            "namespace": namespace,
+                            "name": pod_name,
+                            "status": phase,
+                            "ready": f"{ready_containers}/{total_containers}",
+                        }
+                    )
                 else:
-                    ready_pods.append(pod_info)
+                    ready_pod_count += 1
 
-        return ready_pods, not_running_pods, old_failed_pods
+        return ready_pod_count, not_running_pods, old_failed_pods
 
     @staticmethod
     def _is_job_or_cronjob_owned(pod_data: dict) -> bool:

@@ -130,10 +130,10 @@ class LogicalSwitchNodeValidator(OVNKubernetesBase):
         if not ovn_pod_to_node_dict:
             return RuleResult.not_applicable("No ovnkube-node pods found")
 
-        failed_checks = []
+        connectivity_errors = []
+        validation_failures = []
 
         for ovnkube_pod, node in ovn_pod_to_node_dict.items():
-            # Check if logical switch exists with node name using run_rsh_cmd
             rc, out, err = self.oc_api.run_rsh_cmd(
                 namespace="openshift-ovn-kubernetes",
                 pod=ovnkube_pod,
@@ -141,16 +141,22 @@ class LogicalSwitchNodeValidator(OVNKubernetesBase):
             )
 
             if rc != 0:
-                failed_checks.append(f"ovnkube-node {ovnkube_pod}: cannot execute ovn-nbctl ls-list - {err}")
+                connectivity_errors.append(
+                    f"ovnkube-node {ovnkube_pod}: could not verify logical switch (command error) - {err}"
+                )
                 continue
 
-            # Check if node name appears in logical switch list
             if f"({node})" not in out:
-                failed_checks.append(f"ovnkube-node {ovnkube_pod}: there is no logical switch with node name - {node}")
+                validation_failures.append(
+                    f"ovnkube-node {ovnkube_pod}: there is no logical switch with node name - {node}"
+                )
 
-        if failed_checks:
-            message = "\n".join(failed_checks)
-            return RuleResult.failed(message)
+        if validation_failures:
+            all_messages = validation_failures + connectivity_errors
+            return RuleResult.failed("\n".join(all_messages))
+
+        if connectivity_errors:
+            return RuleResult.warning("\n".join(connectivity_errors))
 
         return RuleResult.passed(
             f"All {len(ovn_pod_to_node_dict)} ovnkube-node pods have corresponding logical switches"
@@ -183,7 +189,8 @@ class MTUOverlayInterfaces(OVNKubernetesBase):
         if expected_mtu is None:
             return RuleResult.skip("Cannot determine expected MTU from network.operator/cluster")
 
-        failed_checks = []
+        connectivity_errors = []
+        mtu_failures = []
         for ovnkube_pod in ovn_pod_to_node_dict:
             rc, out, err = self.oc_api.run_rsh_cmd(
                 namespace="openshift-ovn-kubernetes",
@@ -192,24 +199,28 @@ class MTUOverlayInterfaces(OVNKubernetesBase):
             )
 
             if rc != 0:
-                failed_checks.append(f"[OVNKube Node: {ovnkube_pod}] Failed to run ip link show: {err}")
+                connectivity_errors.append(f"[OVNKube Node: {ovnkube_pod}] Could not exec into pod (skipped): {err}")
                 continue
 
             overlay_interfaces = self._parse_overlay_interfaces(out)
 
             if not overlay_interfaces:
-                failed_checks.append(f"[OVNKube Node: {ovnkube_pod}] No overlay network interfaces found")
+                mtu_failures.append(f"[OVNKube Node: {ovnkube_pod}] No overlay network interfaces found")
                 continue
 
             for interface, actual_mtu in overlay_interfaces:
                 if expected_mtu != actual_mtu:
-                    failed_checks.append(
+                    mtu_failures.append(
                         f"[OVNKube Node: {ovnkube_pod}] MTU Mismatch: "
                         f"Expected (Network CR) = {expected_mtu}, Actual ({interface}) = {actual_mtu}"
                     )
 
-        if failed_checks:
-            return RuleResult.failed("\n".join(failed_checks))
+        if mtu_failures:
+            all_messages = mtu_failures + connectivity_errors
+            return RuleResult.failed("\n".join(all_messages))
+
+        if connectivity_errors:
+            return RuleResult.warning("\n".join(connectivity_errors))
 
         return RuleResult.passed()
 

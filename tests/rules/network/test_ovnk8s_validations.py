@@ -158,7 +158,7 @@ class TestLogicalSwitchNodeValidator(OVNKubernetesTestBase):
 
     scenario_failed = [
         RuleScenarioParams(
-            scenario_title="scenario_failed",
+            scenario_title="logical switch missing for node",
             tested_object_mock_dict={
                 "get_ovn_pod_to_node_dict": Mock(
                     return_value={
@@ -175,8 +175,61 @@ class TestLogicalSwitchNodeValidator(OVNKubernetesTestBase):
                     "some-other-logical-switch (other-node)"
                 ),
             },
-            failed_msg="ovnkube-node ovnkube-node-7dphn: there is no logical switch with node name - mgmt1-m2\novnkube-node ovnkube-node-927b4: there is no logical switch with node name - mgmt1-m1",
-        )
+            failed_msg=(
+                "ovnkube-node ovnkube-node-7dphn: there is no logical switch with node name - mgmt1-m2\n"
+                "ovnkube-node ovnkube-node-927b4: there is no logical switch with node name - mgmt1-m1"
+            ),
+        ),
+        RuleScenarioParams(
+            scenario_title="logical switch missing with connectivity error on another pod",
+            tested_object_mock_dict={
+                "get_ovn_pod_to_node_dict": Mock(
+                    return_value={
+                        "ovnkube-node-7dphn": "mgmt1-m2",
+                        "ovnkube-node-927b4": "mgmt1-m1",
+                    }
+                ),
+            },
+            rsh_cmd_output_dict={
+                ("openshift-ovn-kubernetes", "ovnkube-node-7dphn", "ovn-nbctl ls-list"): CmdOutput(
+                    "some-other-logical-switch (other-node)"
+                ),
+                ("openshift-ovn-kubernetes", "ovnkube-node-927b4", "ovn-nbctl ls-list"): CmdOutput(
+                    "", return_code=1, err="error dialing backend: tls: first record does not look like a TLS handshake"
+                ),
+            },
+            failed_msg=(
+                "ovnkube-node ovnkube-node-7dphn: there is no logical switch with node name - mgmt1-m2\n"
+                "ovnkube-node ovnkube-node-927b4: could not verify logical switch (command error) "
+                "- error dialing backend: tls: first record does not look like a TLS handshake"
+            ),
+        ),
+    ]
+
+    scenario_warning = [
+        RuleScenarioParams(
+            scenario_title="connectivity error only (no validation failure)",
+            tested_object_mock_dict={
+                "get_ovn_pod_to_node_dict": Mock(
+                    return_value={
+                        "ovnkube-node-7dphn": "mgmt1-m2",
+                        "ovnkube-node-927b4": "mgmt1-m1",
+                    }
+                ),
+            },
+            rsh_cmd_output_dict={
+                ("openshift-ovn-kubernetes", "ovnkube-node-7dphn", "ovn-nbctl ls-list"): CmdOutput(
+                    "dcd1b6b9-41e5-4591-976f-bdf738f80660 (mgmt1-m2)"
+                ),
+                ("openshift-ovn-kubernetes", "ovnkube-node-927b4", "ovn-nbctl ls-list"): CmdOutput(
+                    "", return_code=1, err="error dialing backend: tls: first record does not look like a TLS handshake"
+                ),
+            },
+            failed_msg=(
+                "ovnkube-node ovnkube-node-927b4: could not verify logical switch (command error) "
+                "- error dialing backend: tls: first record does not look like a TLS handshake"
+            ),
+        ),
     ]
 
     @pytest.mark.parametrize("scenario_params", scenario_passed)
@@ -186,6 +239,10 @@ class TestLogicalSwitchNodeValidator(OVNKubernetesTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_warning)
+    def test_scenario_warning(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_warning(self, scenario_params, tested_object)
 
 
 IP_LINK_SHOW_ALL_MATCH = (
@@ -277,21 +334,57 @@ class TestMTUOverlayInterfaces(OVNKubernetesTestBase):
             failed_msg="[OVNKube Node: ovnkube-node-7dphn] No overlay network interfaces found",
         ),
         RuleScenarioParams(
-            "ip link show command fails",
+            "MTU mismatch with connectivity error on another pod",
             tested_object_mock_dict={
                 "get_ovn_pod_to_node_dict": Mock(
                     return_value={
                         "ovnkube-node-7dphn": "mgmt1-m2",
+                        "ovnkube-node-927b4": "mgmt1-m1",
                     }
                 ),
                 "_get_expected_mtu": Mock(return_value=1400),
             },
             rsh_cmd_output_dict={
                 ("openshift-ovn-kubernetes", "ovnkube-node-7dphn", "ip link show"): CmdOutput(
-                    "", return_code=1, err="command not found"
+                    IP_LINK_SHOW_MTU_MISMATCH
+                ),
+                ("openshift-ovn-kubernetes", "ovnkube-node-927b4", "ip link show"): CmdOutput(
+                    "", return_code=1, err="error dialing backend: tls: first record does not look like a TLS handshake"
                 ),
             },
-            failed_msg="[OVNKube Node: ovnkube-node-7dphn] Failed to run ip link show: command not found",
+            failed_msg=(
+                "[OVNKube Node: ovnkube-node-7dphn] MTU Mismatch: "
+                "Expected (Network CR) = 1400, Actual (br-int) = 1500\n"
+                "[OVNKube Node: ovnkube-node-927b4] Could not exec into pod (skipped): "
+                "error dialing backend: tls: first record does not look like a TLS handshake"
+            ),
+        ),
+    ]
+
+    scenario_warning = [
+        RuleScenarioParams(
+            "connectivity error only (no MTU mismatch)",
+            tested_object_mock_dict={
+                "get_ovn_pod_to_node_dict": Mock(
+                    return_value={
+                        "ovnkube-node-7dphn": "mgmt1-m2",
+                        "ovnkube-node-927b4": "mgmt1-m1",
+                    }
+                ),
+                "_get_expected_mtu": Mock(return_value=1400),
+            },
+            rsh_cmd_output_dict={
+                ("openshift-ovn-kubernetes", "ovnkube-node-7dphn", "ip link show"): CmdOutput(
+                    IP_LINK_SHOW_ALL_MATCH
+                ),
+                ("openshift-ovn-kubernetes", "ovnkube-node-927b4", "ip link show"): CmdOutput(
+                    "", return_code=1, err="error dialing backend: tls: first record does not look like a TLS handshake"
+                ),
+            },
+            failed_msg=(
+                "[OVNKube Node: ovnkube-node-927b4] Could not exec into pod (skipped): "
+                "error dialing backend: tls: first record does not look like a TLS handshake"
+            ),
         ),
     ]
 
@@ -302,6 +395,10 @@ class TestMTUOverlayInterfaces(OVNKubernetesTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_warning)
+    def test_scenario_warning(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_warning(self, scenario_params, tested_object)
 
 
 class TestOvnRoutingHealthCheck(OvnDetectingNodeRuleTestBase):

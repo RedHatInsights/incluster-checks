@@ -5,10 +5,13 @@ Adapted from HealthChecks test patterns for AllPodsReadyAndRunning.
 """
 
 import json
+import logging
 from unittest.mock import Mock
 
 import pytest
+from openshift_client import OpenShiftPythonException
 
+from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.rules.k8s.k8s_validations import (
     AllDeploymentsAvailable,
     AllPodsReadyAndRunning,
@@ -343,8 +346,6 @@ class TestInfraPodsReadyAndRunning:
 
     def test_pod_count_safety_limit_logs_warning(self, tested_object, caplog):
         """Test that exceeding MAX_PODS_PER_NAMESPACE logs a warning."""
-        import logging
-
         limit = InfraPodsReadyAndRunning.MAX_PODS_PER_NAMESPACE
         excess_pods = [
             create_mock_infra_pod("openshift-monitoring", f"pod-{i}", "Running", 1, 1)
@@ -357,7 +358,7 @@ class TestInfraPodsReadyAndRunning:
             return []
 
         tested_object.oc_api.get_pods = Mock(side_effect=mock_get_pods)
-        with caplog.at_level(logging.WARNING, logger="in_cluster_checks.rules.k8s.k8s_validations"):
+        with caplog.at_level(logging.WARNING, logger="in_cluster_checks.core.rule"):
             tested_object.run_rule()
         assert "openshift-monitoring" in caplog.text
         assert str(limit + 50) in caplog.text
@@ -382,11 +383,11 @@ class TestInfraPodsReadyAndRunning:
         assert "bad-pod-beyond-limit" not in result.message
 
     def test_nonexistent_namespace_skipped(self, tested_object):
-        """Test that a namespace that raises an exception is skipped without crashing the rule."""
+        """Test that a namespace that raises OpenShiftPythonException is skipped without crashing."""
 
         def mock_get_pods(namespace, field_selector=None, timeout=30):
             if namespace == "openshift-sdn":
-                raise Exception("namespaces \"openshift-sdn\" not found")
+                raise OpenShiftPythonException("namespaces \"openshift-sdn\" not found")
             if namespace == "openshift-etcd":
                 return [create_mock_infra_pod("openshift-etcd", "etcd-master-0", "Running", 3, 3)]
             return []
@@ -397,17 +398,26 @@ class TestInfraPodsReadyAndRunning:
 
     def test_nonexistent_namespace_logs_warning(self, tested_object, caplog):
         """Test that a skipped namespace logs a warning."""
-        import logging
 
         def mock_get_pods(namespace, field_selector=None, timeout=30):
             if namespace == "openshift-sdn":
-                raise Exception("not found")
+                raise OpenShiftPythonException("not found")
             return []
 
         tested_object.oc_api.get_pods = Mock(side_effect=mock_get_pods)
-        with caplog.at_level(logging.WARNING, logger="in_cluster_checks.rules.k8s.k8s_validations"):
+        with caplog.at_level(logging.WARNING, logger="in_cluster_checks.core.rule"):
             tested_object.run_rule()
         assert "openshift-sdn" in caplog.text
+
+    def test_unexpected_exception_propagates(self, tested_object):
+        """Test that non-OpenShift exceptions (e.g. UnExpectedSystemOutput) propagate."""
+
+        def mock_get_pods(namespace, field_selector=None, timeout=30):
+            raise UnExpectedSystemOutput("10.0.0.1", "oc get pods", "connection refused")
+
+        tested_object.oc_api.get_pods = Mock(side_effect=mock_get_pods)
+        with pytest.raises(UnExpectedSystemOutput):
+            tested_object.run_rule()
 
     def test_pod_with_missing_status_key(self, tested_object):
         """Test that a pod with missing 'status' key is handled gracefully."""

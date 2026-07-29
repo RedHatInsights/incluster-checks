@@ -5,15 +5,14 @@ Direct port from: HealthChecks/flows/K8s/k8s_components/k8s_sanity_checks.py
 """
 
 import json
-import logging
 from datetime import datetime, timezone
+
+from openshift_client import OpenShiftPythonException
 
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.rule import OrchestratorRule
 from in_cluster_checks.core.rule_result import PrerequisiteResult, RuleResult
 from in_cluster_checks.utils.enums import Objectives, Status
-
-logger = logging.getLogger(__name__)
 
 
 class AllPodsReadyAndRunning(OrchestratorRule):
@@ -204,14 +203,14 @@ class InfraPodsReadyAndRunning(OrchestratorRule):
                     field_selector=self._FIELD_SELECTOR,
                     timeout=30,
                 )
-            except Exception:
-                logger.warning("Failed to query pods in namespace %s, skipping", namespace)
+            except OpenShiftPythonException:
+                self.logger.warning("Failed to query pods in namespace %s, skipping", namespace)
                 continue
             if not pod_objects:
                 continue
 
             if len(pod_objects) > self.MAX_PODS_PER_NAMESPACE:
-                logger.warning(
+                self.logger.warning(
                     "Namespace %s has %d pods (limit: %d), results may be truncated",
                     namespace,
                     len(pod_objects),

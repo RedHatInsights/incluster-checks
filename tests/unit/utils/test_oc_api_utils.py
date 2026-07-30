@@ -89,3 +89,36 @@ class TestSelectResources:
     def test_validates_mutually_exclusive_params(self, oc_api):
         with pytest.raises(ValueError, match="Cannot specify both"):
             oc_api.select_resources("pod", namespace="default", all_namespaces=True)
+
+    @patch("in_cluster_checks.utils.oc_api_utils.oc")
+    def test_field_selector_passed_as_dict(self, mock_oc, oc_api):
+        mock_selector = Mock()
+        mock_selector.objects.return_value = []
+
+        mock_oc.timeout.return_value.__enter__ = Mock()
+        mock_oc.timeout.return_value.__exit__ = Mock(return_value=False)
+        mock_oc.selector.return_value = mock_selector
+
+        field_selector = {"!status.phase": "Succeeded"}
+        oc_api.select_resources("pod", namespace="openshift-etcd", field_selector=field_selector)
+
+        call_kwargs = mock_oc.selector.call_args
+        assert call_kwargs.kwargs["field_selectors"] == {"!status.phase": "Succeeded"}
+        assert isinstance(call_kwargs.kwargs["field_selectors"], dict)
+
+    @patch("in_cluster_checks.utils.oc_api_utils.oc")
+    def test_get_pods_passes_field_selector_to_select_resources(self, mock_oc, oc_api):
+        mock_selector = Mock()
+        mock_selector.objects.return_value = []
+
+        mock_oc.timeout.return_value.__enter__ = Mock()
+        mock_oc.timeout.return_value.__exit__ = Mock(return_value=False)
+        mock_oc.project.return_value.__enter__ = Mock()
+        mock_oc.project.return_value.__exit__ = Mock(return_value=False)
+        mock_oc.selector.return_value = mock_selector
+
+        field_selector = {"!status.phase": "Succeeded"}
+        oc_api.get_pods(namespace="openshift-etcd", field_selector=field_selector)
+
+        call_kwargs = mock_oc.selector.call_args
+        assert call_kwargs.kwargs["field_selectors"] == {"!status.phase": "Succeeded"}

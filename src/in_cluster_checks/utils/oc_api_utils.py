@@ -352,6 +352,7 @@ class OcApiUtils:
         resource_type: str,
         namespace: str | None = None,
         labels: Dict[str, str] | None = None,
+        field_selector: dict | None = None,
         all_namespaces: bool = False,
         timeout: int = 30,
         single: bool = False,
@@ -368,6 +369,9 @@ class OcApiUtils:
             resource_type: Resource type to select (e.g., "node", "pod", "network.operator/cluster")
             namespace: Specific namespace to search in (mutually exclusive with all_namespaces)
             labels: Dictionary of label selectors (e.g., {"app": "myapp"})
+            field_selector: Dictionary of field selectors for server-side filtering.
+                           Prefix key with '!' for != logic.
+                           (e.g., {"!status.phase": "Succeeded"} for status.phase!=Succeeded)
             all_namespaces: Search across all namespaces (mutually exclusive with namespace)
             timeout: Timeout in seconds (default: 30)
             single: If True, return single object via .object() instead of list via .objects()
@@ -393,6 +397,11 @@ class OcApiUtils:
         if labels:
             label_str = ",".join([f"{k}={v}" for k, v in labels.items()])
             cmd_parts.extend(["-l", label_str])
+        if field_selector:
+            fs_str = ",".join(
+                f"{k.lstrip('!')}!={v}" if k.startswith("!") else f"{k}={v}" for k, v in field_selector.items()
+            )
+            cmd_parts.extend(["--field-selector", fs_str])
         cmd_str = " ".join(cmd_parts)
         self.operator._add_cmd_to_log(cmd_str)
 
@@ -404,6 +413,8 @@ class OcApiUtils:
             selector_kwargs = {}
             if labels:
                 selector_kwargs["labels"] = labels
+            if field_selector:
+                selector_kwargs["field_selectors"] = field_selector
             if all_namespaces:
                 selector_kwargs["all_namespaces"] = True
 
@@ -433,21 +444,42 @@ class OcApiUtils:
 
             return result
 
-    def get_pods(self, namespace: str = None, labels: dict = None, timeout: int = 30) -> list:
-        """Get pods from namespace with optional label filtering.
+    def get_pods(
+        self,
+        namespace: str = None,
+        labels: dict = None,
+        field_selector: dict = None,
+        timeout: int = 30,
+    ) -> list:
+        """Get pods from namespace with optional label and field selector filtering.
 
         Args:
             namespace: Namespace to search in. If None, searches all namespaces.
             labels: Optional dict of label selectors (e.g., {"app": "rook-ceph-tools"})
+            field_selector: Optional dict of field selectors for server-side filtering.
+                           Prefix key with '!' for != logic.
+                           (e.g., {"!status.phase": "Succeeded"} for status.phase!=Succeeded)
             timeout: Timeout in seconds (default: 30)
 
         Returns:
             List of pod objects, or empty list if none found
         """
         if namespace:
-            return self.select_resources("pod", namespace=namespace, labels=labels, timeout=timeout)
+            return self.select_resources(
+                "pod",
+                namespace=namespace,
+                labels=labels,
+                field_selector=field_selector,
+                timeout=timeout,
+            )
         else:
-            return self.select_resources("pod", labels=labels, all_namespaces=True, timeout=timeout)
+            return self.select_resources(
+                "pod",
+                labels=labels,
+                field_selector=field_selector,
+                all_namespaces=True,
+                timeout=timeout,
+            )
 
     def get_pod_name(self, namespace: str, labels: dict, log_errors: bool = True, timeout: int = 30) -> str | None:
         """Get pod name from a namespace using label selectors.

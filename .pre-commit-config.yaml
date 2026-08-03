@@ -58,6 +58,13 @@ repos:
         types: [python]
         files: ^src/in_cluster_checks/
 
+      - id: safecmdstring-mypy-check
+        name: check SafeCmdString types with mypy
+        entry: mypy
+        language: system
+        types: [python]
+        files: ^src/in_cluster_checks/
+
       - id: pytest-coverage
         name: pytest with coverage
         entry: python -m pytest

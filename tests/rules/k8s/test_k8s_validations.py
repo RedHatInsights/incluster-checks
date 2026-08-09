@@ -6,6 +6,7 @@ Adapted from HealthChecks test patterns for AllPodsReadyAndRunning.
 
 import json
 import logging
+from datetime import datetime, timezone, timedelta
 from unittest.mock import Mock
 
 import pytest
@@ -586,11 +587,14 @@ class TestNodesCpuAndMemoryStatus:
         assert "No node metrics available" in result.message
 
 
-def create_mock_namespace(name, phase):
+def create_mock_namespace(name, phase, deletion_timestamp=None):
     """Create a mock namespace object."""
     mock_ns = Mock()
+    metadata = {"name": name}
+    if deletion_timestamp:
+        metadata["deletionTimestamp"] = deletion_timestamp
     mock_ns.as_dict.return_value = {
-        "metadata": {"name": name},
+        "metadata": metadata,
         "status": {"phase": phase},
     }
     return mock_ns
@@ -683,6 +687,97 @@ class TestValidateNamespaceStatus:
         result = tested_object.run_rule()
         assert result.status == Status.FAILED
         assert "No namespaces found" in result.message
+
+    def test_recently_terminating_namespace_skipped(self, tested_object):
+        """Test that a namespace terminating within threshold is skipped."""
+        recent_ts = (
+            datetime.now(timezone.utc) - timedelta(seconds=60)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        tested_object.oc_api.get_all_namespaces = Mock(
+            return_value=[
+                create_mock_namespace("default", "Active"),
+                create_mock_namespace(
+                    "deleting-ns", "Terminating", deletion_timestamp=recent_ts
+                ),
+            ]
+        )
+
+        result = tested_object.run_rule()
+        assert result.status == Status.PASSED
+
+    def test_old_terminating_namespace_flagged(self, tested_object):
+        """Test that a namespace terminating beyond threshold is flagged."""
+        old_ts = (
+            datetime.now(timezone.utc) - timedelta(seconds=600)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        tested_object.oc_api.get_all_namespaces = Mock(
+            return_value=[
+                create_mock_namespace("default", "Active"),
+                create_mock_namespace(
+                    "stuck-ns", "Terminating", deletion_timestamp=old_ts
+                ),
+            ]
+        )
+
+        result = tested_object.run_rule()
+        assert result.status == Status.WARNING
+        assert "stuck-ns" in result.message
+
+    def test_terminating_without_deletion_timestamp_flagged(self, tested_object):
+        """Test that a Terminating namespace without deletionTimestamp is flagged."""
+        tested_object.oc_api.get_all_namespaces = Mock(
+            return_value=[
+                create_mock_namespace("default", "Active"),
+                create_mock_namespace("mystery-ns", "Terminating"),
+            ]
+        )
+
+        result = tested_object.run_rule()
+        assert result.status == Status.WARNING
+        assert "mystery-ns" in result.message
+
+    def test_terminating_with_malformed_deletion_timestamp_flagged(self, tested_object):
+        """Test that a Terminating namespace with malformed deletionTimestamp is flagged."""
+        tested_object.oc_api.get_all_namespaces = Mock(
+            return_value=[
+                create_mock_namespace("default", "Active"),
+                create_mock_namespace(
+                    "bad-ts-ns", "Terminating", deletion_timestamp="not-a-date"
+                ),
+            ]
+        )
+
+        result = tested_object.run_rule()
+        assert result.status == Status.WARNING
+        assert "bad-ts-ns" in result.message
+
+    def test_mix_of_recent_and_old_terminating(self, tested_object):
+        """Test mix: recent terminating skipped, old terminating flagged."""
+        recent_ts = (
+            datetime.now(timezone.utc) - timedelta(seconds=30)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+        old_ts = (
+            datetime.now(timezone.utc) - timedelta(seconds=600)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+        tested_object.oc_api.get_all_namespaces = Mock(
+            return_value=[
+                create_mock_namespace("default", "Active"),
+                create_mock_namespace(
+                    "recent-ns", "Terminating", deletion_timestamp=recent_ts
+                ),
+                create_mock_namespace(
+                    "stuck-ns", "Terminating", deletion_timestamp=old_ts
+                ),
+            ]
+        )
+
+        result = tested_object.run_rule()
+        assert result.status == Status.WARNING
+        assert "stuck-ns" in result.message
+        assert "recent-ns" not in result.message
 
 
 class TestValidateAllDaemonsetsScheduled:

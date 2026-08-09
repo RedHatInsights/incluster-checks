@@ -492,6 +492,8 @@ class ValidateNamespaceStatus(OrchestratorRule):
     unique_name = "verify_namespaces_are_in_active_status"
     title = "Validate namespace in Active status"
 
+    TERMINATING_THRESHOLD_SECONDS = 180  # 3 minutes
+
     def run_rule(self):
         """Check if all namespaces are in Active status."""
         namespace_objects = self.oc_api.get_all_namespaces(timeout=45)
@@ -508,6 +510,8 @@ class ValidateNamespaceStatus(OrchestratorRule):
             phase = status_dict.get("phase", "Unknown")
 
             if phase != "Active":
+                if phase == "Terminating" and self._is_recently_terminating(ns_data):
+                    continue
                 inactive_namespaces.append(f"{ns_name} - {phase}")
 
         if inactive_namespaces:
@@ -516,6 +520,18 @@ class ValidateNamespaceStatus(OrchestratorRule):
             return RuleResult.warning(message)
 
         return RuleResult.passed()
+
+    def _is_recently_terminating(self, ns_data: dict) -> bool:
+        """Check if a namespace started terminating within the threshold."""
+        deletion_ts = ns_data.get("metadata", {}).get("deletionTimestamp")
+        if not deletion_ts:
+            return False
+        try:
+            deleted_at = datetime.fromisoformat(deletion_ts.replace("Z", "+00:00"))
+            age_seconds = (datetime.now(timezone.utc) - deleted_at).total_seconds()
+            return age_seconds < self.TERMINATING_THRESHOLD_SECONDS
+        except (ValueError, AttributeError):
+            return False
 
 
 class ValidateAllDaemonsetsScheduled(OrchestratorRule):

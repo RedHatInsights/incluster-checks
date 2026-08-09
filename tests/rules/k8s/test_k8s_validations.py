@@ -738,6 +738,21 @@ class TestValidateNamespaceStatus:
         assert result.status == Status.WARNING
         assert "mystery-ns" in result.message
 
+    def test_terminating_with_malformed_deletion_timestamp_flagged(self, tested_object):
+        """Test that a Terminating namespace with malformed deletionTimestamp is flagged."""
+        tested_object.oc_api.get_all_namespaces = Mock(
+            return_value=[
+                create_mock_namespace("default", "Active"),
+                create_mock_namespace(
+                    "bad-ts-ns", "Terminating", deletion_timestamp="not-a-date"
+                ),
+            ]
+        )
+
+        result = tested_object.run_rule()
+        assert result.status == Status.WARNING
+        assert "bad-ts-ns" in result.message
+
     def test_mix_of_recent_and_old_terminating(self, tested_object):
         """Test mix: recent terminating skipped, old terminating flagged."""
         recent_ts = (

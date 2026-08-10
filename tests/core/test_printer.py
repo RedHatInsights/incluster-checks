@@ -592,7 +592,7 @@ class TestJUnitOutput:
         suite_names = {s.get("name") for s in suites}
         assert suite_names == {"hw", "network"}
 
-    def test_print_to_junit_rule_log_in_system_out(self, tmp_path):
+    def test_print_to_junit_rule_log_no_system_out(self, tmp_path):
         output_file = tmp_path / "results.xml"
         details = [
             {
@@ -610,11 +610,7 @@ class TestJUnitOutput:
 
         tree = ET.parse(output_file)
         case = tree.getroot().find(".//testcase")
-        system_out = case.find("system-out")
-        assert system_out is not None
-        assert "line 1" in system_out.text
-        assert "line 2" in system_out.text
-        assert "line 3" in system_out.text
+        assert case.find("system-out") is None
 
     def test_print_to_junit_testcase_time(self, tmp_path):
         output_file = tmp_path / "results.xml"
@@ -658,11 +654,7 @@ class TestJUnitOutput:
         case = tree.getroot().find(".//testcase")
         failure = case.find("failure")
         assert failure.get("message") == "badoutputhere"
-        system_out = case.find("system-out")
-        assert "\x01" not in system_out.text
-        assert "\x1f" not in system_out.text
-        assert "lineone" in system_out.text
-        assert "linetwo" in system_out.text
+        assert case.find("system-out") is None
 
     def test_print_to_junit_strips_illegal_chars_from_attributes(self, tmp_path):
         """Verify that domain, node_name, key, and component are sanitized."""

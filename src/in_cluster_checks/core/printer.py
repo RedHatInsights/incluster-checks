@@ -371,11 +371,6 @@ class StructedPrinter:
                         skipped_count += 1
                         ET.SubElement(testcase, "skipped", message=message)
 
-                    rule_log = host_result.get("rule_log", [])
-                    if rule_log:
-                        system_out = ET.SubElement(testcase, "system-out")
-                        system_out.text = "\n".join(_strip_xml_illegal_chars(line) for line in rule_log)
-
             testsuite.set("tests", str(test_count))
             testsuite.set("failures", str(failure_count))
             testsuite.set("skipped", str(skipped_count))

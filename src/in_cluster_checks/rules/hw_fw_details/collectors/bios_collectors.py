@@ -51,7 +51,9 @@ class BIOSVersion(BIOS):
             Example: {"1": "2.8.0"}
         """
         cmd = SafeCmdString("sudo dmidecode -s bios-version")
-        bios_version = self._run_cached_command(cmd, timeout=30).strip()
+        bios_version = self.get_output_from_run_cmd(
+            cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool
+        ).strip()
 
         return {bios_id: bios_version for bios_id in self.get_component_ids()}
 
@@ -78,7 +80,9 @@ class BIOSFirmware(BIOS):
             Example: {"1": "1.68"}
         """
         cmd = SafeCmdString("sudo dmidecode --type bios | grep 'Firmware Revision'")
-        out = self._run_cached_command(cmd, timeout=30).strip()
+        out = self.get_output_from_run_cmd(
+            cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool
+        ).strip()
 
         # Parse firmware from output (format: "Firmware Revision: 1.68")
         if ":" in out:
@@ -112,7 +116,9 @@ class BIOSRevision(BIOS):
             Example: {"1": "2.50"}
         """
         cmd = SafeCmdString("sudo dmidecode --type bios | grep -i 'BIOS Revision'")
-        out = self._run_cached_command(cmd, timeout=30).strip()
+        out = self.get_output_from_run_cmd(
+            cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool
+        ).strip()
 
         # Parse revision from output (format: "BIOS Revision: 2.50")
         if ":" in out:
@@ -146,6 +152,8 @@ class BIOSReleaseDate(BIOS):
             Example: {"1": "12/15/2023"}
         """
         cmd = SafeCmdString("sudo dmidecode -s bios-release-date")
-        bios_release_date = self._run_cached_command(cmd, timeout=30).strip()
+        bios_release_date = self.get_output_from_run_cmd(
+            cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool
+        ).strip()
 
         return {bios_id: bios_release_date for bios_id in self.get_component_ids()}

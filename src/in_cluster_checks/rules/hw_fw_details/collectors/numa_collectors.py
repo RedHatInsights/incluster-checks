@@ -31,7 +31,7 @@ class NUMADataCollector(HwFwDataCollector):
             List of NUMA node IDs (e.g., ["node 0", "node 1"])
         """
         cmd = SafeCmdString("lscpu | grep 'NUMA node(s):'")
-        output = self._run_cached_command(cmd, timeout=30)
+        output = self.get_output_from_run_cmd(cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool)
 
         # Parse number of NUMA nodes
         match = re.search(r"NUMA node\(s\):\s+(\d+)", output)
@@ -81,7 +81,9 @@ class NumaSizeMemory(NUMADataCollector):
             cmd = SafeCmdString("cat /sys/devices/system/node/node{node_num}/meminfo").format(node_num=node_num)
 
             try:
-                output = self._run_cached_command(cmd, timeout=30)
+                output = self.get_output_from_run_cmd(
+                    cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool
+                )
 
                 # Parse MemTotal line
                 # Format: "Node X MemTotal:       32948232 kB"
@@ -125,7 +127,7 @@ class NumaCpus(NUMADataCollector):
             Example: {"node 0": "0-15,32-47", "node 1": "16-31,48-63"}
         """
         cmd = SafeCmdString("lscpu")
-        output = self._run_cached_command(cmd, timeout=30)
+        output = self.get_output_from_run_cmd(cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool)
 
         result = {}
 
@@ -185,7 +187,7 @@ class NumaNICs(NUMADataCollector):
         # Get list of all network interfaces with physical devices (those with np in name)
         cmd = SafeCmdString("ls /sys/class/net/ | grep np")
         try:
-            output = self._run_cached_command(cmd, timeout=30)
+            output = self.get_output_from_run_cmd(cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool)
             all_port_names = [line.strip() for line in output.splitlines() if line.strip()]
         except Exception:
             # If command fails, return empty result
@@ -198,7 +200,9 @@ class NumaNICs(NUMADataCollector):
             try:
                 # Read NUMA node number
                 cmd = SafeCmdString("cat {numa_node_path}").format(numa_node_path=numa_node_path)
-                output = self._run_cached_command(cmd, timeout=30)
+                output = self.get_output_from_run_cmd(
+                    cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool
+                )
 
                 # Parse NUMA node number (use abs() to handle -1 for non-NUMA systems)
                 numa_node_num = abs(int(output.strip()))

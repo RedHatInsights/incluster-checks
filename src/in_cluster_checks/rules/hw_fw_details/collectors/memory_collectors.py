@@ -44,7 +44,9 @@ class Memory(HwFwDataCollector):
         Returns:
             List of memory device dicts (only populated slots)
         """
-        dmidecode_output = self._run_cached_command(SafeCmdString("sudo dmidecode -t memory"), timeout=30)
+        dmidecode_output = self.get_output_from_run_cmd(
+            SafeCmdString("sudo dmidecode -t memory"), timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool
+        )
         dmidecode_json = self._parse_dmidecode_memory_blocks(dmidecode_output)
 
         res = []

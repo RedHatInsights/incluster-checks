@@ -197,13 +197,16 @@ class OperatorTestBase:
             patches.append(patch(full_module, mock_obj))
         return patches
 
-    def _run_cmd_side_effects(self, cmd: str, timeout: int = 120, add_bash_timeout: bool = False):
+    def _run_cmd_side_effects(
+        self, cmd: str, timeout: int = 120, hosts_cached_pool: dict = None, add_bash_timeout: bool = False
+    ):
         """
         Mock side effect for run_cmd().
 
         Args:
             cmd: Command to execute
             timeout: Timeout (ignored in mock)
+            hosts_cached_pool: Ignored in mock (caching not simulated)
             add_bash_timeout: If True, wraps command with timeout before lookup
 
         Returns:
@@ -299,7 +302,9 @@ class OperatorTestBase:
 
         return res.return_code, res.out, res.err
 
-    def _get_output_from_run_cmd_side_effects(self, cmd: str, timeout: int = 30, message: str = None):
+    def _get_output_from_run_cmd_side_effects(
+        self, cmd: str, timeout: int = 30, message: str = None, hosts_cached_pool: dict = None
+    ):
         """
         Mock side effect for get_output_from_run_cmd().
 
@@ -307,6 +312,7 @@ class OperatorTestBase:
             cmd: Command to execute
             timeout: Timeout (ignored in mock)
             message: Optional error message (ignored in mock, for HC compatibility)
+            hosts_cached_pool: Ignored in mock (caching not simulated)
 
         Returns:
             Command stdout

@@ -288,14 +288,14 @@ class TestOperatingSystemDiskType(DataCollectorTestBase):
         """Initialize and pre-populate cache for nested collectors."""
         super()._init_data_collector_object(collector_object, scenario_params)
 
-        # Pre-populate the class-level cache so nested collectors can use it
+        # Pre-populate the class-level cached_data_pool so nested collectors can use it
         # This is needed because OperatingSystemDiskType creates instances of
         # OperatingSystemDiskName and DiskType internally
-        node_name = "test_node"
+        node_name = collector_object.get_host_name()
         if scenario_params:
+            collector_object.cached_data_pool[node_name] = {}
             for cmd, cmd_output in scenario_params.cmd_input_output_dict.items():
-                cache_key = (node_name, cmd)
-                collector_object.cached_command_outputs[cache_key] = cmd_output.out
+                collector_object.cached_data_pool[node_name][cmd] = (cmd_output.return_code, cmd_output.out, cmd_output.err)
 
     # lsblk outputs
     lsblk_output = """sda                                                             disk
@@ -383,14 +383,14 @@ class TestOperatingSystemDiskSize(DataCollectorTestBase):
         """Initialize and pre-populate cache for nested collectors."""
         super()._init_data_collector_object(collector_object, scenario_params)
 
-        # Pre-populate the class-level cache so nested collectors can use it
+        # Pre-populate the class-level cached_data_pool so nested collectors can use it
         # This is needed because OperatingSystemDiskSize creates instances of
         # OperatingSystemDiskName and DiskSize internally
-        node_name = "test_node"
+        node_name = collector_object.get_host_name()
         if scenario_params:
+            collector_object.cached_data_pool[node_name] = {}
             for cmd, cmd_output in scenario_params.cmd_input_output_dict.items():
-                cache_key = (node_name, cmd)
-                collector_object.cached_command_outputs[cache_key] = cmd_output.out
+                collector_object.cached_data_pool[node_name][cmd] = (cmd_output.return_code, cmd_output.out, cmd_output.err)
 
     # lsblk outputs
     lsblk_output = """sda                                                             disk

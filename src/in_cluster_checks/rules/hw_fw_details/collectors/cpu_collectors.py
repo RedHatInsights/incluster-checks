@@ -35,7 +35,11 @@ class ProcessorType(HwFwDataCollector):
             List of processor IDs like ["CPU0", "CPU1"] or ["socket_0", "socket_1"]
         """
         # Try to get socket designations from dmidecode
-        dmidecode_output = self._run_cached_command(SafeCmdString("sudo dmidecode -t processor"), timeout=30)
+        dmidecode_output = self.get_output_from_run_cmd(
+            SafeCmdString("sudo dmidecode -t processor"),
+            timeout=30,
+            hosts_cached_pool=HwFwDataCollector.cached_data_pool,
+        )
 
         # Parse Socket Designation fields
         socket_designations = re.findall(r"Socket Designation:\s+(.+)", dmidecode_output)
@@ -43,7 +47,9 @@ class ProcessorType(HwFwDataCollector):
             return socket_designations
 
         # Fallback: use lscpu to get socket count
-        lscpu_output = self._run_cached_command(SafeCmdString("lscpu"))
+        lscpu_output = self.get_output_from_run_cmd(
+            SafeCmdString("lscpu"), hosts_cached_pool=HwFwDataCollector.cached_data_pool
+        )
         socket_match = re.search(r"Socket\(s\):\s+(\d+)", lscpu_output)
         socket_count = int(socket_match.group(1)) if socket_match else 1
 
@@ -58,7 +64,9 @@ class ProcessorType(HwFwDataCollector):
             Example: {"CPU0": "Intel Xeon Gold 6238", "CPU1": "Intel Xeon Gold 6238"}
         """
         # Get lscpu output (cached)
-        lscpu_output = self._run_cached_command(SafeCmdString("lscpu"))
+        lscpu_output = self.get_output_from_run_cmd(
+            SafeCmdString("lscpu"), hosts_cached_pool=HwFwDataCollector.cached_data_pool
+        )
 
         # Parse model name
         model_match = re.search(r"Model name:\s+(.+)", lscpu_output)
@@ -100,7 +108,11 @@ class ProcessorCurrentFrequency(HwFwDataCollector):
             Dictionary of {processor_id: frequency_in_mhz}
             Example: {"CPU0": 2100, "CPU1": 2100}
         """
-        dmidecode_output = self._run_cached_command(SafeCmdString("sudo dmidecode -t processor"), timeout=30)
+        dmidecode_output = self.get_output_from_run_cmd(
+            SafeCmdString("sudo dmidecode -t processor"),
+            timeout=30,
+            hosts_cached_pool=HwFwDataCollector.cached_data_pool,
+        )
 
         # Parse processor information as JSON-like blocks
         processors_info = self._parse_dmidecode_processor_blocks(dmidecode_output)
@@ -199,7 +211,9 @@ class NumberOfThreadsPerCore(HwFwDataCollector):
             Dictionary of {processor_id: threads_per_core}
             Example: {"CPU0": 2, "CPU1": 2}
         """
-        lscpu_output = self._run_cached_command(SafeCmdString("lscpu"))
+        lscpu_output = self.get_output_from_run_cmd(
+            SafeCmdString("lscpu"), hosts_cached_pool=HwFwDataCollector.cached_data_pool
+        )
 
         # Parse threads per core
         threads_match = re.search(r"Thread\(s\) per core:\s+(\d+)", lscpu_output)
@@ -235,7 +249,9 @@ class NumberOfPhysicalCoresPerProcessor(HwFwDataCollector):
             Dictionary of {processor_id: physical_cores_per_socket}
             Example: {"CPU0": 22, "CPU1": 22}
         """
-        lscpu_output = self._run_cached_command(SafeCmdString("lscpu"))
+        lscpu_output = self.get_output_from_run_cmd(
+            SafeCmdString("lscpu"), hosts_cached_pool=HwFwDataCollector.cached_data_pool
+        )
 
         # Parse cores per socket
         cores_match = re.search(r"Core\(s\) per socket:\s+(\d+)", lscpu_output)
@@ -280,7 +296,9 @@ class CpuIsolated(HwFwDataCollector):
             Example: {"1": ""} if no isolation configured
         """
         # Read kernel command line
-        cmdline_output = self._run_cached_command(SafeCmdString("cat /proc/cmdline"))
+        cmdline_output = self.get_output_from_run_cmd(
+            SafeCmdString("cat /proc/cmdline"), hosts_cached_pool=HwFwDataCollector.cached_data_pool
+        )
 
         # Check if isolcpus parameter exists
         if " isolcpus=" not in cmdline_output:

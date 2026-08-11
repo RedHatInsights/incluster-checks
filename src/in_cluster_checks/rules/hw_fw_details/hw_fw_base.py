@@ -15,7 +15,6 @@ from in_cluster_checks.core.operations import DataCollector
 from in_cluster_checks.core.rule import OrchestratorRule
 from in_cluster_checks.core.rule_result import RuleResult
 from in_cluster_checks.utils.enums import Objectives
-from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
 
 
 class HwFwDataCollector(DataCollector):
@@ -27,13 +26,11 @@ class HwFwDataCollector(DataCollector):
 
     Key features:
     - Component-based data organization
-    - Command output caching to avoid duplicate executions
+    - Command output caching via Operator-level hosts_cached_pool
     - Standardized output format: {component_id: {property: value}}
     """
 
-    # Class-level cache shared across all collector instances
-    # Structure: {(node_name, command): output}
-    cached_command_outputs = {}
+    cached_data_pool = {}
     raise_collection_errors = False
 
     def __init__(self, host_executor=None):
@@ -115,72 +112,10 @@ class HwFwDataCollector(DataCollector):
         """
         raise NotImplementedError(f"collect_data() must be implemented in {self.__class__.__name__}")
 
-    def _run_cached_command(self, cmd: SafeCmdString, timeout: int = 30, ignore_errors: bool = False) -> str:
-        """
-        Run command with caching to avoid duplicate executions.
-
-        If the same command was already run on this node, return cached output.
-        Thread-safe for parallel execution.
-
-        Args:
-            cmd: Command to execute
-            timeout: Command timeout in seconds
-            ignore_errors: If True, return stdout even if command fails (non-zero exit)
-
-        Returns:
-            Command stdout
-
-        Raises:
-            Exception: If command fails and ignore_errors is False
-        """
-        node_name = self.get_host_name()
-        cache_key = (node_name, str(cmd))
-
-        # Check cache first (thread-safe)
-        with self.threadLock:
-            if cache_key in self.cached_command_outputs:
-                self.add_to_rule_log(f"Using cached output for command: {cmd}")
-                return self.cached_command_outputs[cache_key]
-
-        # Command not cached - execute it
-        if ignore_errors:
-            # Use run_cmd to get raw output even on error
-            _, output, _ = self.run_cmd(cmd, timeout)
-        else:
-            # Use get_output_from_run_cmd which raises on error
-            output = self.get_output_from_run_cmd(cmd, timeout)
-
-        # Store in cache (thread-safe)
-        with self.threadLock:
-            self.cached_command_outputs[cache_key] = output
-
-        return output
-
     @classmethod
     def clear_cache(cls):
-        """
-        Clear the command output cache.
-
-        Should be called between domain executions to free memory.
-        Thread-safe.
-        """
-        with cls.threadLock:
-            cls.cached_command_outputs.clear()
-
-    def get_cache_stats(self) -> Dict[str, int]:
-        """
-        Get cache statistics for monitoring.
-
-        Returns:
-            Dictionary with cache metrics:
-            - total_entries: Total number of cached commands
-            - node_count: Number of unique nodes in cache
-        """
-        with self.threadLock:
-            total_entries = len(self.cached_command_outputs)
-            unique_nodes = len(set(node for node, _ in self.cached_command_outputs.keys()))
-
-        return {"total_entries": total_entries, "node_count": unique_nodes}
+        """Clear the cached data pool. Called by the domain after verify() completes."""
+        cls.cached_data_pool.clear()
 
 
 class HwFwRule(OrchestratorRule):

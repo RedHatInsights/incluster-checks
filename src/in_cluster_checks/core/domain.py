@@ -100,10 +100,16 @@ class RuleDomain(abc.ABC):
 
         ParallelRunner.run_domain_rules_on_all_hosts(rule_groups, printer)
 
+        self.clean_domain()
+
         details = printer.get_msg()
         printer.print_summary(self.domain_name())
 
         return {"domain_name": self.domain_name(), "details": details}
+
+    def clean_domain(self):
+        """Clean up after domain execution — e.g. free cached command outputs."""
+        pass
 
     def _create_rule_groups(self, rule_classes: List[type], host_executors_dict: Dict[str, Any]) -> List[List[Rule]]:
         """

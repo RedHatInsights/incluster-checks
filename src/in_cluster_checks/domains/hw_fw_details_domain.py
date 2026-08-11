@@ -5,7 +5,7 @@ Orchestrates validators that compare hardware/firmware
 configurations across nodes within the same host groups.
 """
 
-from typing import Any, Dict, List
+from typing import List
 
 from in_cluster_checks.core.domain import RuleDomain
 from in_cluster_checks.rules.hw_fw_details.firmware_rule import FirmwareDetailsRule
@@ -37,22 +37,5 @@ class HwFwDetailsValidationDomain(RuleDomain):
             FirmwareDetailsRule,
         ]
 
-    def verify(self, host_executors_dict: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Run all hardware/firmware validators.
-
-        Extends base verify() to clear data collector cache after completion.
-
-        Args:
-            host_executors_dict: Dictionary of {node_name: NodeExecutor}
-
-        Returns:
-            Dictionary with domain results
-        """
-        # Run validators (base class handles the execution)
-        result = super().verify(host_executors_dict)
-
-        # Clear cache after domain completes
+    def clean_domain(self):
         HwFwDataCollector.clear_cache()
-
-        return result

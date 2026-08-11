@@ -75,26 +75,18 @@ class Operator:
         if global_config.debug_rule_flag:
             print(f"\n[DEBUG] [{self.get_host_name()}] {message}", flush=True)
 
-    def run_cmd(
-        self, cmd: SafeCmdString, timeout: int = 120, hosts_cached_pool: dict = None, add_bash_timeout: bool = False
-    ) -> tuple:
+    def run_cmd(self, cmd: SafeCmdString, timeout: int = 120, add_bash_timeout: bool = False) -> tuple:
         """
         Run command on host/container and log it.
 
         Args:
             cmd: SafeCmdString object with command to execute
             timeout: Timeout in seconds (default: 120)
-            hosts_cached_pool: Optional dict for caching command outputs per host.
-                When provided, results are cached by (hostname, cmd) and reused on subsequent calls.
-                The caller owns the dict and is responsible for clearing it.
             add_bash_timeout: If True, wraps command with bash timeout command for guaranteed termination
 
         Returns:
             Tuple of (return_code, stdout, stderr)
         """
-        if hosts_cached_pool is not None:
-            return self._run_cmd_use_cached(cmd, hosts_cached_pool, timeout, add_bash_timeout)
-
         self._add_cmd_to_log(cmd)
 
         # Execute command (parallelized, no lock)
@@ -111,38 +103,13 @@ class Operator:
                     self._debug_log(f"STDERR:\n{err}")
                 print("=" * 60, flush=True)
 
+        # Note: In normal mode, we don't log failed commands since many failures are expected
+        # (e.g., prerequisite checks testing if commands exist). The JSON output contains
+        # exception details when validations fail.
+
         return return_code, out, err
 
-    def _run_cmd_use_cached(
-        self, cmd: SafeCmdString, cached_pool: dict, timeout: int = 120, add_bash_timeout: bool = False
-    ) -> tuple:
-        """
-        Run command with caching to avoid duplicate executions across collectors.
-
-        Args:
-            cmd: Command to execute
-            cached_pool: Dictionary for storing cached results, keyed by hostname -> cmd_string
-            timeout: Command timeout in seconds
-            add_bash_timeout: If True, wraps command with bash timeout
-
-        Returns:
-            Tuple of (return_code, stdout, stderr)
-        """
-        hostname = self.get_host_name()
-        cmd_str = str(cmd)
-
-        if cached_pool.get(hostname, {}).get(cmd_str):
-            return cached_pool[hostname][cmd_str]
-
-        cached_pool[hostname] = cached_pool.get(hostname, {})
-        res = self.run_cmd(cmd, timeout, hosts_cached_pool=None, add_bash_timeout=add_bash_timeout)
-        cached_pool[hostname][cmd_str] = res
-
-        return res
-
-    def get_output_from_run_cmd(
-        self, cmd: SafeCmdString, timeout: int = 30, message: str = None, hosts_cached_pool: dict = None
-    ) -> str:
+    def get_output_from_run_cmd(self, cmd: SafeCmdString, timeout: int = 30, message: str = None) -> str:
         """
         Run command, log it, and return stdout if successful.
 
@@ -150,7 +117,6 @@ class Operator:
             cmd: SafeCmdString object with command to execute
             timeout: Timeout in seconds (default: 30)
             message: Optional custom error message
-            hosts_cached_pool: Optional dict for caching command outputs per host.
 
         Returns:
             stdout from command (stripped)
@@ -158,7 +124,7 @@ class Operator:
         Raises:
             UnExpectedSystemOutput: If command fails (non-zero exit code)
         """
-        rc, out, err = self.run_cmd(cmd, timeout, hosts_cached_pool=hosts_cached_pool)
+        rc, out, err = self.run_cmd(cmd, timeout)
 
         if rc != 0:
             error_message = message if message else "Unexpected output (exit code: {})".format(rc)
@@ -530,9 +496,7 @@ class OrchestratorDataCollector(DataCollector):
         """Override to skip ORCHESTRATOR validation - this class is designed for it."""
         pass
 
-    def run_cmd(
-        self, cmd: SafeCmdString, timeout: int = 120, hosts_cached_pool: dict = None, add_bash_timeout: bool = False
-    ) -> tuple:
+    def run_cmd(self, cmd: SafeCmdString, timeout: int = 120) -> tuple:
         """
         Not available for OrchestratorDataCollector - use oc_api methods instead.
 
@@ -542,8 +506,6 @@ class OrchestratorDataCollector(DataCollector):
         Args:
             cmd: Command (not used)
             timeout: Timeout (not used)
-            hosts_cached_pool: Not used
-            add_bash_timeout: Not used
 
         Raises:
             NotImplementedError: Always raised with guidance

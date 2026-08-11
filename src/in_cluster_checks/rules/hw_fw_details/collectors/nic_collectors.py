@@ -43,7 +43,7 @@ class NICDataCollector(HwFwDataCollector):
             Example: {"01:00": ["01:00.0", "01:00.1"]}
         """
         cmd = SafeCmdString("sudo lspci | grep -i 'ethernet\\|infiniband' | grep -vi 'virtual'")
-        output = self.get_output_from_run_cmd(cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool)
+        output = self._run_cached_command(cmd, timeout=30)
 
         nic_ports_ids = {}
         for line in output.splitlines():
@@ -96,7 +96,7 @@ class NICDataCollector(HwFwDataCollector):
         # Get all physical interfaces by listing directories with device symlink
         # Use ls -d to list directories, not their contents
         cmd = SafeCmdString("ls -d /sys/class/net/*/device 2>/dev/null | cut -d'/' -f5")
-        output = self.get_output_from_run_cmd(cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool)
+        output = self._run_cached_command(cmd, timeout=30)
 
         # Check each physical interface
         for iface in output.strip().split():
@@ -105,9 +105,7 @@ class NICDataCollector(HwFwDataCollector):
 
             # Get PCI address via readlink
             pci_cmd = SafeCmdString("readlink /sys/class/net/{iface}/device 2>/dev/null").format(iface=iface)
-            pci_output = self.get_output_from_run_cmd(
-                pci_cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool
-            ).strip()
+            pci_output = self._run_cached_command(pci_cmd, timeout=30).strip()
 
             # readlink returns something like "../../../0000:12:00.0"
             # Extract just the PCI ID part
@@ -149,7 +147,7 @@ class NICDataCollector(HwFwDataCollector):
 
             # Get detailed info for this PCI device
             cmd = SafeCmdString("sudo lspci -vmm -s {first_port}").format(first_port=first_port)
-            output = self.get_output_from_run_cmd(cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool)
+            output = self._run_cached_command(cmd, timeout=30)
 
             # Parse lspci -vmm output (key-value pairs)
             value = self._parse_lspci_vmm(output, field)
@@ -277,7 +275,7 @@ class NICSpeed(NICDataCollector):
         Returns speed in Mb/s (e.g., 1000, 10000, 25000)
         """
         cmd = SafeCmdString("sudo ethtool {port_name}").format(port_name=port_name)
-        output = self.get_output_from_run_cmd(cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool)
+        output = self._run_cached_command(cmd, timeout=30)
 
         # Look for "Supported link modes:" section
         # Extract text between "Supported link modes:" and next section
@@ -413,7 +411,7 @@ class NICVersion(NICDataCollector):
             # Use first port (all ports on same NIC have same values)
             first_port = port_names[0]
             cmd = SafeCmdString("sudo ethtool -i {first_port}").format(first_port=first_port)
-            output = self.get_output_from_run_cmd(cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool)
+            output = self._run_cached_command(cmd, timeout=30)
 
             # Parse ethtool -i output for the field
             field_value = self._parse_ethtool_field(output, field)
@@ -465,7 +463,7 @@ class NICFirmware(NICDataCollector):
 
             first_port = port_names[0]
             cmd = SafeCmdString("sudo ethtool -i {first_port}").format(first_port=first_port)
-            output = self.get_output_from_run_cmd(cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool)
+            output = self._run_cached_command(cmd, timeout=30)
 
             # Parse for firmware-version field
             firmware = self._parse_ethtool_field(output, "firmware-version")
@@ -517,7 +515,7 @@ class NICDriver(NICDataCollector):
 
             first_port = port_names[0]
             cmd = SafeCmdString("sudo ethtool -i {first_port}").format(first_port=first_port)
-            output = self.get_output_from_run_cmd(cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool)
+            output = self._run_cached_command(cmd, timeout=30)
 
             # Parse for driver field
             driver = self._parse_ethtool_field(output, "driver")

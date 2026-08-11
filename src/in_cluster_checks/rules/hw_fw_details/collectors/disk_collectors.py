@@ -33,7 +33,7 @@ class DiskDataCollector(HwFwDataCollector):
             Only includes real physical disks (no virtual/loop devices)
         """
         cmd = SafeCmdString("sudo lsblk -d -o name,model")
-        output = self.get_output_from_run_cmd(cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool)
+        output = self._run_cached_command(cmd, timeout=30)
 
         lines = output.splitlines()
         if len(lines) < 2:  # Need header + at least one disk
@@ -94,7 +94,7 @@ class DiskDataCollector(HwFwDataCollector):
             Dict of {disk_name: field_value}
         """
         cmd = SafeCmdString("sudo lsblk -d -o name,{field_name}").format(field_name=field_name)
-        output = self.get_output_from_run_cmd(cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool)
+        output = self._run_cached_command(cmd, timeout=30)
 
         lines = output.splitlines()
         if len(lines) < 2:
@@ -194,7 +194,7 @@ class DiskType(DiskDataCollector):
 
         # Use smartctl to check (cached, ignore errors as smartctl returns 64 for old SMART data)
         cmd = SafeCmdString("sudo smartctl -a /dev/{disk_name}").format(disk_name=disk_name)
-        _, output, _ = self.run_cmd(cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool)
+        output = self._run_cached_command(cmd, timeout=30, ignore_errors=True)
 
         # Check for NVMe indicators in output
         if "Total NVM Capacity:" in output or "NVMe" in output:
@@ -291,7 +291,7 @@ class DiskSize(DiskDataCollector):
         """
         # Get size in bytes
         cmd = SafeCmdString("sudo lsblk -d -o name,size -b")
-        output = self.get_output_from_run_cmd(cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool)
+        output = self._run_cached_command(cmd, timeout=30)
 
         lines = output.splitlines()
         if len(lines) < 2:
@@ -357,7 +357,7 @@ class OperatingSystemDisk(DiskDataCollector):
             Empty list if no OS disks found
         """
         cmd = SafeCmdString("sudo lsblk -n")
-        output = self.get_output_from_run_cmd(cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool)
+        output = self._run_cached_command(cmd, timeout=30)
         return self._parse_lsblk_output(output)
 
     def _parse_lsblk_output(self, output: str) -> List[str]:
@@ -413,7 +413,7 @@ class OperatingSystemDisk(DiskDataCollector):
 
         # Collect disk rotation data (0=SSD, 1=HDD)
         cmd = SafeCmdString("sudo lsblk -d -o name,rota")
-        output = self.get_output_from_run_cmd(cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool)
+        output = self._run_cached_command(cmd, timeout=30)
 
         lines = output.splitlines()
         if len(lines) < 2:
@@ -463,7 +463,7 @@ class OperatingSystemDisk(DiskDataCollector):
         real_disk_names = super().get_component_ids()
 
         cmd = SafeCmdString("sudo lsblk -d -o name,size -b")
-        output = self.get_output_from_run_cmd(cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool)
+        output = self._run_cached_command(cmd, timeout=30)
 
         lines = output.splitlines()
         if len(lines) < 2:

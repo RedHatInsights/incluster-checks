@@ -51,9 +51,7 @@ class OperatingSystemVersion(OSInfo):
             Example: {"1": "Red Hat Enterprise Linux 9.2"}
         """
         cmd = SafeCmdString("cat /etc/redhat-release")
-        os_version = self.get_output_from_run_cmd(
-            cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool
-        ).strip()
+        os_version = self._run_cached_command(cmd, timeout=30).strip()
 
         return {os_id: os_version for os_id in self.get_component_ids()}
 
@@ -81,8 +79,6 @@ class KernelVersion(OSInfo):
             Example: {"1": "5.14.0-284.11.1.el9_2.x86_64"}
         """
         cmd = SafeCmdString("uname -r")
-        kernel_version = self.get_output_from_run_cmd(
-            cmd, timeout=30, hosts_cached_pool=HwFwDataCollector.cached_data_pool
-        ).strip()
+        kernel_version = self._run_cached_command(cmd, timeout=30).strip()
 
         return {kernel_id: kernel_version for kernel_id in self.get_component_ids()}

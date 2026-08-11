@@ -46,7 +46,7 @@ class OVNKubernetesTestBase(RuleTestBase):
         RuleScenarioParams(
             "prerequisite_fulfilled",
             tested_object_mock_dict={
-                "oc_api.select_resources": Mock(return_value=_create_mock_network_ovnkube())
+                "oc_api.select_single_resource": Mock(return_value=_create_mock_network_ovnkube())
             },
         )
     ]

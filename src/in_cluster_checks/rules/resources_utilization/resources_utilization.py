@@ -1,13 +1,21 @@
 """Orchestrator rule for cluster resources utilization reporting."""
 
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, TypedDict
 
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.operations import OrchestratorDataCollector
 from in_cluster_checks.core.rule import OrchestratorRule, RuleResult
 from in_cluster_checks.utils.enums import Objectives
 from in_cluster_checks.utils.parsing_utils import format_cpu, format_memory
+
+
+class ParsedResourceLine(TypedDict):
+    resource_name: str
+    requests_value: str
+    requests_pct: str | None
+    limits_value: str
+    limits_pct: str | None
 
 
 class NodeResourcesCollector(OrchestratorDataCollector):
@@ -99,7 +107,7 @@ class NodeResourcesCollector(OrchestratorDataCollector):
 
         return sorted(node_labels.split(","))
 
-    def _parse_allocated_resources(self, describe_output: str) -> Dict[str, Dict[str, str]]:
+    def _parse_allocated_resources(self, describe_output: str) -> Dict[str, Dict[str, str | None]]:
         """Parse 'Allocated resources' section from oc describe node output.
 
         Args:
@@ -149,7 +157,7 @@ class NodeResourcesCollector(OrchestratorDataCollector):
 
         return allocated
 
-    def _parse_resource_line(self, line: str) -> Dict[str, str] | None:
+    def _parse_resource_line(self, line: str) -> ParsedResourceLine | None:
         """Parse a single resource line from the allocated resources table.
 
         Args:

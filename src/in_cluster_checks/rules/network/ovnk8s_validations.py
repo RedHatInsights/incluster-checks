@@ -32,7 +32,7 @@ class OVNKubernetesBase(OrchestratorRule):
             PrerequisiteResult indicating if OVN-Kubernetes is the network type
         """
         try:
-            network_obj = self.oc_api.select_resources(resource_type="network.operator/cluster", single=True)
+            network_obj = self.oc_api.select_single_resource(resource_type="network.operator/cluster")
             if not network_obj:
                 return PrerequisiteResult.not_met("Cannot determine network type: network.operator/cluster not found")
 
@@ -225,10 +225,7 @@ class MTUOverlayInterfaces(OVNKubernetesBase):
         return RuleResult.passed()
 
     def _get_expected_mtu(self) -> Optional[int]:
-        network_obj = self.oc_api.select_resources(
-            resource_type="network.operator/cluster",
-            single=True,
-        )
+        network_obj = self.oc_api.select_single_resource(resource_type="network.operator/cluster")
 
         if not network_obj:
             return None

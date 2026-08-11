@@ -298,7 +298,7 @@ This validates variables to prevent shell injection.
 ```python
 # Use existing oc_api methods when available
 pods = self.oc_api.get_pods(namespace="openshift-etcd")
-network = self.oc_api.select_resources("network.operator/cluster", single=True)
+network = self.oc_api.select_single_resource("network.operator/cluster")
 
 # Use run_oc_command for other oc commands
 rc, out, err = self.oc_api.run_oc_command("get", ["nodes", "-o", "json"])

@@ -275,7 +275,12 @@ class InfraPodsReadyAndRunning(OrchestratorRule):
             age_seconds = (datetime.now(timezone.utc) - parsed_time).total_seconds()
             return age_seconds > threshold_seconds
         except (ValueError, AttributeError) as err:
-            raise UnExpectedSystemOutput(f"Failed to parse pod timestamp: {timestamp_str}") from err
+            raise UnExpectedSystemOutput(
+                ip="cluster-api",
+                cmd="oc get pods -A -o json",
+                output=str(timestamp_str),
+                message=f"Failed to parse pod timestamp: {timestamp_str}",
+            ) from err
 
 
 class NodesAreReady(OrchestratorRule):
@@ -1318,7 +1323,7 @@ class VerifyFARControllerReplicas(OrchestratorRule):
     def run_rule(self):
         """Check FAR controller manager has correct number of replicas."""
         # Step 1: Check if this is a Single Node OpenShift cluster
-        infrastructure = self.oc_api.select_resources("infrastructure/cluster", single=True, timeout=30)
+        infrastructure = self.oc_api.select_single_resource("infrastructure/cluster", timeout=30)
         if infrastructure:
             infra_dict = infrastructure.as_dict()
             topology = infra_dict.get("status", {}).get("controlPlaneTopology", "")

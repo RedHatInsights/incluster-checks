@@ -282,7 +282,7 @@ class IsOVNKubernetesCollector(OrchestratorDataCollector):
             True if OVN-Kubernetes, False otherwise
         """
         try:
-            network_obj = self.oc_api.select_resources(resource_type="network.operator/cluster", single=True)
+            network_obj = self.oc_api.select_single_resource(resource_type="network.operator/cluster")
             if not network_obj:
                 return False
 
@@ -340,7 +340,7 @@ class NncpOvsBondVlanCollector(OvsOperatorBase, OrchestratorDataCollector):
             return set()
 
         nncps = parse_json(
-            output=out, cmd="oc get nodenetworkconfigurationpolicies.nmstate.io -A -o json", ip=self.get_host_ip
+            output=out, cmd="oc get nodenetworkconfigurationpolicies.nmstate.io -A -o json", ip=self.get_host_ip()
         ).get("items", [])
         ovs_bond_vlans = set()
 
@@ -397,7 +397,7 @@ class OvnSecondaryNetworkBridgesCollector(OrchestratorDataCollector):
             return set()
 
         nncps = parse_json(
-            output=out, cmd="oc get nodenetworkconfigurationpolicies.nmstate.io -A -o json", ip=self.get_host_ip
+            output=out, cmd="oc get nodenetworkconfigurationpolicies.nmstate.io -A -o json", ip=self.get_host_ip()
         ).get("items", [])
         secondary_bridges = set()
         for nncp in nncps:

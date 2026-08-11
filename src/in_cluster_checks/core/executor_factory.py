@@ -91,7 +91,7 @@ class NodeExecutorFactory:
 
         return self._host_executors_dict
 
-    def _get_internal_ip(self, node_dict: dict) -> str:
+    def _get_internal_ip(self, node_dict: dict) -> str | None:
         """
         Extract internal IP from node data.
 

@@ -58,6 +58,14 @@ repos:
         types: [python]
         files: ^src/in_cluster_checks/
 
+      - id: mypy-type-check
+        name: check types with mypy
+        entry: python tests/linters/check_mypy.py
+        language: system
+        types: [python]
+        files: ^src/in_cluster_checks/
+        pass_filenames: false
+
       - id: pytest-coverage
         name: pytest with coverage
         entry: python -m pytest

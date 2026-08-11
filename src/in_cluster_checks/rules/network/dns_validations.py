@@ -1,5 +1,3 @@
-from typing import ClassVar
-
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.operations import OrchestratorDataCollector
 from in_cluster_checks.core.rule import Rule, RuleResult
@@ -17,7 +15,7 @@ class DnsOperatorConfigCollector(OrchestratorDataCollector):
     upstream resolver addresses.
     """
 
-    objective_hosts: ClassVar[list] = [Objectives.ORCHESTRATOR]
+    objective_hosts = [Objectives.ORCHESTRATOR]
 
     def collect_data(self, **kwargs) -> list[str]:
         """
@@ -45,7 +43,12 @@ class DnsOperatorConfigCollector(OrchestratorDataCollector):
             if "NotFound" in combined_output or "not found" in combined_output.lower():
                 return []
             # Other errors should propagate
-            raise UnExpectedSystemOutput(f"Failed to query DNS operator config: {stderr}")
+            raise UnExpectedSystemOutput(
+                ip=self.get_host_ip(),
+                cmd="oc get dns.operator.openshift.io/cluster -o json",
+                output=f"{dns_config_output}\n{stderr}".strip(),
+                message="Failed to query DNS operator config",
+            )
 
         # Parse DNS config
         dns_config = parse_json(
@@ -80,11 +83,11 @@ class VerifyDnsReachability(Rule):
     4. Reports which DNS servers are reachable/unreachable from this node
     """
 
-    objective_hosts: ClassVar[list] = [Objectives.ALL_NODES]
-    supported_profiles: ClassVar[set] = {"general"}
+    objective_hosts = [Objectives.ALL_NODES]
+    supported_profiles = {"general"}
     unique_name = "verify_dns_reachability"
     title = "Verify DNS server reachability"
-    links: ClassVar[list] = [
+    links = [
         "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418450933/Verify+DNS+reachability",
     ]
     RESOLV_CONF_PATH = "/etc/resolv.conf"

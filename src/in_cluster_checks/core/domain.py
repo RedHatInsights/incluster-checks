@@ -43,7 +43,7 @@ class RuleDomain(abc.ABC):
         raise NotImplementedError(f"domain_name() must be implemented in {self.__class__.__name__}")
 
     @abc.abstractmethod
-    def get_rule_classes(self) -> List[type]:
+    def get_rule_classes(self) -> List[type[Rule]]:
         """
         Get list of rule classes to run in this domain.
 
@@ -59,7 +59,7 @@ class RuleDomain(abc.ABC):
         """
         raise NotImplementedError(f"get_rule_classes() must be implemented in {self.__class__.__name__}")
 
-    def _filter_rules_for_light_run(self, rule_classes: List[type]) -> List[type]:
+    def _filter_rules_for_light_run(self, rule_classes: List[type[Rule]]) -> List[type[Rule]]:
         """
         Filter rules based on light_run mode.
 
@@ -111,7 +111,9 @@ class RuleDomain(abc.ABC):
         """Clean up after domain execution — e.g. free cached command outputs."""
         pass
 
-    def _create_rule_groups(self, rule_classes: List[type], host_executors_dict: Dict[str, Any]) -> List[List[Rule]]:
+    def _create_rule_groups(
+        self, rule_classes: List[type[Rule]], host_executors_dict: Dict[str, Any]
+    ) -> List[List[Rule]]:
         """
         Create grouped rule instances following HC's pattern.
 
@@ -139,7 +141,7 @@ class RuleDomain(abc.ABC):
 
         return rule_groups
 
-    def _create_instances_for_rule(self, rule_class: type, host_executors_dict: Dict[str, Any]) -> List[Rule]:
+    def _create_instances_for_rule(self, rule_class: type[Rule], host_executors_dict: Dict[str, Any]) -> List[Rule]:
         """
         Create rule instances for a single rule class.
 
@@ -163,7 +165,7 @@ class RuleDomain(abc.ABC):
         # Create instances for matching nodes (handles both ONE_* and multi-type)
         return self._create_per_node_instances(rule_class, host_executors_dict)
 
-    def _create_orchestrator_instance(self, rule_class: type, host_executors_dict: Dict[str, Any]) -> List[Rule]:
+    def _create_orchestrator_instance(self, rule_class: type[Rule], host_executors_dict: Dict[str, Any]) -> List[Rule]:
         """
         Create single orchestrator instance.
 
@@ -186,7 +188,7 @@ class RuleDomain(abc.ABC):
             self.logger.error(f"Failed to instantiate {rule_class.__name__} as orchestrator: {e}")
             return []
 
-    def _create_per_node_instances(self, rule_class: type, host_executors_dict: Dict[str, Any]) -> List[Rule]:
+    def _create_per_node_instances(self, rule_class: type[Rule], host_executors_dict: Dict[str, Any]) -> List[Rule]:
         """
         Create rule instances for each matching node.
 
@@ -210,7 +212,7 @@ class RuleDomain(abc.ABC):
 
         return instances
 
-    def _should_create_for_executor(self, rule_class: type, executor: Any) -> bool:
+    def _should_create_for_executor(self, rule_class: type[Rule], executor: Any) -> bool:
         """
         Check if rule should be created for the given executor.
 
@@ -231,7 +233,7 @@ class RuleDomain(abc.ABC):
 
         return True
 
-    def _matches_debug_filter(self, rule_class: type) -> bool:
+    def _matches_debug_filter(self, rule_class: type[Rule]) -> bool:
         """
         Check if rule matches debug filter (by unique_name or title).
 

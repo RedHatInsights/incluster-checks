@@ -67,7 +67,7 @@ class TestSelectResources:
         mock_oc.timeout.return_value.__exit__ = Mock(return_value=False)
         mock_oc.selector.return_value = mock_selector
 
-        result = oc_api.select_resources("network.operator/cluster", single=True)
+        result = oc_api.select_single_resource("network.operator/cluster")
 
         assert result == mock_obj
         mock_selector.object.assert_called_once_with(ignore_not_found=True)
@@ -81,7 +81,7 @@ class TestSelectResources:
         mock_oc.timeout.return_value.__exit__ = Mock(return_value=False)
         mock_oc.selector.return_value = mock_selector
 
-        result = oc_api.select_resources("namespace/nonexistent", single=True)
+        result = oc_api.select_single_resource("namespace/nonexistent")
 
         assert result is None
         mock_selector.object.assert_called_once_with(ignore_not_found=True)

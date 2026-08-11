@@ -95,9 +95,7 @@ class CephRule(OrchestratorRule):
 
         try:
             # Check if openshift-storage namespace exists (Rook-Ceph namespace)
-            namespace_obj = self.oc_api.select_resources(
-                resource_type="namespace/openshift-storage", timeout=10, single=True
-            )
+            namespace_obj = self.oc_api.select_single_resource(resource_type="namespace/openshift-storage", timeout=10)
             if not namespace_obj:
                 return PrerequisiteResult.not_met(
                     "OpenShift Storage namespace not found. Ceph is not deployed in this cluster."
@@ -618,7 +616,7 @@ class OsdJournalError(CephRule):
 
     def _get_osd_pods(self) -> list:
         """Get all OSD pods from the cluster."""
-        return self._get_pods(namespace=self.NAMESPACE, labels={"app": "rook-ceph-osd"})
+        return self.oc_api.get_pods(namespace=self.NAMESPACE, labels={"app": "rook-ceph-osd"})
 
     def _check_pod_health(self, pod) -> dict | None:
         """

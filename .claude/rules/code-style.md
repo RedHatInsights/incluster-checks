@@ -195,6 +195,10 @@ def has_resource(self) -> bool:
 
 **Check `src/in_cluster_checks/utils` for suitable functions before executing shell commands or implementing new logic.**
 
+## Mypy Type Errors
+
+**Fix mypy errors by correcting type annotations — never suppress them with `# noqa`, `# type: ignore`, or by modifying the filter script (`check_mypy.py`).**
+
 ## Debug Logging
 
 See [@.claude/rules/debug-rule.md](debug-rule.md) for debug logging guidelines.

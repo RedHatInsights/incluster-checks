@@ -198,7 +198,7 @@ class OperatorTestBase:
         return patches
 
     def _run_cmd_side_effects(
-        self, cmd: str, timeout: int = 120, hosts_cached_pool: dict = None, add_bash_timeout: bool = False
+        self, cmd: str, timeout: int = 120, add_bash_timeout: bool = False, hosts_cached_pool: dict = None
     ):
         """
         Mock side effect for run_cmd().
@@ -206,8 +206,8 @@ class OperatorTestBase:
         Args:
             cmd: Command to execute
             timeout: Timeout (ignored in mock)
-            hosts_cached_pool: Ignored in mock (caching not simulated)
             add_bash_timeout: If True, wraps command with timeout before lookup
+            hosts_cached_pool: Ignored in mock (caching not simulated)
 
         Returns:
             Tuple of (return_code, stdout, stderr)

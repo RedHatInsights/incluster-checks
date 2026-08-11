@@ -98,9 +98,10 @@ class RuleDomain(abc.ABC):
         printer = StructedPrinter()
         rule_groups = self._create_rule_groups(rule_classes, host_executors_dict)
 
-        ParallelRunner.run_domain_rules_on_all_hosts(rule_groups, printer)
-
-        self.clean_domain()
+        try:
+            ParallelRunner.run_domain_rules_on_all_hosts(rule_groups, printer)
+        finally:
+            self.clean_domain()
 
         details = printer.get_msg()
         printer.print_summary(self.domain_name())

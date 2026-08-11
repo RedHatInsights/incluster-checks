@@ -81,8 +81,8 @@ class Operator:
         self,
         cmd: SafeCmdString,
         timeout: int = 120,
-        hosts_cached_pool: dict | None = None,
         add_bash_timeout: bool = False,
+        hosts_cached_pool: dict | None = None,
     ) -> tuple:
         """
         Run command on host/container and log it.
@@ -90,14 +90,19 @@ class Operator:
         Args:
             cmd: SafeCmdString object with command to execute
             timeout: Timeout in seconds (default: 120)
+            add_bash_timeout: If True, wraps command with bash timeout command for guaranteed termination
             hosts_cached_pool: Optional dict for caching command outputs per host.
                 When provided, results are cached by (hostname, cmd) and reused on subsequent calls.
                 The caller owns the dict and is responsible for clearing it.
-            add_bash_timeout: If True, wraps command with bash timeout command for guaranteed termination
 
         Returns:
             Tuple of (return_code, stdout, stderr)
         """
+        if hosts_cached_pool is not None and not isinstance(hosts_cached_pool, dict):
+            raise TypeError(f"hosts_cached_pool must be a dict or None, got {type(hosts_cached_pool).__name__}")
+        if not isinstance(add_bash_timeout, bool):
+            raise TypeError(f"add_bash_timeout must be a bool, got {type(add_bash_timeout).__name__}")
+
         if hosts_cached_pool is not None:
             return self._run_cmd_use_cached(cmd, hosts_cached_pool, timeout, add_bash_timeout)
 
@@ -538,8 +543,8 @@ class OrchestratorDataCollector(DataCollector):
         self,
         cmd: SafeCmdString,
         timeout: int = 120,
-        hosts_cached_pool: dict | None = None,
         add_bash_timeout: bool = False,
+        hosts_cached_pool: dict | None = None,
     ) -> tuple:
         """
         Not available for OrchestratorDataCollector - use oc_api methods instead.
@@ -550,8 +555,8 @@ class OrchestratorDataCollector(DataCollector):
         Args:
             cmd: Command (not used)
             timeout: Timeout (not used)
-            hosts_cached_pool: Not used
             add_bash_timeout: Not used
+            hosts_cached_pool: Not used
 
         Raises:
             NotImplementedError: Always raised with guidance

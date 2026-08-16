@@ -14,23 +14,7 @@ from pathlib import Path
 from in_cluster_checks.runner import InClusterCheckRunner
 from profiles.loader import ProfileLoader
 
-OUTPUT_DEFAULTS = {
-    "json": "./cluster-checks.json",
-    "junit": "./cluster-checks.xml",
-}
-
-
-def get_default_output(output_format: str) -> str:
-    """
-    Return the default output file path for the given format.
-
-    Args:
-        output_format: Output format ("json" or "junit")
-
-    Returns:
-        Default output file path with the appropriate extension
-    """
-    return OUTPUT_DEFAULTS.get(output_format, OUTPUT_DEFAULTS["json"])
+DEFAULT_OUTPUT = "./cluster-checks.json"
 
 
 def setup_logging(level: str) -> None:
@@ -174,16 +158,15 @@ def main() -> None:
         "--output",
         "-o",
         type=str,
-        default=None,
-        help="Output file path for results (default: ./cluster-checks.json or ./cluster-checks.xml for junit)",
+        default=DEFAULT_OUTPUT,
+        help="Output file path for results (default: ./cluster-checks.json)",
     )
 
     parser.add_argument(
         "--format",
         type=str,
-        choices=["json", "junit"],
-        default="json",
-        help="Output format (default: json)",
+        default=None,
+        help=argparse.SUPPRESS,
     )
 
     parser.add_argument(
@@ -239,8 +222,13 @@ def main() -> None:
     args = parser.parse_args()
     namespace_user_provided = args.namespace is not None
 
-    if args.output is None:
-        args.output = get_default_output(args.format)
+    if args.format is not None:
+        print(
+            "ERROR: --format is deprecated and no longer supported. Output is always JSON. "
+            "Remove the --format flag from your command.",
+            file=sys.stderr,
+        )
+        sys.exit(2)
 
     # Setup logging
     try:
@@ -299,7 +287,7 @@ def main() -> None:
             logger.info("Secret filtering is DISABLED in debug mode")
             logger.info("JSON output is DISABLED in debug mode")
 
-        result_path = runner.run(output_path=output_path, output_format=args.format)
+        result_path = runner.run(output_path=output_path)
 
         logger.info("=" * 60)
         logger.info("Checks completed successfully")

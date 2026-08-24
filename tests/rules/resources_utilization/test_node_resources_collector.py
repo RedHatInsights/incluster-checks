@@ -62,6 +62,10 @@ Events:              <none>
         worker_allocatable._primitive.return_value = {"cpu": "8", "memory": "32Gi"}
         worker_node.model.status.capacity = worker_capacity
         worker_node.model.status.allocatable = worker_allocatable
+        worker_node.model.status.conditions = [
+            {"type": "MemoryPressure", "status": "False"},
+            {"type": "Ready", "status": "True"},
+        ]
 
         # Master node with APIObject accessors
         master_node = Mock()
@@ -73,6 +77,10 @@ Events:              <none>
         master_allocatable._primitive.return_value = {"cpu": "16", "memory": "64Gi"}
         master_node.model.status.capacity = master_capacity
         master_node.model.status.allocatable = master_allocatable
+        master_node.model.status.conditions = [
+            {"type": "MemoryPressure", "status": "False"},
+            {"type": "Ready", "status": "True"},
+        ]
 
         return [worker_node, master_node]
 
@@ -104,6 +112,7 @@ Events:              <none>
                         "name": "worker-1",
                         "roles": ["worker"],
                         "schedulable": True,
+                        "status": "Ready",
                         "capacity": {"cpu": "8", "memory": "32Gi"},
                         "allocatable": {"cpu": "8", "memory": "32Gi"},
                         "allocated": {
@@ -125,6 +134,7 @@ Events:              <none>
                         "name": "master-1",
                         "roles": ["control-plane", "master"],
                         "schedulable": True,
+                        "status": "Ready",
                         "capacity": {"cpu": "16", "memory": "64Gi"},
                         "allocatable": {"cpu": "16", "memory": "64Gi"},
                         "allocated": {
@@ -323,3 +333,34 @@ Events:              <none>
 
         roles = tested_object._extract_roles("test-node", node_executors)
         assert roles == []
+
+    def test_determine_node_status_ready(self, tested_object):
+        """Ready condition status 'True' maps to 'Ready'."""
+        conditions = [
+            {"type": "MemoryPressure", "status": "False"},
+            {"type": "Ready", "status": "True"},
+        ]
+        assert tested_object._determine_node_status(conditions) == "Ready"
+
+    def test_determine_node_status_not_ready(self, tested_object):
+        """Ready condition status 'False' maps to 'NotReady'."""
+        conditions = [{"type": "Ready", "status": "False"}]
+        assert tested_object._determine_node_status(conditions) == "NotReady"
+
+    def test_determine_node_status_unknown_condition(self, tested_object):
+        """Ready condition status 'Unknown' maps to 'Unknown'."""
+        conditions = [{"type": "Ready", "status": "Unknown"}]
+        assert tested_object._determine_node_status(conditions) == "Unknown"
+
+    def test_determine_node_status_no_ready_condition(self, tested_object):
+        """Missing Ready condition maps to 'Unknown'."""
+        conditions = [{"type": "DiskPressure", "status": "False"}]
+        assert tested_object._determine_node_status(conditions) == "Unknown"
+
+    def test_determine_node_status_empty(self, tested_object):
+        """Empty conditions list maps to 'Unknown'."""
+        assert tested_object._determine_node_status([]) == "Unknown"
+
+    def test_determine_node_status_missing_field(self, tested_object):
+        """Non-list conditions (e.g. absent field) maps to 'Unknown'."""
+        assert tested_object._determine_node_status(None) == "Unknown"

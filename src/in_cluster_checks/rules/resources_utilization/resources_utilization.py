@@ -51,11 +51,15 @@ class NodeResourcesCollector(OrchestratorDataCollector):
             # Determine schedulability
             is_schedulable = not node_obj.model.spec.get("unschedulable", False)
 
+            # Determine readiness from the node's Ready status condition
+            node_status = self._determine_node_status(node_obj.model.status.conditions)
+
             # Build base node info
             node_info = {
                 "name": node_name,
                 "roles": roles,
                 "schedulable": is_schedulable,
+                "status": node_status,
                 "capacity": node_obj.model.status.capacity._primitive(),
                 "allocatable": node_obj.model.status.allocatable._primitive(),
                 "allocated": {},
@@ -85,6 +89,39 @@ class NodeResourcesCollector(OrchestratorDataCollector):
             )
 
         return {"nodes": nodes_data}
+
+    def _determine_node_status(self, conditions: Any) -> str:
+        """Derive node readiness from the Ready status condition.
+
+        Args:
+            conditions: The node's status.conditions (APIObject model list)
+
+        Returns:
+            "Ready", "NotReady", or "Unknown" when the Ready condition is absent
+            or indeterminate.
+        """
+        if not conditions or not isinstance(conditions, list):
+            return "Unknown"
+
+        for condition in conditions:
+            # Safe attribute access on APIObject, fallback to dict key
+            condition_type = getattr(condition, "type", None)
+            if condition_type is None and isinstance(condition, dict):
+                condition_type = condition.get("type")
+            if condition_type != "Ready":
+                continue
+
+            ready_status = getattr(condition, "status", None)
+            if ready_status is None and isinstance(condition, dict):
+                ready_status = condition.get("status")
+
+            if ready_status == "True":
+                return "Ready"
+            if ready_status == "False":
+                return "NotReady"
+            return "Unknown"
+
+        return "Unknown"
 
     def _extract_roles(self, node_name: str, node_executors: Dict[str, Any]) -> List[str]:
         """Extract node roles from node_executors dict.
@@ -278,6 +315,7 @@ class ResourcesUtilization(OrchestratorRule):
                 "name": node_name,
                 "roles": node["roles"],
                 "schedulable": node["schedulable"],
+                "status": node.get("status", "Unknown"),
                 "core_resources": core_resources,
             }
 

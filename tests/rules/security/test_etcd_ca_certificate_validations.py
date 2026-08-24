@@ -42,13 +42,13 @@ _EXEC_KEY = (
 
 
 def _scenario(title, alerts_json, failed_msg=None):
-    """Build a scenario that mocks both the pod lookup and the alerts query."""
+    """Build a scenario that sets cached pod name and mocks the alerts query."""
     return RuleScenarioParams(
         title,
         oc_cmd_output_dict={
-            _GET_POD_KEY: CmdOutput(_POD_NAME),
             _EXEC_KEY: CmdOutput(alerts_json),
         },
+        tested_object_mock_dict={"_prometheus_pod_name": _POD_NAME},
         failed_msg=failed_msg,
     )
 
@@ -57,13 +57,6 @@ class TestEtcdCaExpiryCheck(RuleTestBase):
     """Test EtcdCaExpiryCheck rule."""
 
     tested_type = EtcdCaExpiryCheck
-
-    scenario_not_applicable = [
-        RuleScenarioParams(
-            "prometheus pod not found",
-            oc_cmd_output_dict={_GET_POD_KEY: CmdOutput("")},
-        ),
-    ]
 
     scenario_passed = [
         _scenario(
@@ -116,16 +109,27 @@ class TestEtcdCaExpiryCheck(RuleTestBase):
     scenario_unexpected_system_output = [
         RuleScenarioParams(
             "malformed JSON from alerts query",
+            oc_cmd_output_dict={_EXEC_KEY: CmdOutput("not-json")},
+            tested_object_mock_dict={"_prometheus_pod_name": _POD_NAME},
+        ),
+        RuleScenarioParams(
+            "prometheus returns error status in response",
             oc_cmd_output_dict={
-                _GET_POD_KEY: CmdOutput(_POD_NAME),
-                _EXEC_KEY: CmdOutput("not-json"),
+                _EXEC_KEY: CmdOutput(json.dumps({"status": "error", "error": "invalid query"})),
             },
+            tested_object_mock_dict={"_prometheus_pod_name": _POD_NAME},
         ),
     ]
 
-    @pytest.mark.parametrize("scenario_params", scenario_not_applicable)
-    def test_scenario_not_applicable(self, scenario_params, tested_object):
-        RuleTestBase.test_scenario_not_applicable(self, scenario_params, tested_object)
+    def test_prerequisite_not_met_no_prometheus_pod(self, tested_object):
+        """Test prerequisite returns not_met when no Prometheus pod found."""
+        scenario = RuleScenarioParams(
+            "prometheus pod not found",
+            oc_cmd_output_dict={_GET_POD_KEY: CmdOutput("")},
+        )
+        self._init_validation_object(tested_object, scenario)
+        result = tested_object.is_prerequisite_fulfilled()
+        assert not result.fulfilled
 
     @pytest.mark.parametrize("scenario_params", scenario_passed)
     def test_scenario_passed(self, scenario_params, tested_object):

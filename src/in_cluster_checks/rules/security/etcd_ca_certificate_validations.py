@@ -54,26 +54,16 @@ class EtcdCaExpiryCheck(OrchestratorRule):
     WARNING_ALERT = "etcdSignerCAExpirationWarning"
     CRITICAL_ALERT = "etcdSignerCAExpirationCritical"
 
-
     def is_prerequisite_fulfilled(self):
         """Check if Prometheus pod is available in the monitoring namespace."""
-        out = self._get_prometheus_pod_name()
-        if not out.strip():
-            return PrerequisiteResult.not_met(
-                f"Prometheus pod not found in {self.MONITORING_NAMESPACE} namespace"
-            )
+        self._prometheus_pod_name = self._get_prometheus_pod_name().strip()
+        if not self._prometheus_pod_name:
+            return PrerequisiteResult.not_met(f"Prometheus pod not found in {self.MONITORING_NAMESPACE} namespace")
         return PrerequisiteResult.met()
 
     def run_rule(self):
         """Query Prometheus alerts and evaluate the etcd signer CA expiry state."""
-        try:
-            alerts = self._get_firing_alerts()
-        except UnExpectedSystemOutput as e:
-            if "No Prometheus pod found" in str(e.message):
-                return RuleResult.not_applicable(
-                    f"Prometheus pod not found in {self.MONITORING_NAMESPACE} namespace"
-                )
-            raise
+        alerts = self._get_firing_alerts()
         return self._evaluate_alerts(alerts)
 
     def _evaluate_alerts(self, alerts):
@@ -147,12 +137,14 @@ class EtcdCaExpiryCheck(OrchestratorRule):
             labels = alert.get("labels", {})
             alertname = labels.get("alertname", "")
             if alertname in (self.WARNING_ALERT, self.CRITICAL_ALERT) and alert.get("state") == "firing":
-                firing.append({
-                    "alertname": alertname,
-                    "severity": labels.get("severity", ""),
-                    "state": alert.get("state", ""),
-                    "activeAt": alert.get("activeAt", ""),
-                })
+                firing.append(
+                    {
+                        "alertname": alertname,
+                        "severity": labels.get("severity", ""),
+                        "state": alert.get("state", ""),
+                        "activeAt": alert.get("activeAt", ""),
+                    }
+                )
         return firing
 
     def _query_prometheus_alerts(self):
@@ -161,18 +153,18 @@ class EtcdCaExpiryCheck(OrchestratorRule):
 
         Returns:
             dict: Parsed JSON response from the Prometheus /api/v1/alerts endpoint.
+                  Response must have status="success" and a data.alerts array.
 
         Raises:
-            UnExpectedSystemOutput: If the pod lookup, query, or JSON parsing fails.
+            UnExpectedSystemOutput: If the query, JSON parsing, or response
+                                    indicates an error.
         """
-        pod_name = self._get_prometheus_pod()
-
         _, out, _ = self.oc_api.run_oc_command(
             "exec",
             [
                 "-n",
                 self.MONITORING_NAMESPACE,
-                pod_name,
+                self._prometheus_pod_name,
                 "-c",
                 self.PROMETHEUS_CONTAINER,
                 "--",
@@ -184,15 +176,27 @@ class EtcdCaExpiryCheck(OrchestratorRule):
         )
 
         try:
-            return json.loads(out)
+            response = json.loads(out)
         except json.JSONDecodeError as e:
             raise UnExpectedSystemOutput(
                 ip=self.get_host_ip(),
-                cmd=f"oc exec -n {self.MONITORING_NAMESPACE} {pod_name} -c {self.PROMETHEUS_CONTAINER} "
-                f"-- curl -s {self.ALERTS_URL}",
+                cmd=f"oc exec -n {self.MONITORING_NAMESPACE} {self._prometheus_pod_name}"
+                f" -c {self.PROMETHEUS_CONTAINER} -- curl -s {self.ALERTS_URL}",
                 output=out,
                 message=f"Failed to parse Prometheus alerts JSON: {e}",
             )
+
+        # Reject error responses (e.g., {"status": "error", "errorType": "...", "error": "..."})
+        if response.get("status") != "success":
+            raise UnExpectedSystemOutput(
+                ip=self.get_host_ip(),
+                cmd=f"oc exec -n {self.MONITORING_NAMESPACE} {self._prometheus_pod_name}"
+                f" -c {self.PROMETHEUS_CONTAINER} -- curl -s {self.ALERTS_URL}",
+                output=out,
+                message=f"Prometheus API returned error status: {response.get('status', 'unknown')}",
+            )
+
+        return response
 
     def _get_prometheus_pod_name(self):
         """
@@ -200,8 +204,11 @@ class EtcdCaExpiryCheck(OrchestratorRule):
 
         Returns:
             str: Raw output from jsonpath query (pod name if found, empty if not).
+
+        Raises:
+            UnExpectedSystemOutput: If the command itself fails (e.g., API error, timeout).
         """
-        _, out, _ = self.oc_api.run_oc_command(
+        rc, out, err = self.oc_api.run_oc_command(
             "get",
             [
                 "pods",
@@ -215,26 +222,11 @@ class EtcdCaExpiryCheck(OrchestratorRule):
             timeout=45,
             raise_on_error=False,
         )
-        return out
-
-    def _get_prometheus_pod(self):
-        """
-        Find a Prometheus pod in the monitoring namespace.
-
-        Returns:
-            str: Name of a Prometheus pod.
-
-        Raises:
-            UnExpectedSystemOutput: If no Prometheus pod can be found.
-        """
-        out = self._get_prometheus_pod_name()
-        pod_name = out.strip()
-        if not pod_name:
+        if rc != 0:
             raise UnExpectedSystemOutput(
                 ip=self.get_host_ip(),
-                cmd=f"oc get pods -n {self.MONITORING_NAMESPACE} -l {self.PROMETHEUS_LABEL} "
-                f"-o jsonpath{{.items[0].metadata.name}}",
-                output=out,
-                message=f"No Prometheus pod found in namespace {self.MONITORING_NAMESPACE}",
+                cmd=f"oc get pods -n {self.MONITORING_NAMESPACE} -l {self.PROMETHEUS_LABEL}",
+                output=err or out,
+                message=f"Failed to query Prometheus pods in {self.MONITORING_NAMESPACE} namespace",
             )
-        return pod_name
+        return out

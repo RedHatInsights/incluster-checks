@@ -15,98 +15,11 @@ from in_cluster_checks.core.rule_result import PrerequisiteResult, RuleResult
 from in_cluster_checks.utils.enums import Objectives, Status
 
 
-class AllPodsReadyAndRunning(OrchestratorRule):
-    """Verify all pods are ready and in running state across all namespaces."""
-
-    objective_hosts = [Objectives.ORCHESTRATOR]
-    unique_name = "all_pods_are_running_all_namespaces"
-    title = "Verify all pods are ready and on running state"
-
-    def run_rule(self):
-        """Check if all pods across all namespaces are ready and running."""
-        ready_pods, not_running_pods = self._get_pods_lists()
-
-        if len(ready_pods) == 0:
-            return RuleResult.failed("Did not get any pods from 'oc get pods --all-namespaces'")
-
-        if not_running_pods:
-            message = "Not all pods are running\n"
-            message += "Following pods are not running or partially not ready:\n"
-
-            # Format not-ready pods with details
-            for pod_info in not_running_pods:
-                namespace = pod_info["namespace"]
-                pod_name = pod_info["name"]
-                status = pod_info["status"]
-                ready = pod_info["ready"]
-                message += f"  {namespace}/{pod_name} - Ready: {ready}, Status: {status}\n"
-
-            return RuleResult.failed(message)
-
-        return RuleResult.passed()
-
-    def _get_pods_lists(self):
-        """
-        Get lists of ready and not-ready pods.
-
-        Returns:
-            tuple: (ready_pods_list, not_running_pods_list)
-                   Each list contains dicts with pod information
-        """
-        ready_pods = []
-        not_running_pods = []
-
-        # Use helper method from OrchestratorRule (logs command automatically)
-        pod_objects = self.oc_api.get_all_pods(all_namespaces=True, timeout=45)
-
-        if not pod_objects:
-            return [], []
-
-        for pod in pod_objects:
-            pod_data = pod.as_dict()
-            namespace = pod_data["metadata"]["namespace"]
-            pod_name = pod_data["metadata"]["name"]
-            status_dict = pod_data.get("status", {})
-
-            # Get phase (Running, Pending, Failed, etc.)
-            phase = status_dict.get("phase", "Unknown")
-
-            # Skip Completed jobs
-            if phase == "Succeeded":
-                continue
-
-            # Get container statuses
-            container_statuses = status_dict.get("containerStatuses", [])
-
-            # Calculate ready containers
-            total_containers = len(container_statuses)
-            ready_containers = sum(1 for c in container_statuses if c.get("ready", False))
-            ready_str = f"{ready_containers}/{total_containers}"
-
-            pod_info = {
-                "namespace": namespace,
-                "name": pod_name,
-                "status": phase,
-                "ready": ready_str,
-            }
-
-            # Check if pod is not running or not all containers are ready
-            if phase != "Running":
-                not_running_pods.append(pod_info)
-            elif ready_containers != total_containers:
-                not_running_pods.append(pod_info)
-            else:
-                ready_pods.append(pod_info)
-
-        return ready_pods, not_running_pods
-
-
 class InfraPodsReadyAndRunning(OrchestratorRule):
     """Verify pods in infrastructure namespaces are ready and running.
 
-    Scoped replacement for AllPodsReadyAndRunning that only checks critical
-    OpenShift infrastructure namespaces, avoiding scale/memory issues and
-    false positives from user workload pods.
+    Checks critical OpenShift infrastructure namespaces only, avoiding
+    scale/memory issues and false positives from user workload pods.
     """
 
     objective_hosts = [Objectives.ORCHESTRATOR]

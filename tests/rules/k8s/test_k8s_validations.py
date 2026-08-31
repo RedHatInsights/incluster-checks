@@ -1,8 +1,4 @@
-"""
-Tests for K8s/OpenShift validations.
-
-Adapted from HealthChecks test patterns for AllPodsReadyAndRunning.
-"""
+"""Tests for K8s/OpenShift validations."""
 
 import json
 import logging
@@ -15,7 +11,6 @@ from openshift_client import OpenShiftPythonException
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.rules.k8s.k8s_validations import (
     AllDeploymentsAvailable,
-    AllPodsReadyAndRunning,
     AllStatefulsetsReady,
     InfraPodsReadyAndRunning,
     CheckDeploymentsReplicaStatus,
@@ -34,76 +29,6 @@ from in_cluster_checks.rules.k8s.k8s_validations import (
 from in_cluster_checks.utils.enums import Status
 from tests.pytest_tools.test_operator_base import CmdOutput
 from tests.pytest_tools.test_rule_base import RuleScenarioParams, RuleTestBase
-
-
-def create_mock_pod(namespace, name, phase, ready_containers, total_containers):
-    """Create a mock pod object."""
-    mock_pod = Mock()
-    container_statuses = [{"ready": i < ready_containers} for i in range(total_containers)]
-    mock_pod.as_dict.return_value = {
-        "metadata": {"namespace": namespace, "name": name},
-        "status": {
-            "phase": phase,
-            "containerStatuses": container_statuses,
-        },
-    }
-    return mock_pod
-
-
-class TestAllPodsReadyAndRunning:
-    """Test AllPodsReadyAndRunning rule."""
-
-    @pytest.fixture
-    def tested_object(self):
-        """Create instance of AllPodsReadyAndRunning for testing."""
-        return AllPodsReadyAndRunning(host_executor=Mock(), node_executors={})
-
-    def test_all_pods_running_and_ready(self, tested_object):
-        """Test when all pods are running and ready."""
-        tested_object.oc_api.get_all_pods = Mock(
-            return_value=[
-                create_mock_pod("default", "pod1", "Running", 2, 2),
-                create_mock_pod("kube-system", "pod2", "Running", 1, 1),
-            ]
-        )
-
-        result = tested_object.run_rule()
-        assert result.status == Status.PASSED
-
-    def test_some_pods_not_running(self, tested_object):
-        """Test when some pods are not in Running state."""
-        tested_object.oc_api.get_all_pods = Mock(
-            return_value=[
-                create_mock_pod("default", "running-pod", "Running", 1, 1),
-                create_mock_pod("default", "pending-pod", "Pending", 0, 1),
-            ]
-        )
-
-        result = tested_object.run_rule()
-        assert result.status == Status.FAILED
-        assert "pending-pod" in result.message
-        assert "Pending" in result.message
-
-    def test_completed_pods_ignored(self, tested_object):
-        """Test that completed/succeeded pods are ignored."""
-        tested_object.oc_api.get_all_pods = Mock(
-            return_value=[
-                create_mock_pod("default", "running-pod", "Running", 1, 1),
-                create_mock_pod("default", "completed-job", "Succeeded", 0, 1),
-            ]
-        )
-
-        result = tested_object.run_rule()
-        # Should pass because completed jobs are ignored
-        assert result.status == Status.PASSED
-
-    def test_no_pods_found(self, tested_object):
-        """Test when no pods are found in the cluster."""
-        tested_object.oc_api.get_all_pods = Mock(return_value=[])
-
-        result = tested_object.run_rule()
-        assert result.status == Status.FAILED
-        assert "Did not get any pods" in result.message
 
 
 def create_mock_infra_pod(

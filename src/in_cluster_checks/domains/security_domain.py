@@ -9,6 +9,7 @@ from typing import List
 
 from in_cluster_checks.core.domain import RuleDomain
 from in_cluster_checks.rules.security.ca_certificate_validations import KubeletCaExpiryCheck
+from in_cluster_checks.rules.security.etcd_ca_certificate_validations import EtcdCaExpiryCheck
 from in_cluster_checks.rules.security.node_certificate_validations import KubeletCsrHealthCheck, NodeCertificateExpiry
 from in_cluster_checks.rules.security.tls_certificate_validations import TlsCertificateExpiry
 
@@ -36,4 +37,5 @@ class SecurityValidationDomain(RuleDomain):
             TlsCertificateExpiry,
             KubeletCaExpiryCheck,
             KubeletCsrHealthCheck,
+            EtcdCaExpiryCheck,
         ]

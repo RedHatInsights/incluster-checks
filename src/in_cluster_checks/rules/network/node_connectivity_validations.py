@@ -9,7 +9,8 @@ import os
 import re
 
 from in_cluster_checks.core.operations import DataCollector
-from in_cluster_checks.core.rule import OrchestratorRule, PrerequisiteResult, Rule, RuleResult
+from in_cluster_checks.core.rule import OrchestratorRule, RuleResult
+from in_cluster_checks.rules.network.bond_base import BondBase
 from in_cluster_checks.rules.network.ovs_base import OvsOperatorBase
 from in_cluster_checks.utils.enums import Objectives
 from in_cluster_checks.utils.safe_cmd_string import SafeCmdString
@@ -51,7 +52,7 @@ class AreAllNodesConnected(OrchestratorRule):
         return RuleResult.passed(f"All {len(self._node_executors)} nodes are connected")
 
 
-class VerifyBondedInterfacesUp(Rule):
+class VerifyBondedInterfacesUp(BondBase):
     """
     Check if bonded network interfaces are up.
 
@@ -63,19 +64,6 @@ class VerifyBondedInterfacesUp(Rule):
     objective_hosts = [Objectives.ALL_NODES]
     unique_name = "check_if_bonded_interfaces_are_up"
     title = "Check if bonded interfaces are up"
-
-    BONDING_PATH = "/proc/net/bonding"
-
-    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
-        """
-        Check if bonding directory exists.
-
-        Returns:
-            PrerequisiteResult indicating if bonding is configured
-        """
-        if self.file_utils.is_dir_exist(self.BONDING_PATH):
-            return PrerequisiteResult.met()
-        return PrerequisiteResult.not_met("Bonding directory does not exist - no bonded interfaces configured")
 
     def run_rule(self) -> RuleResult:
         """

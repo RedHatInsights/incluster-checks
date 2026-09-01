@@ -1,5 +1,7 @@
 """Tests for etcd validations."""
 
+from unittest.mock import Mock
+
 import pytest
 
 from in_cluster_checks.rules.etcd.etcd_validations import (
@@ -24,6 +26,22 @@ from tests.pytest_tools.test_rule_base import (
 
 class TestEtcdBasicCheck(RuleTestBase):
     tested_type = EtcdBasicCheck
+
+    @staticmethod
+    def _create_worker_executor():
+        """Create mock executor with worker label (no control plane)."""
+        executor = Mock()
+        executor.node_name = "worker-0"
+        executor.node_labels = "worker"
+        return executor
+
+    @staticmethod
+    def _create_control_plane_executor():
+        """Create mock executor with control plane label."""
+        executor = Mock()
+        executor.node_name = "master-0"
+        executor.node_labels = "control-plane"
+        return executor
 
     scenario_passed = [
         RuleScenarioParams(
@@ -54,6 +72,13 @@ class TestEtcdBasicCheck(RuleTestBase):
         ),
     ]
 
+    scenario_prerequisite_not_fulfilled = [
+        RuleScenarioParams(
+            "HyperShift cluster - no control plane nodes",
+            tested_object_mock_dict={},
+        ),
+    ]
+
     @pytest.mark.parametrize("scenario_params", scenario_passed)
     def test_scenario_passed(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
@@ -61,6 +86,11 @@ class TestEtcdBasicCheck(RuleTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
+    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        tested_object._node_executors = {"worker-0": self._create_worker_executor()}
+        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
 
 
 # EtcdAlarmCheck Tests
@@ -114,14 +144,28 @@ class TestEtcdMemberCountCheck(RuleTestBase):
     @staticmethod
     def _mock_nodes(count):
         """Create mock node objects for testing."""
-        from unittest.mock import Mock
-
         nodes = []
         for i in range(count):
             node = Mock()
             node.name.return_value = f"node-{i}"
             nodes.append(node)
         return nodes
+
+    @staticmethod
+    def _create_worker_executor():
+        """Create mock executor with worker label (no control plane)."""
+        executor = Mock()
+        executor.node_name = "worker-0"
+        executor.node_labels = "worker"
+        return executor
+
+    @staticmethod
+    def _create_control_plane_executor():
+        """Create mock executor with control plane label."""
+        executor = Mock()
+        executor.node_name = "master-0"
+        executor.node_labels = "control-plane"
+        return executor
 
     scenario_passed = [
         RuleScenarioParams(
@@ -161,6 +205,10 @@ class TestEtcdMemberCountCheck(RuleTestBase):
                 "oc_api.get_all_nodes": lambda: TestEtcdMemberCountCheck._mock_nodes(1),
             },
         ),
+        RuleScenarioParams(
+            "worker-only cluster - no control plane",
+            tested_object_mock_dict={},
+        ),
     ]
 
     @pytest.mark.parametrize("scenario_params", scenario_passed)
@@ -173,6 +221,10 @@ class TestEtcdMemberCountCheck(RuleTestBase):
 
     @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
     def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        if "SNO" in scenario_params.scenario_title:
+            tested_object._node_executors = {"master-0": self._create_control_plane_executor()}
+        else:
+            tested_object._node_executors = {"worker-0": self._create_worker_executor()}
         RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
 
 

@@ -24,6 +24,27 @@ class EtcdRule(OrchestratorRule):
 
     objective_hosts = [Objectives.ORCHESTRATOR]
 
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        """
+        Check if cluster has control plane nodes with etcd.
+
+        HyperShift and worker-only clusters have no control plane nodes in data plane,
+        so etcd runs outside the data plane cluster and is not accessible.
+
+        Returns:
+            PrerequisiteResult.not_met if no control plane nodes found,
+            PrerequisiteResult.met otherwise
+        """
+        has_control_plane = any(
+            "control-plane" in executor.node_labels or "master" in executor.node_labels
+            for executor in self._node_executors.values()
+        )
+
+        if not has_control_plane:
+            return PrerequisiteResult.not_met("Cluster has no control plane nodes - etcd checks not applicable")
+
+        return PrerequisiteResult.met()
+
     def _get_etcd_pod_name(self):
         """
         Get name of a running etcd pod using inherited _get_pod_name method.
@@ -173,9 +194,13 @@ class EtcdMemberCountCheck(EtcdRule):
         Check if this rule is applicable.
 
         Returns:
-            PrerequisiteResult.not_met if cluster is SNO (single node),
+            PrerequisiteResult.not_met if cluster is SNO (single node) or has no control plane,
             PrerequisiteResult.met otherwise
         """
+        parent_result = super().is_prerequisite_fulfilled()
+        if not parent_result.fulfilled:
+            return parent_result
+
         nodes = self.oc_api.get_all_nodes()
         node_count = len(nodes)
 

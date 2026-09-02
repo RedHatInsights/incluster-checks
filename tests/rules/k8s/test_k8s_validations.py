@@ -1841,6 +1841,16 @@ def _cluster_operators_response(*operators):
     return {"items": list(operators)}
 
 
+def _mock_operators(*operators):
+    """Build a list of mock oc.APIObject instances from operator dicts."""
+    mocks = []
+    for op in operators:
+        m = Mock()
+        m.as_dict.return_value = op
+        mocks.append(m)
+    return mocks
+
+
 class TestVerifyClusterOperatorsAvailable(RuleTestBase):
     """Test VerifyClusterOperatorsAvailable rule."""
 
@@ -1849,27 +1859,38 @@ class TestVerifyClusterOperatorsAvailable(RuleTestBase):
     scenario_passed = [
         RuleScenarioParams(
             "all cluster operators are available and not degraded",
-            oc_cmd_output_dict={
-                ("get", ("clusteroperators", "-o", "json")): CmdOutput(
-                    json.dumps(
-                        _cluster_operators_response(
-                            _make_cluster_operator("authentication"),
-                            _make_cluster_operator("console"),
-                            _make_cluster_operator("etcd"),
-                            _make_cluster_operator("kube-apiserver"),
-                        )
+            tested_object_mock_dict={
+                "oc_api.select_resources": Mock(
+                    return_value=_mock_operators(
+                        _make_cluster_operator("authentication"),
+                        _make_cluster_operator("console"),
+                        _make_cluster_operator("etcd"),
+                        _make_cluster_operator("kube-apiserver"),
                     )
                 ),
             },
         ),
         RuleScenarioParams(
             "single cluster operator is available",
-            oc_cmd_output_dict={
-                ("get", ("clusteroperators", "-o", "json")): CmdOutput(
-                    json.dumps(
-                        _cluster_operators_response(
-                            _make_cluster_operator("etcd"),
-                        )
+            tested_object_mock_dict={
+                "oc_api.select_resources": Mock(
+                    return_value=_mock_operators(_make_cluster_operator("etcd"))
+                ),
+            },
+        ),
+        RuleScenarioParams(
+            "insights operator unavailable (disabled) is skipped",
+            tested_object_mock_dict={
+                "oc_api.select_resources": Mock(
+                    return_value=_mock_operators(
+                        _make_cluster_operator("authentication"),
+                        _make_cluster_operator(
+                            "insights",
+                            available="False",
+                            available_reason="Disabled",
+                            available_message="Insights operator is disabled",
+                        ),
+                        _make_cluster_operator("etcd"),
                     )
                 ),
             },
@@ -1879,19 +1900,17 @@ class TestVerifyClusterOperatorsAvailable(RuleTestBase):
     scenario_failed = [
         RuleScenarioParams(
             "some cluster operators are not available",
-            oc_cmd_output_dict={
-                ("get", ("clusteroperators", "-o", "json")): CmdOutput(
-                    json.dumps(
-                        _cluster_operators_response(
-                            _make_cluster_operator("authentication"),
-                            _make_cluster_operator(
-                                "etcd",
-                                available="False",
-                                available_reason="EtcdMembersDown",
-                                available_message="1 member is not healthy",
-                            ),
-                            _make_cluster_operator("console"),
-                        )
+            tested_object_mock_dict={
+                "oc_api.select_resources": Mock(
+                    return_value=_mock_operators(
+                        _make_cluster_operator("authentication"),
+                        _make_cluster_operator(
+                            "etcd",
+                            available="False",
+                            available_reason="EtcdMembersDown",
+                            available_message="1 member is not healthy",
+                        ),
+                        _make_cluster_operator("console"),
                     )
                 ),
             },
@@ -1900,18 +1919,16 @@ class TestVerifyClusterOperatorsAvailable(RuleTestBase):
         ),
         RuleScenarioParams(
             "cluster operator is degraded",
-            oc_cmd_output_dict={
-                ("get", ("clusteroperators", "-o", "json")): CmdOutput(
-                    json.dumps(
-                        _cluster_operators_response(
-                            _make_cluster_operator("authentication"),
-                            _make_cluster_operator(
-                                "kube-apiserver",
-                                degraded="True",
-                                degraded_reason="NodeInstallerDegraded",
-                                degraded_message="nodes are not ready",
-                            ),
-                        )
+            tested_object_mock_dict={
+                "oc_api.select_resources": Mock(
+                    return_value=_mock_operators(
+                        _make_cluster_operator("authentication"),
+                        _make_cluster_operator(
+                            "kube-apiserver",
+                            degraded="True",
+                            degraded_reason="NodeInstallerDegraded",
+                            degraded_message="nodes are not ready",
+                        ),
                     )
                 ),
             },
@@ -1920,21 +1937,19 @@ class TestVerifyClusterOperatorsAvailable(RuleTestBase):
         ),
         RuleScenarioParams(
             "cluster operator both unavailable and degraded",
-            oc_cmd_output_dict={
-                ("get", ("clusteroperators", "-o", "json")): CmdOutput(
-                    json.dumps(
-                        _cluster_operators_response(
-                            _make_cluster_operator(
-                                "etcd",
-                                available="False",
-                                available_reason="EtcdMembersDown",
-                                available_message="members are unhealthy",
-                                degraded="True",
-                                degraded_reason="UnhealthyMembers",
-                                degraded_message="etcd cluster is degraded",
-                            ),
-                            _make_cluster_operator("authentication"),
-                        )
+            tested_object_mock_dict={
+                "oc_api.select_resources": Mock(
+                    return_value=_mock_operators(
+                        _make_cluster_operator(
+                            "etcd",
+                            available="False",
+                            available_reason="EtcdMembersDown",
+                            available_message="members are unhealthy",
+                            degraded="True",
+                            degraded_reason="UnhealthyMembers",
+                            degraded_message="etcd cluster is degraded",
+                        ),
+                        _make_cluster_operator("authentication"),
                     )
                 ),
             },
@@ -1945,20 +1960,12 @@ class TestVerifyClusterOperatorsAvailable(RuleTestBase):
         ),
         RuleScenarioParams(
             "operator has no Available condition",
-            oc_cmd_output_dict={
-                ("get", ("clusteroperators", "-o", "json")): CmdOutput(
-                    json.dumps(
+            tested_object_mock_dict={
+                "oc_api.select_resources": Mock(
+                    return_value=_mock_operators(
                         {
-                            "items": [
-                                {
-                                    "metadata": {"name": "broken-operator"},
-                                    "status": {
-                                        "conditions": [
-                                            {"type": "Progressing", "status": "False"},
-                                        ],
-                                    },
-                                }
-                            ]
+                            "metadata": {"name": "broken-operator"},
+                            "status": {"conditions": [{"type": "Progressing", "status": "False"}]},
                         }
                     )
                 ),
@@ -1967,9 +1974,34 @@ class TestVerifyClusterOperatorsAvailable(RuleTestBase):
             "  broken-operator - Reason: NoAvailableCondition, Message: No Available condition found",
         ),
         RuleScenarioParams(
+            "insights degraded alongside critical operator includes warning in failure",
+            tested_object_mock_dict={
+                "oc_api.select_resources": Mock(
+                    return_value=_mock_operators(
+                        _make_cluster_operator(
+                            "etcd",
+                            degraded="True",
+                            degraded_reason="UnhealthyMembers",
+                            degraded_message="etcd cluster is degraded",
+                        ),
+                        _make_cluster_operator(
+                            "insights",
+                            degraded="True",
+                            degraded_reason="UploadFailed",
+                            degraded_message="unable to reach console.redhat.com",
+                        ),
+                    )
+                ),
+            },
+            failed_msg="Following cluster operators are degraded:\n"
+            "  etcd - Reason: UnhealthyMembers, Message: etcd cluster is degraded\n\n"
+            "Following non-critical cluster operators are degraded:\n"
+            "  insights - Reason: UploadFailed, Message: unable to reach console.redhat.com",
+        ),
+        RuleScenarioParams(
             "no cluster operators found in cluster",
-            oc_cmd_output_dict={
-                ("get", ("clusteroperators", "-o", "json")): CmdOutput(json.dumps({"items": []})),
+            tested_object_mock_dict={
+                "oc_api.select_resources": Mock(return_value=[]),
             },
             failed_msg="No cluster operators found in cluster",
         ),
@@ -1978,18 +2010,16 @@ class TestVerifyClusterOperatorsAvailable(RuleTestBase):
     scenario_warning = [
         RuleScenarioParams(
             "cluster operator is progressing",
-            oc_cmd_output_dict={
-                ("get", ("clusteroperators", "-o", "json")): CmdOutput(
-                    json.dumps(
-                        _cluster_operators_response(
-                            _make_cluster_operator("authentication"),
-                            _make_cluster_operator(
-                                "kube-apiserver",
-                                progressing="True",
-                                progressing_reason="UpdatingKubeAPIServer",
-                                progressing_message="updating to 4.16.62",
-                            ),
-                        )
+            tested_object_mock_dict={
+                "oc_api.select_resources": Mock(
+                    return_value=_mock_operators(
+                        _make_cluster_operator("authentication"),
+                        _make_cluster_operator(
+                            "kube-apiserver",
+                            progressing="True",
+                            progressing_reason="UpdatingKubeAPIServer",
+                            progressing_message="updating to 4.16.62",
+                        ),
                     )
                 ),
             },
@@ -1998,18 +2028,16 @@ class TestVerifyClusterOperatorsAvailable(RuleTestBase):
         ),
         RuleScenarioParams(
             "cluster operator is not upgradeable",
-            oc_cmd_output_dict={
-                ("get", ("clusteroperators", "-o", "json")): CmdOutput(
-                    json.dumps(
-                        _cluster_operators_response(
-                            _make_cluster_operator("authentication"),
-                            _make_cluster_operator(
-                                "machine-config",
-                                upgradeable="False",
-                                upgradeable_reason="PoolNotUpToDate",
-                                upgradeable_message="worker pool is not up to date",
-                            ),
-                        )
+            tested_object_mock_dict={
+                "oc_api.select_resources": Mock(
+                    return_value=_mock_operators(
+                        _make_cluster_operator("authentication"),
+                        _make_cluster_operator(
+                            "machine-config",
+                            upgradeable="False",
+                            upgradeable_reason="PoolNotUpToDate",
+                            upgradeable_message="worker pool is not up to date",
+                        ),
                     )
                 ),
             },
@@ -2017,21 +2045,38 @@ class TestVerifyClusterOperatorsAvailable(RuleTestBase):
             "  machine-config - Reason: PoolNotUpToDate, Message: worker pool is not up to date",
         ),
         RuleScenarioParams(
+            "insights operator degraded produces warning not failure",
+            tested_object_mock_dict={
+                "oc_api.select_resources": Mock(
+                    return_value=_mock_operators(
+                        _make_cluster_operator("authentication"),
+                        _make_cluster_operator(
+                            "insights",
+                            degraded="True",
+                            degraded_reason="UploadFailed",
+                            degraded_message="unable to reach console.redhat.com",
+                        ),
+                        _make_cluster_operator("etcd"),
+                    )
+                ),
+            },
+            failed_msg="Following non-critical cluster operators are degraded:\n"
+            "  insights - Reason: UploadFailed, Message: unable to reach console.redhat.com",
+        ),
+        RuleScenarioParams(
             "cluster operator is both progressing and not upgradeable",
-            oc_cmd_output_dict={
-                ("get", ("clusteroperators", "-o", "json")): CmdOutput(
-                    json.dumps(
-                        _cluster_operators_response(
-                            _make_cluster_operator(
-                                "kube-apiserver",
-                                progressing="True",
-                                progressing_reason="Updating",
-                                progressing_message="rolling out",
-                                upgradeable="False",
-                                upgradeable_reason="Pending",
-                                upgradeable_message="waiting for rollout",
-                            ),
-                        )
+            tested_object_mock_dict={
+                "oc_api.select_resources": Mock(
+                    return_value=_mock_operators(
+                        _make_cluster_operator(
+                            "kube-apiserver",
+                            progressing="True",
+                            progressing_reason="Updating",
+                            progressing_message="rolling out",
+                            upgradeable="False",
+                            upgradeable_reason="Pending",
+                            upgradeable_message="waiting for rollout",
+                        ),
                     )
                 ),
             },

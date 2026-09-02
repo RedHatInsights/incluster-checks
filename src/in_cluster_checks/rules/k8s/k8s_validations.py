@@ -957,80 +957,53 @@ class VerifyClusterOperatorsAvailable(OrchestratorRule):
     links = [
         "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418418357",
     ]
+    NON_CRITICAL_OPERATORS = {"insights"}
 
     def run_rule(self):
         """Check cluster operator conditions: Available, Degraded, Progressing, Upgradeable."""
-        try:
-            _, operators_output, _ = self.oc_api.run_oc_command("get", ["clusteroperators", "-o", "json"], timeout=45)
-        except UnExpectedSystemOutput:
-            return RuleResult.failed("Failed to get cluster operators")
+        operators = self.oc_api.select_resources("clusteroperator", timeout=45)
 
-        try:
-            operators_data = json.loads(operators_output)
-        except json.JSONDecodeError as e:
-            raise UnExpectedSystemOutput(
-                ip=self.get_host_ip(),
-                cmd="oc get clusteroperators -o json",
-                output=operators_output,
-                message=f"Failed to parse JSON: {e}",
-            ) from e
-
-        items = operators_data.get("items", [])
-
-        if not items:
+        if not operators:
             return RuleResult.failed("No cluster operators found in cluster")
 
         unavailable_operators = []
         degraded_operators = []
         progressing_operators = []
         not_upgradeable_operators = []
+        non_critical_degraded = []
 
-        for operator in items:
-            metadata = operator.get("metadata", {})
-            name = metadata.get("name", "unknown")
-            conditions = self._get_conditions_dict(operator)
+        for operator in operators:
+            data = operator.as_dict()
+            name = data.get("metadata", {}).get("name", "unknown")
+            conditions = self._get_conditions_dict(data)
+            is_non_critical = name in self.NON_CRITICAL_OPERATORS
 
-            available_condition = conditions.get("Available")
-            degraded_condition = conditions.get("Degraded")
-            progressing_condition = conditions.get("Progressing")
-            upgradeable_condition = conditions.get("Upgradeable")
+            available = conditions.get("Available")
+            degraded = conditions.get("Degraded")
+            progressing = conditions.get("Progressing")
+            upgradeable = conditions.get("Upgradeable")
 
-            if not available_condition or available_condition.get("status") != "True":
-                reason = "NoAvailableCondition"
-                message = "No Available condition found"
-                if available_condition:
-                    reason = available_condition.get("reason", "Unknown")
-                    message = available_condition.get("message", "")
-                unavailable_operators.append(f"{name} - Reason: {reason}, Message: {message}")
+            if not available or available.get("status") != "True":
+                if not is_non_critical:
+                    unavailable_operators.append(self._format_entry(name, available))
 
-            if degraded_condition and degraded_condition.get("status") == "True":
-                reason = degraded_condition.get("reason", "Unknown")
-                message = degraded_condition.get("message", "")
-                degraded_operators.append(f"{name} - Reason: {reason}, Message: {message}")
+            if degraded and degraded.get("status") == "True":
+                target = non_critical_degraded if is_non_critical else degraded_operators
+                target.append(self._format_entry(name, degraded))
 
-            if progressing_condition and progressing_condition.get("status") == "True":
-                reason = progressing_condition.get("reason", "Unknown")
-                message = progressing_condition.get("message", "")
-                progressing_operators.append(f"{name} - Reason: {reason}, Message: {message}")
+            if not is_non_critical and progressing and progressing.get("status") == "True":
+                progressing_operators.append(self._format_entry(name, progressing))
 
-            if upgradeable_condition and upgradeable_condition.get("status") == "False":
-                reason = upgradeable_condition.get("reason", "Unknown")
-                message = upgradeable_condition.get("message", "")
-                not_upgradeable_operators.append(f"{name} - Reason: {reason}, Message: {message}")
+            if not is_non_critical and upgradeable and upgradeable.get("status") == "False":
+                not_upgradeable_operators.append(self._format_entry(name, upgradeable))
 
         error_messages = []
         warning_messages = []
 
-        if unavailable_operators:
-            error_messages.append(
-                "Following cluster operators are not available:\n  " + "\n  ".join(unavailable_operators)
+        if non_critical_degraded:
+            warning_messages.append(
+                "Following non-critical cluster operators are degraded:\n  " + "\n  ".join(non_critical_degraded)
             )
-
-        if degraded_operators:
-            error_messages.append("Following cluster operators are degraded:\n  " + "\n  ".join(degraded_operators))
-
-        if error_messages:
-            return RuleResult.failed("\n\n".join(error_messages))
 
         if progressing_operators:
             warning_messages.append(
@@ -1042,17 +1015,31 @@ class VerifyClusterOperatorsAvailable(OrchestratorRule):
                 "Following cluster operators are not upgradeable:\n  " + "\n  ".join(not_upgradeable_operators)
             )
 
+        if unavailable_operators:
+            error_messages.append(
+                "Following cluster operators are not available:\n  " + "\n  ".join(unavailable_operators)
+            )
+
+        if degraded_operators:
+            error_messages.append("Following cluster operators are degraded:\n  " + "\n  ".join(degraded_operators))
+
+        if error_messages:
+            return RuleResult.failed("\n\n".join(error_messages + warning_messages))
+
         if warning_messages:
             return RuleResult.warning("\n\n".join(warning_messages))
 
         return RuleResult.passed()
 
     @staticmethod
-    def _get_conditions_dict(operator):
-        """Build a dict of condition type to condition object for an operator."""
-        status = operator.get("status", {})
-        conditions = status.get("conditions", [])
-        return {condition.get("type"): condition for condition in conditions}
+    def _format_entry(name: str, condition: dict | None) -> str:
+        if not condition:
+            return f"{name} - Reason: NoAvailableCondition, Message: No Available condition found"
+        return f"{name} - Reason: {condition.get('reason', 'Unknown')}, Message: {condition.get('message', '')}"
+
+    @staticmethod
+    def _get_conditions_dict(data: dict) -> dict:
+        return {c.get("type"): c for c in data.get("status", {}).get("conditions", [])}
 
 
 class VerifyWebConsoleDisabled(OrchestratorRule):

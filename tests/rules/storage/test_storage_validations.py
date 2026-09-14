@@ -1180,6 +1180,14 @@ class TestCheckPoolSize(RuleTestBase):
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
 
 
+def _create_prepare_pod_mock(name, osd_id):
+    """Create a mock OSD prepare pod with name and ceph-osd-id label."""
+    mock_pod = Mock()
+    mock_pod.name.return_value = name
+    mock_pod.model.metadata.labels = {"ceph-osd-id": str(osd_id)}
+    return mock_pod
+
+
 class TestOsdPrepareFilesystemHealth(RuleTestBase):
     """Test OsdPrepareFilesystemHealth rule."""
 
@@ -1212,7 +1220,7 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
         ]
     }"""
 
-    scenario_passed = [
+    scenario_prerequisite_not_fulfilled = [
         RuleScenarioParams(
             "no OSD prepare pods found",
             tested_object_mock_dict={
@@ -1221,6 +1229,22 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
                 "_get_osd_prepare_pods": Mock(return_value=[]),
             },
         ),
+    ]
+
+    scenario_prerequisite_fulfilled = [
+        RuleScenarioParams(
+            "OSD prepare pods exist",
+            tested_object_mock_dict={
+                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
+                "_get_osd_prepare_pods": Mock(
+                    return_value=[_create_prepare_pod_mock("rook-ceph-osd-prepare-node1", 0)]
+                ),
+            },
+        ),
+    ]
+
+    scenario_passed = [
         RuleScenarioParams(
             "OSD prepare pods with clean logs (no filesystem errors)",
             oc_cmd_output_dict={
@@ -1232,14 +1256,12 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
                 "oc_api.select_single_resource": Mock(return_value=Mock()),
                 "_get_osd_prepare_pods": Mock(
-                    return_value=[
-                        Mock(**{"name.return_value": "rook-ceph-osd-prepare-node1"}),
-                    ]
+                    return_value=[_create_prepare_pod_mock("rook-ceph-osd-prepare-node1", 0)]
                 ),
             },
         ),
         RuleScenarioParams(
-            "filesystem errors in logs but all OSDs are up (historical/resolved)",
+            "filesystem errors but all OSDs are up (historical/resolved)",
             oc_cmd_output_dict={
                 ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node1", "--tail=50")): CmdOutput(
                     prepare_log_with_error
@@ -1254,17 +1276,12 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
                 "oc_api.select_single_resource": Mock(return_value=Mock()),
                 "_get_osd_prepare_pods": Mock(
-                    return_value=[
-                        Mock(**{"name.return_value": "rook-ceph-osd-prepare-node1"}),
-                    ]
+                    return_value=[_create_prepare_pod_mock("rook-ceph-osd-prepare-node1", 0)]
                 ),
             },
         ),
-    ]
-
-    scenario_failed = [
         RuleScenarioParams(
-            "filesystem errors in logs and OSDs are down",
+            "filesystem errors and OSDs down but pod targets a healthy OSD",
             oc_cmd_output_dict={
                 ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node1", "--tail=50")): CmdOutput(
                     prepare_log_with_error
@@ -1279,15 +1296,62 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
                 "oc_api.select_single_resource": Mock(return_value=Mock()),
                 "_get_osd_prepare_pods": Mock(
+                    return_value=[_create_prepare_pod_mock("rook-ceph-osd-prepare-node1", 0)]
+                ),
+            },
+        ),
+        RuleScenarioParams(
+            "mixed: two pods with errors, both target healthy OSDs",
+            oc_cmd_output_dict={
+                ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node1", "--tail=50")): CmdOutput(
+                    prepare_log_with_error
+                ),
+                ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node2", "--tail=50")): CmdOutput(
+                    prepare_log_with_error
+                ),
+            },
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd tree -f json"): CmdOutput(
+                    out=osd_tree_all_up, return_code=0
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
+                "_get_osd_prepare_pods": Mock(
                     return_value=[
-                        Mock(**{"name.return_value": "rook-ceph-osd-prepare-node1"}),
+                        _create_prepare_pod_mock("rook-ceph-osd-prepare-node1", 0),
+                        _create_prepare_pod_mock("rook-ceph-osd-prepare-node2", 1),
                     ]
+                ),
+            },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "filesystem errors and pod targets a down OSD",
+            oc_cmd_output_dict={
+                ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node1", "--tail=50")): CmdOutput(
+                    prepare_log_with_error
+                ),
+            },
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd tree -f json"): CmdOutput(
+                    out=osd_tree_some_down, return_code=0
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
+                "_get_osd_prepare_pods": Mock(
+                    return_value=[_create_prepare_pod_mock("rook-ceph-osd-prepare-node1", 1)]
                 ),
             },
             failed_msg=(
                 "OSD prepare pods are reporting existing filesystem errors and 1 OSD(s) are down.\n\n"
                 "Affected OSD prepare pods:\n"
-                "  - rook-ceph-osd-prepare-node1\n"
+                "  - rook-ceph-osd-prepare-node1 (target: osd.1)\n"
                 "    Log: 2024-03-15T10:30:01.456 I | cephosd: skipping device /dev/sdb "
                 "because it contains a filesystem\n\n"
                 "Down OSDs: [osd.1]\n\n"
@@ -1299,7 +1363,46 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
             ),
         ),
         RuleScenarioParams(
-            "filesystem errors in logs and ceph command failed",
+            "mixed: one pod targets down OSD, another targets healthy OSD - only show down",
+            oc_cmd_output_dict={
+                ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node1", "--tail=50")): CmdOutput(
+                    prepare_log_with_error
+                ),
+                ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node2", "--tail=50")): CmdOutput(
+                    prepare_log_with_error
+                ),
+            },
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd tree -f json"): CmdOutput(
+                    out=osd_tree_some_down, return_code=0
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
+                "_get_osd_prepare_pods": Mock(
+                    return_value=[
+                        _create_prepare_pod_mock("rook-ceph-osd-prepare-node1", 0),
+                        _create_prepare_pod_mock("rook-ceph-osd-prepare-node2", 1),
+                    ]
+                ),
+            },
+            failed_msg=(
+                "OSD prepare pods are reporting existing filesystem errors and 1 OSD(s) are down.\n\n"
+                "Affected OSD prepare pods:\n"
+                "  - rook-ceph-osd-prepare-node2 (target: osd.1)\n"
+                "    Log: 2024-03-15T10:30:01.456 I | cephosd: skipping device /dev/sdb "
+                "because it contains a filesystem\n\n"
+                "Down OSDs: [osd.1]\n\n"
+                "Remediation: Investigate why OSD provisioning is failing. "
+                "Check if the devices intended for OSD use have leftover filesystems "
+                "from a previous installation. If the OSDs are genuinely not needed "
+                "or the data is confirmed to be stale, the filesystems can be wiped "
+                "after careful verification. See https://access.redhat.com/solutions/6910101"
+            ),
+        ),
+        RuleScenarioParams(
+            "ceph osd tree command fails",
             oc_cmd_output_dict={
                 ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node1", "--tail=50")): CmdOutput(
                     prepare_log_with_error
@@ -1314,25 +1417,38 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
                 "oc_api.select_single_resource": Mock(return_value=Mock()),
                 "_get_osd_prepare_pods": Mock(
-                    return_value=[
-                        Mock(**{"name.return_value": "rook-ceph-osd-prepare-node1"}),
-                    ]
+                    return_value=[_create_prepare_pod_mock("rook-ceph-osd-prepare-node1", 1)]
                 ),
             },
-            failed_msg=(
-                "OSD prepare pods are reporting existing filesystem errors.\n\n"
-                "Affected OSD prepare pods:\n"
-                "  - rook-ceph-osd-prepare-node1\n"
-                "    Log: 2024-03-15T10:30:01.456 I | cephosd: skipping device /dev/sdb "
-                "because it contains a filesystem\n\n"
-                "Remediation: Investigate why OSD provisioning is failing. "
-                "Check if the devices intended for OSD use have leftover filesystems "
-                "from a previous installation. If the OSDs are genuinely not needed "
-                "or the data is confirmed to be stale, the filesystems can be wiped "
-                "after careful verification. See https://access.redhat.com/solutions/6910101"
-            ),
+            failed_msg="Failed to get ceph osd tree status.\nError: connection refused",
         ),
     ]
+
+    scenario_unexpected_system_output = [
+        RuleScenarioParams(
+            "oc logs command fails for prepare pod",
+            oc_cmd_output_dict={
+                ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node1", "--tail=50")): CmdOutput(
+                    "", return_code=1, err="unable to retrieve container logs"
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
+                "_get_osd_prepare_pods": Mock(
+                    return_value=[_create_prepare_pod_mock("rook-ceph-osd-prepare-node1", 0)]
+                ),
+            },
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
+    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_fulfilled)
+    def test_prerequisite_fulfilled(self, scenario_params, tested_object):
+        RuleTestBase.test_prerequisite_fulfilled(self, scenario_params, tested_object)
 
     @pytest.mark.parametrize("scenario_params", scenario_passed)
     def test_scenario_passed(self, scenario_params, tested_object):
@@ -1341,6 +1457,10 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_unexpected_system_output)
+    def test_scenario_unexpected_system_output(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_unexpected_system_output(self, scenario_params, tested_object)
 
 
 class TestCephSlowOps(RuleTestBase):

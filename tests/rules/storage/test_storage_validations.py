@@ -20,6 +20,7 @@ from in_cluster_checks.rules.storage.storage_validations import (
     IsOSDsWeightOK,
     OrphanCsiVolumes,
     OsdJournalError,
+    OsdPrepareFilesystemHealth,
 )
 from tests.pytest_tools.test_operator_base import CmdOutput
 from tests.pytest_tools.test_rule_base import (
@@ -1173,6 +1174,169 @@ class TestCheckPoolSize(RuleTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_warning)
     def test_scenario_warning(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_warning(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_failed)
+    def test_scenario_failed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+
+class TestOsdPrepareFilesystemHealth(RuleTestBase):
+    """Test OsdPrepareFilesystemHealth rule."""
+
+    tested_type = OsdPrepareFilesystemHealth
+
+    prepare_log_with_error = (
+        "2024-03-15T10:30:00.123 I | cephosd: starting OSD prepare\n"
+        "2024-03-15T10:30:01.456 I | cephosd: skipping device /dev/sdb because it contains a filesystem\n"
+        "2024-03-15T10:30:02.789 I | cephosd: completed OSD prepare"
+    )
+
+    prepare_log_clean = (
+        "2024-03-15T10:30:00.123 I | cephosd: starting OSD prepare\n"
+        "2024-03-15T10:30:01.456 I | cephosd: OSD prepare completed successfully"
+    )
+
+    osd_tree_all_up = """{
+        "nodes": [
+            {"id": 0, "name": "osd.0", "type": "osd", "status": "up"},
+            {"id": 1, "name": "osd.1", "type": "osd", "status": "up"},
+            {"id": -1, "name": "default", "type": "root"}
+        ]
+    }"""
+
+    osd_tree_some_down = """{
+        "nodes": [
+            {"id": 0, "name": "osd.0", "type": "osd", "status": "up"},
+            {"id": 1, "name": "osd.1", "type": "osd", "status": "down"},
+            {"id": -1, "name": "default", "type": "root"}
+        ]
+    }"""
+
+    scenario_passed = [
+        RuleScenarioParams(
+            "no OSD prepare pods found",
+            tested_object_mock_dict={
+                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
+                "_get_osd_prepare_pods": Mock(return_value=[]),
+            },
+        ),
+        RuleScenarioParams(
+            "OSD prepare pods with clean logs (no filesystem errors)",
+            oc_cmd_output_dict={
+                ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node1", "--tail=50")): CmdOutput(
+                    prepare_log_clean
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
+                "_get_osd_prepare_pods": Mock(
+                    return_value=[
+                        Mock(**{"name.return_value": "rook-ceph-osd-prepare-node1"}),
+                    ]
+                ),
+            },
+        ),
+        RuleScenarioParams(
+            "filesystem errors in logs but all OSDs are up (historical/resolved)",
+            oc_cmd_output_dict={
+                ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node1", "--tail=50")): CmdOutput(
+                    prepare_log_with_error
+                ),
+            },
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd tree -f json"): CmdOutput(
+                    out=osd_tree_all_up, return_code=0
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
+                "_get_osd_prepare_pods": Mock(
+                    return_value=[
+                        Mock(**{"name.return_value": "rook-ceph-osd-prepare-node1"}),
+                    ]
+                ),
+            },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "filesystem errors in logs and OSDs are down",
+            oc_cmd_output_dict={
+                ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node1", "--tail=50")): CmdOutput(
+                    prepare_log_with_error
+                ),
+            },
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd tree -f json"): CmdOutput(
+                    out=osd_tree_some_down, return_code=0
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
+                "_get_osd_prepare_pods": Mock(
+                    return_value=[
+                        Mock(**{"name.return_value": "rook-ceph-osd-prepare-node1"}),
+                    ]
+                ),
+            },
+            failed_msg=(
+                "OSD prepare pods are reporting existing filesystem errors and 1 OSD(s) are down.\n\n"
+                "Affected OSD prepare pods:\n"
+                "  - rook-ceph-osd-prepare-node1\n"
+                "    Log: 2024-03-15T10:30:01.456 I | cephosd: skipping device /dev/sdb "
+                "because it contains a filesystem\n\n"
+                "Down OSDs: [osd.1]\n\n"
+                "Remediation: Investigate why OSD provisioning is failing. "
+                "Check if the devices intended for OSD use have leftover filesystems "
+                "from a previous installation. If the OSDs are genuinely not needed "
+                "or the data is confirmed to be stale, the filesystems can be wiped "
+                "after careful verification. See https://access.redhat.com/solutions/6910101"
+            ),
+        ),
+        RuleScenarioParams(
+            "filesystem errors in logs and ceph command failed",
+            oc_cmd_output_dict={
+                ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node1", "--tail=50")): CmdOutput(
+                    prepare_log_with_error
+                ),
+            },
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd tree -f json"): CmdOutput(
+                    out="", err="connection refused", return_code=1
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
+                "_get_osd_prepare_pods": Mock(
+                    return_value=[
+                        Mock(**{"name.return_value": "rook-ceph-osd-prepare-node1"}),
+                    ]
+                ),
+            },
+            failed_msg=(
+                "OSD prepare pods are reporting existing filesystem errors.\n\n"
+                "Affected OSD prepare pods:\n"
+                "  - rook-ceph-osd-prepare-node1\n"
+                "    Log: 2024-03-15T10:30:01.456 I | cephosd: skipping device /dev/sdb "
+                "because it contains a filesystem\n\n"
+                "Remediation: Investigate why OSD provisioning is failing. "
+                "Check if the devices intended for OSD use have leftover filesystems "
+                "from a previous installation. If the OSDs are genuinely not needed "
+                "or the data is confirmed to be stale, the filesystems can be wiped "
+                "after careful verification. See https://access.redhat.com/solutions/6910101"
+            ),
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_passed)
+    def test_scenario_passed(self, scenario_params, tested_object):
+        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
 
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):

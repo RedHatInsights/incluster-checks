@@ -775,6 +775,145 @@ class OsdJournalError(CephRule):
         return "\n\n".join(error_parts)
 
 
+class OsdPrepareFilesystemHealth(CephRule):
+    """
+    Check OSD prepare pods for existing filesystem errors with health cross-reference.
+
+    This validation checks if any rook-ceph-osd-prepare pods are reporting errors about
+    existing filesystems on devices intended for OSD provisioning, and cross-references
+    with actual OSD health status. The rule only fails when OSD provisioning is actively
+    failing due to existing filesystems AND the corresponding OSDs are unhealthy.
+
+    This replaces the CCX rule ccx_rules_ocp.internal.ocs.check_osd_prepare_logs_for_exisitng_filesystem
+    which was disabled because it did not distinguish between current and historical conditions
+    and unconditionally recommended wipefs, risking data loss on healthy OSDs.
+
+    Reference: https://access.redhat.com/solutions/6910101
+    """
+
+    objective_hosts = [Objectives.ORCHESTRATOR]
+    unique_name = "osd_prepare_existing_filesystem"
+    title = "Check OSD prepare pods for existing filesystem errors"
+    links = [
+        "https://access.redhat.com/solutions/6910101",
+    ]
+
+    FILESYSTEM_ERROR_PATTERN = "because it contains a filesystem"
+
+    def run_rule(self) -> RuleResult:
+        prepare_pods = self._get_osd_prepare_pods()
+        if not prepare_pods:
+            return RuleResult.passed()
+
+        pods_with_errors = self._check_prepare_pod_logs(prepare_pods)
+        if not pods_with_errors:
+            return RuleResult.passed()
+
+        down_osds = self._get_down_osds()
+        if down_osds is None:
+            return RuleResult.failed(self._build_error_message(pods_with_errors, []))
+
+        if not down_osds:
+            return RuleResult.passed()
+
+        return RuleResult.failed(self._build_error_message(pods_with_errors, down_osds))
+
+    def _get_osd_prepare_pods(self) -> list:
+        """Get OSD prepare pods that are not in Succeeded phase."""
+        return self.oc_api.get_pods(
+            namespace=self.NAMESPACE,
+            labels={"app": "rook-ceph-osd-prepare"},
+            field_selector={"!status.phase": "Succeeded"},
+        )
+
+    def _check_prepare_pod_logs(self, pods: list) -> list[dict]:
+        """Check OSD prepare pod logs for filesystem error messages.
+
+        Args:
+            pods: List of OSD prepare pod objects
+
+        Returns:
+            List of dicts with pod_name and log_excerpt for pods with errors
+        """
+        pods_with_errors = []
+        for pod in pods:
+            pod_name = pod.name()
+            rc, stdout, _ = self.oc_api.run_oc_command(
+                "logs",
+                ["-n", self.NAMESPACE, pod_name, "--tail=50"],
+                timeout=30,
+                raise_on_error=False,
+            )
+            if rc != 0:
+                continue
+
+            if self.FILESYSTEM_ERROR_PATTERN in stdout:
+                error_lines = [line.strip() for line in stdout.splitlines() if self.FILESYSTEM_ERROR_PATTERN in line]
+                pods_with_errors.append(
+                    {
+                        "pod_name": pod_name,
+                        "log_excerpt": "\n".join(error_lines[:5]),
+                    }
+                )
+
+        return pods_with_errors
+
+    def _get_down_osds(self) -> list[str] | None:
+        """Get list of down OSDs from ceph osd tree.
+
+        Returns:
+            List of down OSD names, empty list if all are up,
+            or None if the ceph command failed
+        """
+        cmd = SafeCmdString("ceph osd tree -f json")
+        rc, stdout, stderr = self._run_ceph_cmd(cmd)
+
+        if rc != 0:
+            return None
+
+        osd_tree = parse_json(stdout, cmd, self.get_host_ip())
+        nodes = osd_tree.get("nodes", [])
+
+        return [
+            node.get("name", "unknown")
+            for node in nodes
+            if node.get("type") == "osd" and node.get("status", "").lower() == "down"
+        ]
+
+    def _build_error_message(self, pods_with_errors: list[dict], down_osds: list[str]) -> str:
+        """Build the failure message with prepare pod errors and OSD status.
+
+        Args:
+            pods_with_errors: List of dicts with pod_name and log_excerpt
+            down_osds: List of down OSD names
+
+        Returns:
+            Formatted error message string
+        """
+        msg = "OSD prepare pods are reporting existing filesystem errors"
+        if down_osds:
+            msg += f" and {len(down_osds)} OSD(s) are down"
+        msg += ".\n\n"
+
+        msg += "Affected OSD prepare pods:\n"
+        for pod_info in pods_with_errors:
+            msg += f"  - {pod_info['pod_name']}\n"
+            msg += f"    Log: {pod_info['log_excerpt']}\n"
+
+        if down_osds:
+            msg += f"\nDown OSDs: [{', '.join(down_osds)}]\n"
+
+        msg += (
+            "\nRemediation: Investigate why OSD provisioning is failing. "
+            "Check if the devices intended for OSD use have leftover filesystems "
+            "from a previous installation. If the OSDs are genuinely not needed "
+            "or the data is confirmed to be stale, the filesystems can be wiped "
+            "after careful verification. See https://access.redhat.com/solutions/6910101"
+        )
+
+        return msg
+
+
 class CheckPoolSize(CephRule):
     """
     Check if ceph replication factor is at least 2 for all pools.

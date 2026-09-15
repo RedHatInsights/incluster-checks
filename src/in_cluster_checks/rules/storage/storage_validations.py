@@ -787,12 +787,13 @@ class OsdJournalError(CephRule):
 
 class OsdPrepareFilesystemHealth(CephRule):
     """
-    Check OSD prepare pods for existing filesystem errors with health cross-reference.
+    Check OSD prepare pods for active filesystem-related provisioning failures.
 
-    This validation checks if any rook-ceph-osd-prepare pods are reporting errors about
-    existing filesystems on devices intended for OSD provisioning, and cross-references
-    with actual OSD health status. The rule only fails when OSD provisioning is actively
-    failing due to existing filesystems AND the corresponding OSDs are unhealthy.
+    This validation scans all selected rook-ceph-osd-prepare pods, including completed
+    pods, for errors about existing filesystems on devices intended for OSD provisioning.
+    It reports an active provisioning failure only when a current Failed prepare pod has
+    the filesystem signature. Current OSD health is supplemental cluster context and is
+    not attributed to a prepare pod.
 
     This replaces the CCX rule ccx_rules_ocp.internal.ocs.check_osd_prepare_logs_for_exisitng_filesystem
     which was disabled because it did not distinguish between current and historical conditions
@@ -847,8 +848,9 @@ class OsdPrepareFilesystemHealth(CephRule):
     def _get_osd_prepare_pods(self) -> list:
         """Get all OSD prepare pods including completed ones.
 
-        Succeeded pods are included because prepare jobs may complete while
-        retaining filesystem error logs that indicate provisioning issues.
+        Succeeded pods are included so their logs can be scanned for historical
+        filesystem signatures. A signature from a completed pod does not independently
+        indicate an active provisioning failure.
         """
         return self.oc_api.get_pods(
             namespace=self.NAMESPACE,
@@ -856,7 +858,10 @@ class OsdPrepareFilesystemHealth(CephRule):
         )
 
     def _check_prepare_pod_logs(self, pods: list) -> list[dict]:
-        """Check OSD prepare pod logs for filesystem error messages.
+        """Collect filesystem signatures and current phases from OSD prepare pod logs.
+
+        The recorded phase lets the caller distinguish a historical signature in a
+        completed pod from a signature in a current Failed prepare pod.
 
         Args:
             pods: List of OSD prepare pod objects

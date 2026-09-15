@@ -1,11 +1,9 @@
 """Tests for ClusterArchitectureOverview rule."""
 
 import json
-from unittest.mock import Mock
 
 import pytest
 
-from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.rules.cluster_overview.architecture_overview import ClusterArchitectureOverview
 from tests.pytest_tools.test_operator_base import CmdOutput
 from tests.pytest_tools.test_rule_base import RuleScenarioParams, RuleTestBase
@@ -95,15 +93,19 @@ STORAGE_CLASSES_JSON = json.dumps(
 
 OAUTH_JSON = json.dumps({"spec": {"identityProviders": [{"name": "corp-ldap", "type": "LDAP"}]}})
 
-SUBSCRIPTIONS_DICT = {
-    "items": [
-        {
-            "metadata": {"name": "odf-operator", "namespace": "openshift-storage"},
-            "spec": {"name": "odf-operator", "channel": "stable-4.16"},
-            "status": {"installedCSV": "odf-operator.v4.16.3"},
-        }
-    ]
-}
+SUBSCRIPTIONS_JSON = json.dumps(
+    {
+        "items": [
+            {
+                "metadata": {"name": "odf-operator", "namespace": "openshift-storage"},
+                "spec": {"name": "odf-operator", "channel": "stable-4.16"},
+                "status": {"installedCSV": "odf-operator.v4.16.3"},
+            }
+        ]
+    }
+)
+
+SUBSCRIPTIONS_KEY = ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json"))
 
 FULL_CLUSTER_OC_OUTPUTS = {
     ("get", ("infrastructure", "cluster", "-o", "json")): CmdOutput(INFRASTRUCTURE_JSON),
@@ -113,6 +115,7 @@ FULL_CLUSTER_OC_OUTPUTS = {
     ("get", ("network.config", "cluster", "-o", "json")): CmdOutput(NETWORK_CONFIG_JSON),
     ("get", ("storageclass", "-o", "json")): CmdOutput(STORAGE_CLASSES_JSON),
     ("get", ("oauth", "cluster", "-o", "json")): CmdOutput(OAUTH_JSON),
+    SUBSCRIPTIONS_KEY: CmdOutput(SUBSCRIPTIONS_JSON),
 }
 
 RBAC_DENIED = CmdOutput("", return_code=1, err="Error from server (Forbidden)")
@@ -125,14 +128,21 @@ PARTIAL_CLUSTER_OC_OUTPUTS = {
     ("get", ("network.config", "cluster", "-o", "json")): RBAC_DENIED,
     ("get", ("storageclass", "-o", "json")): RBAC_DENIED,
     ("get", ("oauth", "cluster", "-o", "json")): RBAC_DENIED,
+    SUBSCRIPTIONS_KEY: RBAC_DENIED,
 }
 
-SUBSCRIPTIONS_DENIED = UnExpectedSystemOutput(
-    ip="test-node",
-    cmd="oc get subscriptions.operators.coreos.com --all-namespaces -o json",
-    output="Error from server (Forbidden)",
-    message="Command exited with code 1",
-)
+# Resources readable but empty/minimal: no IdPs, no storage classes, no
+# subscriptions, a node without role labels — distinct from RBAC denial.
+EMPTY_CLUSTER_OC_OUTPUTS = {
+    ("get", ("infrastructure", "cluster", "-o", "json")): CmdOutput(INFRASTRUCTURE_JSON),
+    ("get", ("clusterversion", "version", "-o", "json")): CmdOutput(CLUSTER_VERSION_JSON),
+    ("get", ("dns.config", "cluster", "-o", "json")): CmdOutput(json.dumps({})),
+    ("get", ("nodes", "-o", "json")): CmdOutput(json.dumps({"items": [{"metadata": {"labels": {}}, "status": {}}]})),
+    ("get", ("network.config", "cluster", "-o", "json")): CmdOutput(json.dumps({"status": {}})),
+    ("get", ("storageclass", "-o", "json")): CmdOutput(json.dumps({"items": []})),
+    ("get", ("oauth", "cluster", "-o", "json")): CmdOutput(json.dumps({"spec": {}})),
+    SUBSCRIPTIONS_KEY: CmdOutput(json.dumps({"items": []})),
+}
 
 
 class TestClusterArchitectureOverview(RuleTestBase):
@@ -144,9 +154,6 @@ class TestClusterArchitectureOverview(RuleTestBase):
         RuleScenarioParams(
             "full overview collected on a healthy cluster",
             oc_cmd_output_dict=FULL_CLUSTER_OC_OUTPUTS,
-            tested_object_mock_dict={
-                "oc_api.get_operator_subscriptions": Mock(return_value=SUBSCRIPTIONS_DICT),
-            },
             info_msg=(
                 "OpenShift 4.16.21 on BareMetal | "
                 "2 nodes (1x control-plane, 1x master, 1x worker) | "
@@ -156,14 +163,14 @@ class TestClusterArchitectureOverview(RuleTestBase):
         RuleScenarioParams(
             "partial overview when only ClusterVersion is readable",
             oc_cmd_output_dict=PARTIAL_CLUSTER_OC_OUTPUTS,
-            tested_object_mock_dict={
-                "oc_api.get_operator_subscriptions": Mock(side_effect=SUBSCRIPTIONS_DENIED),
-            },
             info_msg=(
-                "OpenShift 4.16.21 on unknown platform | "
-                "0 nodes (roles unknown) | "
-                "CNI: unknown | operators: 0"
+                "OpenShift 4.16.21 on unknown platform | " "0 nodes (roles unknown) | " "CNI: unknown | operators: 0"
             ),
+        ),
+        RuleScenarioParams(
+            "overview on a minimal cluster with readable but empty resources",
+            oc_cmd_output_dict=EMPTY_CLUSTER_OC_OUTPUTS,
+            info_msg=("OpenShift 4.16.21 on BareMetal | " "1 nodes (1x unknown) | " "CNI: unknown | operators: 0"),
         ),
     ]
 
@@ -227,3 +234,19 @@ class TestClusterArchitectureOverview(RuleTestBase):
                 "installed_csv": "odf-operator.v4.16.3",
             }
         ]
+
+    @pytest.mark.parametrize("scenario_params", scenario_info[2:])
+    def test_system_info_structure_empty_cluster(self, scenario_params, tested_object):
+        """Verify empty-but-readable resources yield empty sections, not failures."""
+        self._init_validation_object(tested_object, scenario_params)
+
+        with self._apply_patches(scenario_params, tested_object):
+            result = tested_object.run_rule()
+
+        overview = result.system_info
+        assert overview["cluster_identity"].get("base_domain") is None
+        assert overview["topology"]["nodes_by_role"] == {"unknown": 1}
+        assert overview["network"]["network_type"] is None
+        assert overview["storage"] == {"storage_classes": [], "default_storage_classes": []}
+        assert overview["identity_providers"] == []
+        assert overview["operators"] == []

@@ -1,148 +1,182 @@
 """Tests for ClusterArchitectureOverview rule."""
 
-import json
+from unittest.mock import Mock
 
 import pytest
+from openshift_client import OpenShiftPythonException
 
+from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.rules.cluster_overview.architecture_overview import ClusterArchitectureOverview
-from tests.pytest_tools.test_operator_base import CmdOutput
 from tests.pytest_tools.test_rule_base import RuleScenarioParams, RuleTestBase
 
-CLUSTER_VERSION_JSON = json.dumps(
-    {
-        "spec": {"channel": "stable-4.16", "clusterID": "11111111-2222-3333-4444-555555555555"},
-        "status": {
-            "desired": {"version": "4.16.21"},
-            "history": [{"version": "4.16.21"}, {"version": "4.16.20"}],
-        },
+CLUSTER_VERSION = {
+    "spec": {"channel": "stable-4.16", "clusterID": "11111111-2222-3333-4444-555555555555"},
+    "status": {
+        "desired": {"version": "4.16.21"},
+        "history": [{"version": "4.16.21"}, {"version": "4.16.20"}],
+    },
+}
+
+INFRASTRUCTURE = {
+    "status": {
+        "platformStatus": {"type": "BareMetal"},
+        "infrastructureName": "prod-x7k2p",
+        "apiServerURL": "https://api.prod.example.com:6443",
+        "controlPlaneTopology": "HighlyAvailable",
+        "infrastructureTopology": "HighlyAvailable",
     }
-)
+}
 
-INFRASTRUCTURE_JSON = json.dumps(
+DNS_CONFIG = {"spec": {"baseDomain": "prod.example.com"}}
+
+NODES = [
     {
-        "status": {
-            "platformStatus": {"type": "BareMetal"},
-            "infrastructureName": "prod-x7k2p",
-            "apiServerURL": "https://api.prod.example.com:6443",
-            "controlPlaneTopology": "HighlyAvailable",
-            "infrastructureTopology": "HighlyAvailable",
-        }
-    }
-)
-
-DNS_CONFIG_JSON = json.dumps({"spec": {"baseDomain": "prod.example.com"}})
-
-NODES_JSON = json.dumps(
-    {
-        "items": [
-            {
-                "metadata": {
-                    "labels": {
-                        "node-role.kubernetes.io/control-plane": "",
-                        "node-role.kubernetes.io/master": "",
-                    }
-                },
-                "status": {
-                    "nodeInfo": {
-                        "kubeletVersion": "v1.29.8",
-                        "osImage": "Red Hat Enterprise Linux CoreOS 416.94",
-                    }
-                },
-            },
-            {
-                "metadata": {"labels": {"node-role.kubernetes.io/worker": ""}},
-                "status": {
-                    "nodeInfo": {
-                        "kubeletVersion": "v1.29.8",
-                        "osImage": "Red Hat Enterprise Linux CoreOS 416.94",
-                    }
-                },
-            },
-        ]
-    }
-)
-
-NETWORK_CONFIG_JSON = json.dumps(
-    {
-        "status": {
-            "networkType": "OVNKubernetes",
-            "clusterNetwork": [{"cidr": "10.128.0.0/14"}],
-            "serviceNetwork": ["172.30.0.0/16"],
-            "clusterNetworkMTU": 1400,
-        }
-    }
-)
-
-STORAGE_CLASSES_JSON = json.dumps(
-    {
-        "items": [
-            {
-                "metadata": {
-                    "name": "ocs-storagecluster-ceph-rbd",
-                    "annotations": {"storageclass.kubernetes.io/is-default-class": "true"},
-                },
-                "provisioner": "openshift-storage.rbd.csi.ceph.com",
-            },
-            {
-                "metadata": {"name": "ocs-storagecluster-cephfs"},
-                "provisioner": "openshift-storage.cephfs.csi.ceph.com",
-            },
-        ]
-    }
-)
-
-OAUTH_JSON = json.dumps({"spec": {"identityProviders": [{"name": "corp-ldap", "type": "LDAP"}]}})
-
-SUBSCRIPTIONS_JSON = json.dumps(
-    {
-        "items": [
-            {
-                "metadata": {"name": "odf-operator", "namespace": "openshift-storage"},
-                "spec": {"name": "odf-operator", "channel": "stable-4.16"},
-                "status": {"installedCSV": "odf-operator.v4.16.3"},
+        "metadata": {
+            "labels": {
+                "node-role.kubernetes.io/control-plane": "",
+                "node-role.kubernetes.io/master": "",
             }
-        ]
+        },
+        "status": {
+            "nodeInfo": {
+                "kubeletVersion": "v1.29.8",
+                "osImage": "Red Hat Enterprise Linux CoreOS 416.94",
+            }
+        },
+    },
+    {
+        "metadata": {"labels": {"node-role.kubernetes.io/worker": ""}},
+        "status": {
+            "nodeInfo": {
+                "kubeletVersion": "v1.29.8",
+                "osImage": "Red Hat Enterprise Linux CoreOS 416.94",
+            }
+        },
+    },
+]
+
+NETWORK_CONFIG = {
+    "status": {
+        "networkType": "OVNKubernetes",
+        "clusterNetwork": [{"cidr": "10.128.0.0/14"}],
+        "serviceNetwork": ["172.30.0.0/16"],
+        "clusterNetworkMTU": 1400,
     }
+}
+
+STORAGE_CLASSES = [
+    {
+        "metadata": {
+            "name": "ocs-storagecluster-ceph-rbd",
+            "annotations": {"storageclass.kubernetes.io/is-default-class": "true"},
+        },
+        "provisioner": "openshift-storage.rbd.csi.ceph.com",
+    },
+    {
+        "metadata": {"name": "ocs-storagecluster-cephfs"},
+        "provisioner": "openshift-storage.cephfs.csi.ceph.com",
+    },
+]
+
+OAUTH = {"spec": {"identityProviders": [{"name": "corp-ldap", "type": "LDAP"}]}}
+
+SUBSCRIPTIONS = {
+    "items": [
+        {
+            "metadata": {"name": "odf-operator", "namespace": "openshift-storage"},
+            "spec": {"name": "odf-operator", "channel": "stable-4.16"},
+            "status": {"installedCSV": "odf-operator.v4.16.3"},
+        }
+    ]
+}
+
+RBAC_DENIED = OpenShiftPythonException("Error from server (Forbidden)")
+SUBSCRIPTIONS_DENIED = UnExpectedSystemOutput(
+    "10.0.0.1", "oc get subscriptions.operators.coreos.com --all-namespaces -o json", "Forbidden"
 )
 
-SUBSCRIPTIONS_KEY = ("get", ("subscriptions.operators.coreos.com", "--all-namespaces", "-o", "json"))
 
-FULL_CLUSTER_OC_OUTPUTS = {
-    ("get", ("infrastructure", "cluster", "-o", "json")): CmdOutput(INFRASTRUCTURE_JSON),
-    ("get", ("clusterversion", "version", "-o", "json")): CmdOutput(CLUSTER_VERSION_JSON),
-    ("get", ("dns.config", "cluster", "-o", "json")): CmdOutput(DNS_CONFIG_JSON),
-    ("get", ("nodes", "-o", "json")): CmdOutput(NODES_JSON),
-    ("get", ("network.config", "cluster", "-o", "json")): CmdOutput(NETWORK_CONFIG_JSON),
-    ("get", ("storageclass", "-o", "json")): CmdOutput(STORAGE_CLASSES_JSON),
-    ("get", ("oauth", "cluster", "-o", "json")): CmdOutput(OAUTH_JSON),
-    SUBSCRIPTIONS_KEY: CmdOutput(SUBSCRIPTIONS_JSON),
-}
+def _resource(data: dict) -> Mock:
+    """Build a mock openshift_client resource object exposing as_dict()."""
+    resource = Mock()
+    resource.as_dict.return_value = data
+    return resource
 
-RBAC_DENIED = CmdOutput("", return_code=1, err="Error from server (Forbidden)")
 
-PARTIAL_CLUSTER_OC_OUTPUTS = {
-    ("get", ("infrastructure", "cluster", "-o", "json")): RBAC_DENIED,
-    ("get", ("clusterversion", "version", "-o", "json")): CmdOutput(CLUSTER_VERSION_JSON),
-    ("get", ("dns.config", "cluster", "-o", "json")): RBAC_DENIED,
-    ("get", ("nodes", "-o", "json")): RBAC_DENIED,
-    ("get", ("network.config", "cluster", "-o", "json")): RBAC_DENIED,
-    ("get", ("storageclass", "-o", "json")): RBAC_DENIED,
-    ("get", ("oauth", "cluster", "-o", "json")): RBAC_DENIED,
-    SUBSCRIPTIONS_KEY: RBAC_DENIED,
-}
+def _by_resource_type_mock(resources_by_type: dict) -> Mock:
+    """Mock an oc_api selector keyed by resource type; Exception values are raised."""
+
+    def side_effect(resource_type, **_kwargs):
+        value = resources_by_type[resource_type]
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    return Mock(side_effect=side_effect)
+
+
+def _oc_api_mocks(single_resources: dict, storage_classes, nodes, subscriptions) -> dict:
+    """Build tested_object_mock_dict for the oc_api methods used by the rule.
+
+    Args:
+        single_resources: Map of {resource_type: mock resource / None / Exception}
+                          served via select_single_resource
+        storage_classes: List of mock resource objects served via select_resources,
+                         or an Exception to raise
+        nodes: List of mock node objects, or an Exception to raise
+        subscriptions: Parsed subscriptions dict, or an Exception to raise
+    """
+    def value_mock(value):
+        return Mock(side_effect=value) if isinstance(value, Exception) else Mock(return_value=value)
+
+    return {
+        "oc_api.select_single_resource": _by_resource_type_mock(single_resources),
+        "oc_api.select_resources": value_mock(storage_classes),
+        "oc_api.get_all_nodes": value_mock(nodes),
+        "oc_api.get_operator_subscriptions": value_mock(subscriptions),
+    }
+
+
+FULL_CLUSTER_MOCKS = _oc_api_mocks(
+    {
+        "infrastructure/cluster": _resource(INFRASTRUCTURE),
+        "clusterversion/version": _resource(CLUSTER_VERSION),
+        "dns.config/cluster": _resource(DNS_CONFIG),
+        "network.config/cluster": _resource(NETWORK_CONFIG),
+        "oauth/cluster": _resource(OAUTH),
+    },
+    storage_classes=[_resource(storage_class) for storage_class in STORAGE_CLASSES],
+    nodes=[_resource(node) for node in NODES],
+    subscriptions=SUBSCRIPTIONS,
+)
+
+PARTIAL_CLUSTER_MOCKS = _oc_api_mocks(
+    {
+        "infrastructure/cluster": RBAC_DENIED,
+        "clusterversion/version": _resource(CLUSTER_VERSION),
+        "dns.config/cluster": RBAC_DENIED,
+        "network.config/cluster": RBAC_DENIED,
+        "oauth/cluster": RBAC_DENIED,
+    },
+    storage_classes=RBAC_DENIED,
+    nodes=RBAC_DENIED,
+    subscriptions=SUBSCRIPTIONS_DENIED,
+)
 
 # Resources readable but empty/minimal: no IdPs, no storage classes, no
 # subscriptions, a node without role labels — distinct from RBAC denial.
-EMPTY_CLUSTER_OC_OUTPUTS = {
-    ("get", ("infrastructure", "cluster", "-o", "json")): CmdOutput(INFRASTRUCTURE_JSON),
-    ("get", ("clusterversion", "version", "-o", "json")): CmdOutput(CLUSTER_VERSION_JSON),
-    ("get", ("dns.config", "cluster", "-o", "json")): CmdOutput(json.dumps({})),
-    ("get", ("nodes", "-o", "json")): CmdOutput(json.dumps({"items": [{"metadata": {"labels": {}}, "status": {}}]})),
-    ("get", ("network.config", "cluster", "-o", "json")): CmdOutput(json.dumps({"status": {}})),
-    ("get", ("storageclass", "-o", "json")): CmdOutput(json.dumps({"items": []})),
-    ("get", ("oauth", "cluster", "-o", "json")): CmdOutput(json.dumps({"spec": {}})),
-    SUBSCRIPTIONS_KEY: CmdOutput(json.dumps({"items": []})),
-}
+EMPTY_CLUSTER_MOCKS = _oc_api_mocks(
+    {
+        "infrastructure/cluster": _resource(INFRASTRUCTURE),
+        "clusterversion/version": _resource(CLUSTER_VERSION),
+        "dns.config/cluster": _resource({}),
+        "network.config/cluster": _resource({"status": {}}),
+        "oauth/cluster": _resource({"spec": {}}),
+    },
+    storage_classes=[],
+    nodes=[_resource({"metadata": {"labels": {}}, "status": {}})],
+    subscriptions={"items": []},
+)
 
 
 class TestClusterArchitectureOverview(RuleTestBase):
@@ -153,7 +187,7 @@ class TestClusterArchitectureOverview(RuleTestBase):
     scenario_info = [
         RuleScenarioParams(
             "full overview collected on a healthy cluster",
-            oc_cmd_output_dict=FULL_CLUSTER_OC_OUTPUTS,
+            tested_object_mock_dict=FULL_CLUSTER_MOCKS,
             info_msg=(
                 "OpenShift 4.16.21 on BareMetal | "
                 "2 nodes (1x control-plane, 1x master, 1x worker) | "
@@ -162,24 +196,39 @@ class TestClusterArchitectureOverview(RuleTestBase):
         ),
         RuleScenarioParams(
             "partial overview when only ClusterVersion is readable",
-            oc_cmd_output_dict=PARTIAL_CLUSTER_OC_OUTPUTS,
+            tested_object_mock_dict=PARTIAL_CLUSTER_MOCKS,
             info_msg=(
                 "OpenShift 4.16.21 on unknown platform | " "0 nodes (roles unknown) | " "CNI: unknown | operators: 0"
             ),
         ),
         RuleScenarioParams(
             "overview on a minimal cluster with readable but empty resources",
-            oc_cmd_output_dict=EMPTY_CLUSTER_OC_OUTPUTS,
-            info_msg=("OpenShift 4.16.21 on BareMetal | " "1 nodes (1x unknown) | " "CNI: unknown | operators: 0"),
+            tested_object_mock_dict=EMPTY_CLUSTER_MOCKS,
+            info_msg=("OpenShift 4.16.21 on BareMetal | " "1 node (1x unknown) | " "CNI: unknown | operators: 0"),
         ),
     ]
 
     scenario_unexpected_system_output = [
         RuleScenarioParams(
             "rule is skipped when ClusterVersion cannot be read",
-            oc_cmd_output_dict={
-                ("get", ("infrastructure", "cluster", "-o", "json")): RBAC_DENIED,
-                ("get", ("clusterversion", "version", "-o", "json")): RBAC_DENIED,
+            tested_object_mock_dict={
+                "oc_api.select_single_resource": _by_resource_type_mock(
+                    {
+                        "infrastructure/cluster": RBAC_DENIED,
+                        "clusterversion/version": RBAC_DENIED,
+                    }
+                ),
+            },
+        ),
+        RuleScenarioParams(
+            "rule is skipped when ClusterVersion does not exist",
+            tested_object_mock_dict={
+                "oc_api.select_single_resource": _by_resource_type_mock(
+                    {
+                        "infrastructure/cluster": None,
+                        "clusterversion/version": None,
+                    }
+                ),
             },
         ),
     ]

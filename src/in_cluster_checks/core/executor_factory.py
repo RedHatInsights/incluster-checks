@@ -18,6 +18,7 @@ except ImportError:
 from in_cluster_checks import global_config
 from in_cluster_checks.core.executor import NodeExecutor
 from in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks.utils.parsing_utils import get_node_role_labels
 
 
 class NodeExecutorFactory:
@@ -119,10 +120,7 @@ class NodeExecutorFactory:
             List of Objectives (roles) for this node
         """
         roles = []
-        node_labels = node_dict.get("metadata", {}).get("labels", {})
-
-        role_prefix = "node-role.kubernetes.io/"
-        role_labels = [key.removeprefix(role_prefix) for key in node_labels.keys() if key.startswith(role_prefix)]
+        role_labels = get_node_role_labels(node_dict)
 
         # Map role labels to Objectives
         for role_label in role_labels:
@@ -146,12 +144,7 @@ class NodeExecutorFactory:
         Returns:
             Comma-separated role labels (e.g., "control-plane,worker" or "worker")
         """
-        node_labels = node_dict.get("metadata", {}).get("labels", {})
-
-        role_prefix = "node-role.kubernetes.io/"
-        role_labels = [key.removeprefix(role_prefix) for key in node_labels.keys() if key.startswith(role_prefix)]
-
-        return ",".join(sorted(role_labels)) if role_labels else ""
+        return ",".join(get_node_role_labels(node_dict))
 
     def _add_host_executor(self, node_name: str, node_ip: str, roles: List[str], node_labels: str = ""):
         """

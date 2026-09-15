@@ -6,10 +6,13 @@ topology, network, storage, identity providers, and installed operators —
 via the cluster API. Contributed from the ocp-analyzer project.
 """
 
+import openshift_client as oc
+
+from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.rule import OrchestratorRule
 from in_cluster_checks.core.rule_result import RuleResult
 from in_cluster_checks.utils.enums import Objectives
-from in_cluster_checks.utils.parsing_utils import parse_json
+from in_cluster_checks.utils.parsing_utils import get_node_role_labels
 
 VERSION_HISTORY_LIMIT = 12
 
@@ -37,7 +40,7 @@ class ClusterArchitectureOverview(OrchestratorRule):
 
     def run_rule(self) -> RuleResult:
         """Collect all overview sections and return them as a structured INFO result."""
-        infrastructure = self._get_resource(["infrastructure", "cluster"]) or {}
+        infrastructure = self._get_resource("infrastructure/cluster") or {}
 
         overview = {
             "cluster_identity": self._collect_cluster_identity(infrastructure),
@@ -50,26 +53,71 @@ class ClusterArchitectureOverview(OrchestratorRule):
 
         return RuleResult.info(self._build_summary(overview), system_info=overview)
 
-    def _get_resource(self, resource_args: list, required: bool = False) -> dict | None:
-        """Fetch a cluster resource as parsed JSON.
+    def _get_resource(self, resource_type: str) -> dict | None:
+        """Fetch an optional single resource via oc_api as a plain dict.
 
         Args:
-            resource_args: Arguments for `oc get` (e.g. ["network.config", "cluster"])
-            required: If True, a failed command raises UnExpectedSystemOutput
-                      (rule becomes SKIP); otherwise None is returned
+            resource_type: Resource to select (e.g. "network.config/cluster")
 
         Returns:
-            Parsed resource dict, or None if unavailable and not required
+            Resource dict, or None if the resource is absent or the query failed
+            (e.g. RBAC denied), so the section degrades gracefully
         """
-        args = [*resource_args, "-o", "json"]
-        return_code, output, _ = self.oc_api.run_oc_command("get", args, timeout=45, raise_on_error=required)
-        if return_code != 0:
+        try:
+            resource = self.oc_api.select_single_resource(resource_type, timeout=45)
+        except oc.OpenShiftPythonException:
             return None
-        return parse_json(output, f"oc get {' '.join(args)}", self.get_host_ip())
+        return resource.as_dict() if resource else None
+
+    def _get_required_resource(self, resource_type: str) -> dict:
+        """Fetch a required single resource via oc_api as a plain dict.
+
+        Args:
+            resource_type: Resource to select (e.g. "clusterversion/version")
+
+        Returns:
+            Resource dict
+
+        Raises:
+            UnExpectedSystemOutput: If the resource is absent or the query failed
+                                    (rule becomes SKIP)
+        """
+        try:
+            resource = self.oc_api.select_single_resource(resource_type, timeout=45)
+        except oc.OpenShiftPythonException as error:
+            raise UnExpectedSystemOutput(
+                self.get_host_ip(),
+                f"oc get {resource_type}",
+                str(error),
+                f"Failed to read required resource '{resource_type}'",
+            ) from error
+        if not resource:
+            raise UnExpectedSystemOutput(
+                self.get_host_ip(),
+                f"oc get {resource_type}",
+                "",
+                f"Required resource '{resource_type}' not found",
+            )
+        return resource.as_dict()
+
+    def _get_resource_list(self, resource_type: str) -> list[dict] | None:
+        """Fetch a list of resources via oc_api as plain dicts.
+
+        Args:
+            resource_type: Resource to select (e.g. "storageclass")
+
+        Returns:
+            List of resource dicts (empty if none exist), or None if the query failed
+        """
+        try:
+            resources = self.oc_api.select_resources(resource_type, timeout=45)
+        except oc.OpenShiftPythonException:
+            return None
+        return [resource.as_dict() for resource in resources]
 
     def _collect_cluster_identity(self, infrastructure: dict) -> dict:
         """Collect version, channel, cluster ID, platform, and base domain."""
-        cluster_version = self._get_resource(["clusterversion", "version"], required=True)
+        cluster_version = self._get_required_resource("clusterversion/version")
         spec = cluster_version.get("spec", {})
         status = cluster_version.get("status", {})
         identity = {
@@ -84,7 +132,7 @@ class ClusterArchitectureOverview(OrchestratorRule):
         identity["infrastructure_name"] = infra_status.get("infrastructureName")
         identity["api_server_url"] = infra_status.get("apiServerURL")
 
-        dns_config = self._get_resource(["dns.config", "cluster"])
+        dns_config = self._get_resource("dns.config/cluster")
         if dns_config:
             identity["base_domain"] = dns_config.get("spec", {}).get("baseDomain")
 
@@ -98,16 +146,17 @@ class ClusterArchitectureOverview(OrchestratorRule):
             "infrastructure_topology": infra_status.get("infrastructureTopology"),
         }
 
-        nodes = self._get_resource(["nodes"])
-        if not nodes:
+        try:
+            node_objects = self.oc_api.get_all_nodes(timeout=45)
+        except oc.OpenShiftPythonException:
             return topology
 
-        items = nodes.get("items", [])
         nodes_by_role = {}
         kubelet_versions = set()
         os_images = set()
-        for node in items:
-            for role in self._get_node_roles(node):
+        for node_object in node_objects:
+            node = node_object.as_dict()
+            for role in get_node_role_labels(node) or ["unknown"]:
                 nodes_by_role[role] = nodes_by_role.get(role, 0) + 1
             node_info = node.get("status", {}).get("nodeInfo", {})
             if node_info.get("kubeletVersion"):
@@ -115,22 +164,15 @@ class ClusterArchitectureOverview(OrchestratorRule):
             if node_info.get("osImage"):
                 os_images.add(node_info["osImage"])
 
-        topology["node_count"] = len(items)
+        topology["node_count"] = len(node_objects)
         topology["nodes_by_role"] = nodes_by_role
         topology["kubelet_versions"] = sorted(kubelet_versions)
         topology["os_images"] = sorted(os_images)
         return topology
 
-    @staticmethod
-    def _get_node_roles(node: dict) -> list:
-        """Extract role names from a node's node-role.kubernetes.io/* labels."""
-        labels = node.get("metadata", {}).get("labels", {})
-        roles = [label.split("/", 1)[1] for label in labels if label.startswith("node-role.kubernetes.io/")]
-        return sorted(roles) if roles else ["unknown"]
-
     def _collect_network(self) -> dict:
         """Collect CNI type, cluster/service CIDRs, and MTU."""
-        network_config = self._get_resource(["network.config", "cluster"])
+        network_config = self._get_resource("network.config/cluster")
         if not network_config:
             return {}
 
@@ -144,13 +186,15 @@ class ClusterArchitectureOverview(OrchestratorRule):
 
     def _collect_storage(self) -> dict:
         """Collect storage classes and which of them are default."""
-        storage_classes = self._get_resource(["storageclass"])
-        if not storage_classes:
+        storage_classes = self._get_resource_list("storageclass")
+        # None means the query failed (e.g. RBAC denied); an empty list is a
+        # readable cluster with no storage classes and still yields a section
+        if storage_classes is None:
             return {}
 
         classes = []
         default_classes = []
-        for storage_class in storage_classes.get("items", []):
+        for storage_class in storage_classes:
             metadata = storage_class.get("metadata", {})
             name = metadata.get("name")
             annotations = metadata.get("annotations") or {}
@@ -169,7 +213,7 @@ class ClusterArchitectureOverview(OrchestratorRule):
 
     def _collect_identity_providers(self) -> list:
         """Collect configured identity provider names and types (no credentials)."""
-        oauth = self._get_resource(["oauth", "cluster"])
+        oauth = self._get_resource("oauth/cluster")
         if not oauth:
             return []
 
@@ -178,8 +222,9 @@ class ClusterArchitectureOverview(OrchestratorRule):
 
     def _collect_operators(self) -> list:
         """Collect installed operator subscriptions (name, namespace, channel, CSV)."""
-        subscriptions = self._get_resource(["subscriptions.operators.coreos.com", "--all-namespaces"])
-        if not subscriptions:
+        try:
+            subscriptions = self.oc_api.get_operator_subscriptions()
+        except UnExpectedSystemOutput:
             return []
 
         operators = []
@@ -206,10 +251,12 @@ class ClusterArchitectureOverview(OrchestratorRule):
 
         nodes_by_role = topology.get("nodes_by_role") or {}
         roles_summary = ", ".join(f"{count}x {role}" for role, count in sorted(nodes_by_role.items()))
+        node_count = topology.get("node_count", 0)
+        node_word = "node" if node_count == 1 else "nodes"
         return (
             f"OpenShift {identity.get('version') or 'unknown'} "
             f"on {identity.get('platform') or 'unknown platform'} | "
-            f"{topology.get('node_count', 0)} nodes ({roles_summary or 'roles unknown'}) | "
+            f"{node_count} {node_word} ({roles_summary or 'roles unknown'}) | "
             f"CNI: {network.get('network_type') or 'unknown'} | "
             f"operators: {len(overview['operators'])}"
         )

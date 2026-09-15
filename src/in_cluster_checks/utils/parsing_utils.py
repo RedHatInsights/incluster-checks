@@ -167,6 +167,20 @@ def format_memory(value: str) -> str:
     return value
 
 
+def get_node_role_labels(node_dict: dict) -> list:
+    """Extract sorted role names from a node's node-role.kubernetes.io/* labels.
+
+    Args:
+        node_dict: Node resource as a dict (e.g., from openshift_client's as_dict())
+
+    Returns:
+        Sorted list of role names (e.g., ["control-plane", "worker"]), empty if none
+    """
+    labels = node_dict.get("metadata", {}).get("labels", {})
+    role_prefix = "node-role.kubernetes.io/"
+    return sorted(key.removeprefix(role_prefix) for key in labels if key.startswith(role_prefix))
+
+
 def format_cpu(value: str) -> str:
     """Convert Kubernetes CPU value to human-readable format.
 

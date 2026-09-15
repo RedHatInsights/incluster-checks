@@ -140,8 +140,18 @@ class CephRule(OrchestratorRule):
                 self.build_cmd_error_message("Failed to get ceph osd tree status.", stdout, stderr)
             )
 
+        if not stdout:
+            return RuleResult.failed("Empty results from ceph osd tree command")
+
         osd_tree = parse_json(stdout, cmd, self.get_host_ip())
-        nodes = osd_tree.get("nodes", [])
+        if not isinstance(osd_tree, dict):
+            return RuleResult.failed("Invalid results from ceph osd tree command")
+
+        nodes = osd_tree.get("nodes")
+        if not isinstance(nodes, list) or not nodes:
+            return RuleResult.failed("No nodes found in ceph osd tree output")
+        if not all(isinstance(node, dict) for node in nodes):
+            return RuleResult.failed("Invalid results from ceph osd tree command")
 
         return [
             node.get("name", "unknown")
@@ -827,17 +837,12 @@ class OsdPrepareFilesystemHealth(CephRule):
         if isinstance(down_osds, RuleResult):
             return down_osds
 
-        if not down_osds:
+        failed_prepare_pods = [pod for pod in pods_with_errors if pod["phase"] == "Failed"]
+
+        if not failed_prepare_pods:
             return RuleResult.passed()
 
-        down_osd_set = set(down_osds)
-        affected_pods = [pod for pod in pods_with_errors if pod["osd_id"] in down_osd_set]
-
-        if not affected_pods:
-            return RuleResult.passed()
-
-        affected_down_osds = sorted(down_osd_set & {pod["osd_id"] for pod in affected_pods})
-        return RuleResult.failed(self._build_error_message(affected_pods, affected_down_osds))
+        return RuleResult.failed(self._build_error_message(failed_prepare_pods, down_osds))
 
     def _get_osd_prepare_pods(self) -> list:
         """Get all OSD prepare pods including completed ones.
@@ -850,24 +855,6 @@ class OsdPrepareFilesystemHealth(CephRule):
             labels={"app": "rook-ceph-osd-prepare"},
         )
 
-    def _extract_prepare_osd_id(self, pod) -> str:
-        """Extract OSD ID from a prepare pod's labels.
-
-        Rook-ceph prepare pods carry a ``ceph-osd-id`` label that identifies
-        the target OSD.  The returned value is formatted as ``osd.<N>`` to
-        match the names returned by ``_get_down_osds()``.
-
-        Args:
-            pod: Pod object from openshift_client
-
-        Returns:
-            OSD name in ``osd.<N>`` format, or ``unknown`` if not found
-        """
-        osd_id = pod.model.metadata.labels.get("ceph-osd-id")
-        if osd_id is not None:
-            return f"osd.{osd_id}"
-        return "unknown"
-
     def _check_prepare_pod_logs(self, pods: list) -> list[dict]:
         """Check OSD prepare pod logs for filesystem error messages.
 
@@ -875,7 +862,7 @@ class OsdPrepareFilesystemHealth(CephRule):
             pods: List of OSD prepare pod objects
 
         Returns:
-            List of dicts with pod_name, osd_id, and log_excerpt for pods with errors
+            List of dicts with pod_name, phase, and log_excerpt for pods with errors
 
         Raises:
             UnExpectedSystemOutput: If oc logs command fails for any pod
@@ -894,43 +881,42 @@ class OsdPrepareFilesystemHealth(CephRule):
                 pods_with_errors.append(
                     {
                         "pod_name": pod_name,
-                        "osd_id": self._extract_prepare_osd_id(pod),
+                        "phase": pod.model.status.phase,
                         "log_excerpt": "\n".join(error_lines[:5]),
                     }
                 )
 
         return pods_with_errors
 
-    def _build_error_message(self, affected_pods: list[dict], down_osds: list[str]) -> str:
+    def _build_error_message(self, failed_prepare_pods: list[dict], down_osds: list[str]) -> str:
         """Build the failure message with prepare pod errors and OSD status.
 
-        Only includes pods whose corresponding OSDs are actually down.
+        A failed prepare pod is direct evidence of active provisioning failure.
+        Prepare pods do not expose an OSD ID, so down OSDs are reported as
+        cluster health context and are not attributed to a prepare pod.
 
         Args:
-            affected_pods: List of dicts with pod_name, osd_id, and log_excerpt
-                          (already filtered to only include pods with down OSDs)
-            down_osds: List of affected down OSD names
+            failed_prepare_pods: List of failed prepare pods with filesystem errors
+            down_osds: List of currently down OSD names
 
         Returns:
             Formatted error message string
         """
-        msg = (
-            f"OSD prepare pods are reporting existing filesystem errors "
-            f"and {len(down_osds)} OSD(s) are down.\n\n"
-            f"Affected OSD prepare pods:\n"
-        )
-        for pod_info in affected_pods:
-            msg += f"  - {pod_info['pod_name']} (target: {pod_info['osd_id']})\n"
+        msg = "OSD prepare pods failed while reporting existing filesystem errors.\n\n" "Failed OSD prepare pods:\n"
+        for pod_info in failed_prepare_pods:
+            msg += f"  - {pod_info['pod_name']}\n"
             msg += f"    Log: {pod_info['log_excerpt']}\n"
 
-        msg += f"\nDown OSDs: [{', '.join(down_osds)}]\n"
+        if down_osds:
+            msg += f"\nCurrent down OSDs (not attributed to these prepare pods): [{', '.join(down_osds)}]\n"
+        else:
+            msg += "\nCurrent OSD health: all OSDs reported up.\n"
 
         msg += (
             "\nRemediation: Investigate why OSD provisioning is failing. "
-            "Check if the devices intended for OSD use have leftover filesystems "
-            "from a previous installation. If the OSDs are genuinely not needed "
-            "or the data is confirmed to be stale, the filesystems can be wiped "
-            "after careful verification. See https://access.redhat.com/solutions/6910101"
+            "Identify the device in the prepare log and verify that it does not back an active OSD. "
+            "Do not modify or wipe the device until ownership and data-retention requirements are confirmed. "
+            "See https://access.redhat.com/solutions/6910101"
         )
 
         return msg

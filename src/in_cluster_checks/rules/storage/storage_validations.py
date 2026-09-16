@@ -789,11 +789,19 @@ class OsdPrepareFilesystemHealth(CephRule):
     """
     Check OSD prepare pods for active filesystem-related provisioning failures.
 
-    This validation scans all selected rook-ceph-osd-prepare pods, including completed
-    pods, for errors about existing filesystems on devices intended for OSD provisioning.
-    It reports an active provisioning failure only when a current Failed prepare pod has
-    the filesystem signature. Current OSD health is supplemental cluster context and is
-    not attributed to a prepare pod.
+    This validation scans all rook-ceph-osd-prepare pods for errors about existing
+    filesystems on devices intended for OSD provisioning. It fires on two conditions:
+
+    Condition 1 (no ceph commands needed):
+        Any prepare pod in Failed phase has the filesystem error in its logs.
+
+    Condition 2 (requires ceph osd metadata + ceph osd tree):
+        Any prepare pod (any phase) has the filesystem error AND the corresponding
+        OSD (correlated via device UUID in the pod name) is currently down.
+
+    OSD correlation uses the device UUID embedded in the prepare pod name
+    (rook-ceph-osd-prepare-<device-uuid>-<suffix>) mapped to OSD IDs via
+    the bluestore_bdev_uuid field in ceph osd metadata.
 
     This replaces the CCX rule ccx_rules_ocp.internal.ocs.check_osd_prepare_logs_for_exisitng_filesystem
     which was disabled because it did not distinguish between current and historical conditions
@@ -810,6 +818,7 @@ class OsdPrepareFilesystemHealth(CephRule):
     ]
 
     FILESYSTEM_ERROR_PATTERN = "because it contains a filesystem"
+    _DEVICE_UUID_PATTERN = re.compile(r"rook-ceph-osd-prepare-([0-9a-f]{32})-")
 
     def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
         """Check base Ceph prerequisites and verify OSD prepare pods exist.
@@ -834,34 +843,101 @@ class OsdPrepareFilesystemHealth(CephRule):
         if not pods_with_errors:
             return RuleResult.passed()
 
+        # Condition 1: Failed pods with filesystem errors (no ceph commands needed)
+        failed_pods = [pod for pod in pods_with_errors if pod["phase"] == "Failed"]
+        if failed_pods:
+            return RuleResult.failed(self._build_error_message(failed_pods, trigger="failed_phase"))
+
+        # Condition 2: Any pod with filesystem error whose OSD is down
+        osd_metadata = self._get_osd_metadata()
+        if isinstance(osd_metadata, RuleResult):
+            return osd_metadata
+
         down_osds = self._get_down_osds()
         if isinstance(down_osds, RuleResult):
             return down_osds
 
-        failed_prepare_pods = [pod for pod in pods_with_errors if pod["phase"] == "Failed"]
+        pods_with_down_osds = []
+        for pod_info in pods_with_errors:
+            device_uuid = self._extract_device_uuid(pod_info["pod_name"])
+            if not device_uuid:
+                continue
+            osd_name = osd_metadata.get(device_uuid)
+            if osd_name and osd_name in down_osds:
+                pod_info["osd_name"] = osd_name
+                pods_with_down_osds.append(pod_info)
 
-        if not failed_prepare_pods:
+        if not pods_with_down_osds:
             return RuleResult.passed()
 
-        return RuleResult.failed(self._build_error_message(failed_prepare_pods, down_osds))
+        return RuleResult.failed(self._build_error_message(pods_with_down_osds, trigger="down_osd"))
 
     def _get_osd_prepare_pods(self) -> list:
         """Get all OSD prepare pods including completed ones.
 
-        Succeeded pods are included so their logs can be scanned for historical
-        filesystem signatures. A signature from a completed pod does not independently
-        indicate an active provisioning failure.
+        All phases are included so logs can be scanned for filesystem signatures
+        and correlated with OSD health via device UUID.
         """
         return self.oc_api.get_pods(
             namespace=self.NAMESPACE,
             labels={"app": "rook-ceph-osd-prepare"},
         )
 
+    def _extract_device_uuid(self, pod_name: str) -> str | None:
+        """Extract the device UUID from an OSD prepare pod name.
+
+        Pod name format: rook-ceph-osd-prepare-<32-hex-char-uuid>-<suffix>
+        Example: rook-ceph-osd-prepare-a888f0a01744fafe59f31ebb9e271afa-t2fq8
+
+        Args:
+            pod_name: Name of the OSD prepare pod
+
+        Returns:
+            32-character hex device UUID, or None if not matched
+        """
+        match = self._DEVICE_UUID_PATTERN.search(pod_name)
+        return match.group(1) if match else None
+
+    def _get_osd_metadata(self) -> dict[str, str] | RuleResult:
+        """Get device-UUID-to-OSD-name mapping from ceph osd metadata.
+
+        Runs ``ceph osd metadata -f json`` and builds a mapping from
+        bluestore_bdev_uuid (with hyphens removed) to OSD name (e.g. "osd.0").
+
+        Returns:
+            Dict mapping device UUID (unhyphenated) to OSD name, or
+            RuleResult.failed if the ceph command fails
+        """
+        cmd = SafeCmdString("ceph osd metadata -f json")
+        rc, stdout, stderr = self._run_ceph_cmd(cmd)
+
+        if rc != 0:
+            return RuleResult.failed(self.build_cmd_error_message("Failed to get ceph osd metadata.", stdout, stderr))
+
+        if not stdout:
+            return RuleResult.failed("Empty results from ceph osd metadata command")
+
+        metadata_list = parse_json(stdout, cmd, self.get_host_ip())
+        if not isinstance(metadata_list, list):
+            return RuleResult.failed("Invalid results from ceph osd metadata command")
+
+        uuid_to_osd = {}
+        for entry in metadata_list:
+            if not isinstance(entry, dict):
+                continue
+            bdev_uuid = entry.get("bluestore_bdev_uuid", "")
+            osd_id = entry.get("id")
+            if bdev_uuid and osd_id is not None:
+                # Remove hyphens to match the pod-name format
+                uuid_to_osd[bdev_uuid.replace("-", "")] = f"osd.{osd_id}"
+
+        return uuid_to_osd
+
     def _check_prepare_pod_logs(self, pods: list) -> list[dict]:
         """Collect filesystem signatures and current phases from OSD prepare pod logs.
 
-        The recorded phase lets the caller distinguish a historical signature in a
-        completed pod from a signature in a current Failed prepare pod.
+        The recorded phase lets the caller distinguish a Failed pod (condition 1)
+        from a non-failed pod whose OSD may be down (condition 2).
 
         Args:
             pods: List of OSD prepare pod objects
@@ -893,29 +969,29 @@ class OsdPrepareFilesystemHealth(CephRule):
 
         return pods_with_errors
 
-    def _build_error_message(self, failed_prepare_pods: list[dict], down_osds: list[str]) -> str:
-        """Build the failure message with prepare pod errors and OSD status.
-
-        A failed prepare pod is direct evidence of active provisioning failure.
-        Prepare pods do not expose an OSD ID, so down OSDs are reported as
-        cluster health context and are not attributed to a prepare pod.
+    def _build_error_message(self, affected_pods: list[dict], trigger: str) -> str:
+        """Build the failure message for the detected condition.
 
         Args:
-            failed_prepare_pods: List of failed prepare pods with filesystem errors
-            down_osds: List of currently down OSD names
+            affected_pods: List of pod info dicts that triggered the rule
+            trigger: Either "failed_phase" (condition 1) or "down_osd" (condition 2)
 
         Returns:
             Formatted error message string
         """
-        msg = "OSD prepare pods failed while reporting existing filesystem errors.\n\n" "Failed OSD prepare pods:\n"
-        for pod_info in failed_prepare_pods:
-            msg += f"  - {pod_info['pod_name']}\n"
-            msg += f"    Log: {pod_info['log_excerpt']}\n"
-
-        if down_osds:
-            msg += f"\nCurrent down OSDs (not attributed to these prepare pods): [{', '.join(down_osds)}]\n"
+        if trigger == "failed_phase":
+            msg = "OSD prepare pods failed while reporting existing filesystem errors.\n\n" "Failed OSD prepare pods:\n"
+            for pod_info in affected_pods:
+                msg += f"  - {pod_info['pod_name']}\n"
+                msg += f"    Log: {pod_info['log_excerpt']}\n"
         else:
-            msg += "\nCurrent OSD health: all OSDs reported up.\n"
+            msg = (
+                "OSD prepare pods report existing filesystem errors and the corresponding OSDs are down.\n\n"
+                "Affected OSD prepare pods:\n"
+            )
+            for pod_info in affected_pods:
+                msg += f"  - {pod_info['pod_name']} (correlated OSD: {pod_info['osd_name']})\n"
+                msg += f"    Log: {pod_info['log_excerpt']}\n"
 
         msg += (
             "\nRemediation: Investigate why OSD provisioning is failing. "

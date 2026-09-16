@@ -1255,6 +1255,7 @@ def _create_prepare_pod_mock(name, phase="Succeeded"):
 # Device UUID used in prepare pod names for test scenarios
 _DEVICE_UUID_A = "a888f0a01744fafe59f31ebb9e271afa"
 _DEVICE_UUID_B = "b999e1b12855fbfe6a42ecba0e382bfb"
+_DEVICE_UUID_C = "cccc22c33366dddd77778888aaaabbbb"
 
 # bluestore_bdev_uuid format (hyphenated) corresponding to _DEVICE_UUID_A
 _BDEV_UUID_A = "a888f0a0-1744-fafe-59f3-1ebb9e271afa"
@@ -1324,6 +1325,17 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
         ),
     ]
 
+    _REMEDIATION = (
+        "\nRemediation: Investigate why OSD provisioning is failing. "
+        "Identify the device in the prepare log and verify that it does not back an active OSD. "
+        "Do not modify or wipe the device until ownership and data-retention requirements are confirmed. "
+        "See https://access.redhat.com/solutions/6910101"
+    )
+
+    _LOG_LINE = (
+        "2024-03-15T10:30:01.456 I | cephosd: skipping device /dev/sdb because it contains a filesystem"
+    )
+
     scenario_passed = [
         RuleScenarioParams(
             "OSD prepare pods with clean logs (no filesystem errors)",
@@ -1343,7 +1355,7 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
             },
         ),
         RuleScenarioParams(
-            "filesystem errors on succeeded pod but all OSDs are up (condition 2 not met)",
+            "completed pod with OSD up - historical (no active failure)",
             oc_cmd_output_dict={
                 ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12", "--tail=50")): CmdOutput(
                     prepare_log_with_error
@@ -1393,7 +1405,7 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
             },
         ),
         RuleScenarioParams(
-            "filesystem error but pod name has no recognizable UUID",
+            "no UUID in pod name and pod is not Failed (historical)",
             oc_cmd_output_dict={
                 ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node1", "--tail=50")): CmdOutput(
                     prepare_log_with_error
@@ -1415,14 +1427,19 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
                 ),
             },
         ),
-    ]
-
-    scenario_failed = [
         RuleScenarioParams(
-            "condition 1: failed prepare pod reports existing filesystem (no ceph commands needed)",
+            "Failed pod with UUID resolving to UP OSD (OSD recovered, historical)",
             oc_cmd_output_dict={
                 ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12", "--tail=50")): CmdOutput(
                     prepare_log_with_error
+                ),
+            },
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd metadata -f json"): CmdOutput(
+                    out=osd_metadata_json, return_code=0
+                ),
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd tree -f json"): CmdOutput(
+                    out=osd_tree_all_up, return_code=0
                 ),
             },
             tested_object_mock_dict={
@@ -1434,56 +1451,9 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
                     ]
                 ),
             },
-            failed_msg=(
-                "OSD prepare pods failed while reporting existing filesystem errors.\n\n"
-                "Failed OSD prepare pods:\n"
-                f"  - rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12\n"
-                "    Log: 2024-03-15T10:30:01.456 I | cephosd: skipping device /dev/sdb "
-                "because it contains a filesystem\n\n"
-                "Remediation: Investigate why OSD provisioning is failing. "
-                "Identify the device in the prepare log and verify that it does not back an active OSD. "
-                "Do not modify or wipe the device until ownership and data-retention requirements are confirmed. "
-                "See https://access.redhat.com/solutions/6910101"
-            ),
         ),
         RuleScenarioParams(
-            "condition 2: succeeded pod with filesystem error and corresponding OSD is down",
-            oc_cmd_output_dict={
-                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_B}-xyz99", "--tail=50")): CmdOutput(
-                    prepare_log_with_error
-                ),
-            },
-            rsh_cmd_output_dict={
-                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd metadata -f json"): CmdOutput(
-                    out=osd_metadata_json, return_code=0
-                ),
-                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd tree -f json"): CmdOutput(
-                    out=osd_tree_osd1_down, return_code=0
-                ),
-            },
-            tested_object_mock_dict={
-                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_single_resource": Mock(return_value=Mock()),
-                "_get_osd_prepare_pods": Mock(
-                    return_value=[
-                        _create_prepare_pod_mock(f"rook-ceph-osd-prepare-{_DEVICE_UUID_B}-xyz99")
-                    ]
-                ),
-            },
-            failed_msg=(
-                "OSD prepare pods report existing filesystem errors and the corresponding OSDs are down.\n\n"
-                "Affected OSD prepare pods:\n"
-                f"  - rook-ceph-osd-prepare-{_DEVICE_UUID_B}-xyz99 (correlated OSD: osd.1)\n"
-                "    Log: 2024-03-15T10:30:01.456 I | cephosd: skipping device /dev/sdb "
-                "because it contains a filesystem\n\n"
-                "Remediation: Investigate why OSD provisioning is failing. "
-                "Identify the device in the prepare log and verify that it does not back an active OSD. "
-                "Do not modify or wipe the device until ownership and data-retention requirements are confirmed. "
-                "See https://access.redhat.com/solutions/6910101"
-            ),
-        ),
-        RuleScenarioParams(
-            "condition 1 fires and condition 2 is also checked for non-failed pods",
+            "Failed pod with resolvable UUID and Succeeded pod - both OSDs up (historical)",
             oc_cmd_output_dict={
                 ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12", "--tail=50")): CmdOutput(
                     prepare_log_with_error
@@ -1510,20 +1480,144 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
                     ]
                 ),
             },
+        ),
+    ]
+
+    scenario_failed = [
+        RuleScenarioParams(
+            "OSD down fires - pod with filesystem error and corresponding OSD is down",
+            oc_cmd_output_dict={
+                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_B}-xyz99", "--tail=50")): CmdOutput(
+                    prepare_log_with_error
+                ),
+            },
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd metadata -f json"): CmdOutput(
+                    out=osd_metadata_json, return_code=0
+                ),
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd tree -f json"): CmdOutput(
+                    out=osd_tree_osd1_down, return_code=0
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
+                "_get_osd_prepare_pods": Mock(
+                    return_value=[
+                        _create_prepare_pod_mock(f"rook-ceph-osd-prepare-{_DEVICE_UUID_B}-xyz99")
+                    ]
+                ),
+            },
             failed_msg=(
-                "OSD prepare pods failed while reporting existing filesystem errors.\n\n"
-                "Failed OSD prepare pods:\n"
-                f"  - rook-ceph-osd-prepare-{_DEVICE_UUID_B}-xyz99\n"
-                "    Log: 2024-03-15T10:30:01.456 I | cephosd: skipping device /dev/sdb "
-                "because it contains a filesystem\n\n"
-                "Remediation: Investigate why OSD provisioning is failing. "
-                "Identify the device in the prepare log and verify that it does not back an active OSD. "
-                "Do not modify or wipe the device until ownership and data-retention requirements are confirmed. "
-                "See https://access.redhat.com/solutions/6910101"
+                "OSD prepare pods report existing filesystem errors indicating active provisioning failures.\n\n"
+                "Affected OSD prepare pods:\n"
+                f"  - rook-ceph-osd-prepare-{_DEVICE_UUID_B}-xyz99 (correlated OSD: osd.1)\n"
+                f"    Log: {_LOG_LINE}\n"
+                + _REMEDIATION
             ),
         ),
         RuleScenarioParams(
-            "ceph osd metadata command fails during condition 2 check",
+            "Failed fallback - Failed pod with no UUID in pod name",
+            oc_cmd_output_dict={
+                ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node1", "--tail=50")): CmdOutput(
+                    prepare_log_with_error
+                ),
+            },
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd metadata -f json"): CmdOutput(
+                    out=osd_metadata_json, return_code=0
+                ),
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd tree -f json"): CmdOutput(
+                    out=osd_tree_all_up, return_code=0
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
+                "_get_osd_prepare_pods": Mock(
+                    return_value=[_create_prepare_pod_mock("rook-ceph-osd-prepare-node1", "Failed")]
+                ),
+            },
+            failed_msg=(
+                "OSD prepare pods report existing filesystem errors indicating active provisioning failures.\n\n"
+                "Affected OSD prepare pods:\n"
+                "  - rook-ceph-osd-prepare-node1 (Failed - OSD could not be identified)\n"
+                f"    Log: {_LOG_LINE}\n"
+                + _REMEDIATION
+            ),
+        ),
+        RuleScenarioParams(
+            "Failed fallback - Failed pod with UUID not in ceph metadata",
+            oc_cmd_output_dict={
+                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_C}-zzz11", "--tail=50")): CmdOutput(
+                    prepare_log_with_error
+                ),
+            },
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd metadata -f json"): CmdOutput(
+                    out=osd_metadata_json, return_code=0
+                ),
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd tree -f json"): CmdOutput(
+                    out=osd_tree_all_up, return_code=0
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
+                "_get_osd_prepare_pods": Mock(
+                    return_value=[
+                        _create_prepare_pod_mock(f"rook-ceph-osd-prepare-{_DEVICE_UUID_C}-zzz11", "Failed")
+                    ]
+                ),
+            },
+            failed_msg=(
+                "OSD prepare pods report existing filesystem errors indicating active provisioning failures.\n\n"
+                "Affected OSD prepare pods:\n"
+                f"  - rook-ceph-osd-prepare-{_DEVICE_UUID_C}-zzz11 (Failed - OSD could not be identified)\n"
+                f"    Log: {_LOG_LINE}\n"
+                + _REMEDIATION
+            ),
+        ),
+        RuleScenarioParams(
+            "combined - OSD down pod and Failed unresolvable pod both fire",
+            oc_cmd_output_dict={
+                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_B}-xyz99", "--tail=50")): CmdOutput(
+                    prepare_log_with_error
+                ),
+                ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node2", "--tail=50")): CmdOutput(
+                    prepare_log_with_error
+                ),
+            },
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd metadata -f json"): CmdOutput(
+                    out=osd_metadata_json, return_code=0
+                ),
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd tree -f json"): CmdOutput(
+                    out=osd_tree_osd1_down, return_code=0
+                ),
+            },
+            tested_object_mock_dict={
+                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
+                "_get_osd_prepare_pods": Mock(
+                    return_value=[
+                        _create_prepare_pod_mock(f"rook-ceph-osd-prepare-{_DEVICE_UUID_B}-xyz99"),
+                        _create_prepare_pod_mock("rook-ceph-osd-prepare-node2", "Failed"),
+                    ]
+                ),
+            },
+            failed_msg=(
+                "OSD prepare pods report existing filesystem errors indicating active provisioning failures.\n\n"
+                "Affected OSD prepare pods:\n"
+                f"  - rook-ceph-osd-prepare-{_DEVICE_UUID_B}-xyz99 (correlated OSD: osd.1)\n"
+                f"    Log: {_LOG_LINE}\n"
+                "  - rook-ceph-osd-prepare-node2 (Failed - OSD could not be identified)\n"
+                f"    Log: {_LOG_LINE}\n"
+                + _REMEDIATION
+            ),
+        ),
+        RuleScenarioParams(
+            "ceph osd metadata command fails",
             oc_cmd_output_dict={
                 ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12", "--tail=50")): CmdOutput(
                     prepare_log_with_error
@@ -1546,7 +1640,7 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
             failed_msg="Failed to get ceph osd metadata.\nError: connection refused",
         ),
         RuleScenarioParams(
-            "ceph osd tree command fails during condition 2 check",
+            "ceph osd tree command fails",
             oc_cmd_output_dict={
                 ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12", "--tail=50")): CmdOutput(
                     prepare_log_with_error

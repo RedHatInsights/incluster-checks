@@ -844,9 +844,9 @@ class OsdPrepareFilesystemHealth(CephRule):
             return RuleResult.passed()
 
         # Condition 1: Failed pods with filesystem errors (no ceph commands needed)
-        failed_pods = [pod for pod in pods_with_errors if pod["phase"] == "Failed"]
-        if failed_pods:
-            return RuleResult.failed(self._build_error_message(failed_pods, trigger="failed_phase"))
+        failed_msg = self._check_failed_prepare_pods(pods_with_errors)
+        if failed_msg:
+            return RuleResult.failed(failed_msg)
 
         # Condition 2: Any pod with filesystem error whose OSD is down
         osd_metadata = self._get_osd_metadata()
@@ -870,7 +870,34 @@ class OsdPrepareFilesystemHealth(CephRule):
         if not pods_with_down_osds:
             return RuleResult.passed()
 
-        return RuleResult.failed(self._build_error_message(pods_with_down_osds, trigger="down_osd"))
+        return RuleResult.failed(self._build_error_message(pods_with_down_osds))
+
+    def _check_failed_prepare_pods(self, pods_with_errors: list[dict]) -> str | None:
+        """Check for Failed prepare pods with filesystem errors (condition 1).
+
+        This condition requires no ceph commands — a Failed pod with the
+        filesystem error signature is sufficient to fire the rule.
+
+        Args:
+            pods_with_errors: List of pod info dicts from _check_prepare_pod_logs
+
+        Returns:
+            Failure message string if any Failed pods have filesystem errors, None otherwise
+        """
+        failed_pods = [pod for pod in pods_with_errors if pod["phase"] == "Failed"]
+        if not failed_pods:
+            return None
+        msg = "OSD prepare pods failed while reporting existing filesystem errors.\n\nFailed OSD prepare pods:\n"
+        for pod_info in failed_pods:
+            msg += f"  - {pod_info['pod_name']}\n"
+            msg += f"    Log: {pod_info['log_excerpt']}\n"
+        msg += (
+            "\nRemediation: Investigate why OSD provisioning is failing. "
+            "Identify the device in the prepare log and verify that it does not back an active OSD. "
+            "Do not modify or wipe the device until ownership and data-retention requirements are confirmed. "
+            "See https://access.redhat.com/solutions/6910101"
+        )
+        return msg
 
     def _get_osd_prepare_pods(self) -> list:
         """Get all OSD prepare pods including completed ones.
@@ -969,29 +996,22 @@ class OsdPrepareFilesystemHealth(CephRule):
 
         return pods_with_errors
 
-    def _build_error_message(self, affected_pods: list[dict], trigger: str) -> str:
-        """Build the failure message for the detected condition.
+    def _build_error_message(self, affected_pods: list[dict]) -> str:
+        """Build the failure message for condition 2 (down OSD).
 
         Args:
             affected_pods: List of pod info dicts that triggered the rule
-            trigger: Either "failed_phase" (condition 1) or "down_osd" (condition 2)
 
         Returns:
             Formatted error message string
         """
-        if trigger == "failed_phase":
-            msg = "OSD prepare pods failed while reporting existing filesystem errors.\n\n" "Failed OSD prepare pods:\n"
-            for pod_info in affected_pods:
-                msg += f"  - {pod_info['pod_name']}\n"
-                msg += f"    Log: {pod_info['log_excerpt']}\n"
-        else:
-            msg = (
-                "OSD prepare pods report existing filesystem errors and the corresponding OSDs are down.\n\n"
-                "Affected OSD prepare pods:\n"
-            )
-            for pod_info in affected_pods:
-                msg += f"  - {pod_info['pod_name']} (correlated OSD: {pod_info['osd_name']})\n"
-                msg += f"    Log: {pod_info['log_excerpt']}\n"
+        msg = (
+            "OSD prepare pods report existing filesystem errors and the corresponding OSDs are down.\n\n"
+            "Affected OSD prepare pods:\n"
+        )
+        for pod_info in affected_pods:
+            msg += f"  - {pod_info['pod_name']} (correlated OSD: {pod_info['osd_name']})\n"
+            msg += f"    Log: {pod_info['log_excerpt']}\n"
 
         msg += (
             "\nRemediation: Investigate why OSD provisioning is failing. "

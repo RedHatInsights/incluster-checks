@@ -838,35 +838,10 @@ class OsdPrepareFilesystemHealth(CephRule):
 
     def run_rule(self) -> RuleResult:
         prepare_pods = self._get_osd_prepare_pods()
-
         pods_with_errors = self._check_prepare_pod_logs(prepare_pods)
         if not pods_with_errors:
             return RuleResult.passed()
 
-        result = self._check_down_osd_prepare_pods(pods_with_errors)
-        if isinstance(result, RuleResult):
-            return result
-        if result:
-            return RuleResult.failed(result)
-
-        return RuleResult.passed()
-
-    def _check_down_osd_prepare_pods(self, pods_with_errors: list[dict]) -> str | RuleResult | None:
-        """Check pods with filesystem errors using unified OSD correlation logic.
-
-        For each pod:
-        1. Try UUID correlation → if correlated OSD is down → include (any phase)
-        2. If UUID can't be resolved and pod is Failed → include (fallback)
-        3. Otherwise → skip (historical/resolved)
-
-        Args:
-            pods_with_errors: List of pod info dicts from _check_prepare_pod_logs
-
-        Returns:
-            Failure message string if any affected pods found,
-            RuleResult if ceph commands fail,
-            None if no active failures detected
-        """
         osd_metadata = self._get_osd_metadata()
         if isinstance(osd_metadata, RuleResult):
             return osd_metadata
@@ -874,36 +849,74 @@ class OsdPrepareFilesystemHealth(CephRule):
         if isinstance(down_osds, RuleResult):
             return down_osds
 
-        pod_lines = ""
-        for pod_info in pods_with_errors:
-            device_uuid = self._extract_device_uuid(pod_info["pod_name"])
-            osd_resolved = False
-            if device_uuid:
-                osd_name = osd_metadata.get(device_uuid)
-                if osd_name:
-                    osd_resolved = True
-                    if osd_name in down_osds:
-                        pod_lines += f"  - {pod_info['pod_name']} (correlated OSD: {osd_name})\n"
-                        pod_lines += f"    Log: {pod_info['log_excerpt']}\n"
-            if not osd_resolved and pod_info["phase"] == "Failed":
-                pod_lines += f"  - {pod_info['pod_name']} (Failed - OSD could not be identified)\n"
-                pod_lines += f"    Log: {pod_info['log_excerpt']}\n"
+        failed_prepare_pods_msg = self._check_failed_prepare_pods(pods_with_errors)
+        down_osd_prepare_pods_msg = self._check_down_osd_prepare_pods(pods_with_errors, osd_metadata, down_osds)
 
-        if not pod_lines:
+        parts = [m for m in [failed_prepare_pods_msg, down_osd_prepare_pods_msg] if m]
+        if parts:
+            msg = "\n".join(parts)
+            msg += (
+                "\nRemediation: Investigate why OSD provisioning is failing. "
+                "Identify the device in the prepare log and verify that it does not back an active OSD. "
+                "Do not modify or wipe the device until ownership and data-retention requirements are confirmed. "
+                "See https://access.redhat.com/solutions/6910101"
+            )
+            return RuleResult.failed(msg)
+
+        return RuleResult.passed()
+
+    def _check_failed_prepare_pods(self, pods_with_errors: list[dict]) -> str | None:
+        """Check for OSD prepare pods in Failed phase with filesystem errors.
+
+        Args:
+            pods_with_errors: List of pod info dicts from _check_prepare_pod_logs
+
+        Returns:
+            Message string listing Failed pods, or None if no Failed pods found
+        """
+        msg = ""
+        for pod_info in pods_with_errors:
+            if pod_info["phase"] == "Failed":
+                msg += f"  - {pod_info['pod_name']}\n"
+                msg += f"    Log: {pod_info['log_excerpt']}\n"
+
+        if not msg:
             return None
 
-        msg = (
-            "OSD prepare pods report existing filesystem errors indicating active provisioning failures.\n\n"
-            "Affected OSD prepare pods:\n"
-        )
-        msg += pod_lines
-        msg += (
-            "\nRemediation: Investigate why OSD provisioning is failing. "
-            "Identify the device in the prepare log and verify that it does not back an active OSD. "
-            "Do not modify or wipe the device until ownership and data-retention requirements are confirmed. "
-            "See https://access.redhat.com/solutions/6910101"
-        )
-        return msg
+        return "Failed OSD prepare pods with existing filesystem errors:\n" + msg
+
+    def _check_down_osd_prepare_pods(
+        self, pods_with_errors: list[dict], osd_metadata: dict[str, str], down_osds: list[str]
+    ) -> str | None:
+        """Check pods with filesystem errors for correlated down OSDs via UUID.
+
+        For each pod, extracts device UUID from the pod name and looks it up in
+        ceph osd metadata. If the correlated OSD is down, the pod is included.
+
+        Args:
+            pods_with_errors: List of pod info dicts from _check_prepare_pod_logs
+            osd_metadata: Dict mapping device UUID (unhyphenated) to OSD name
+            down_osds: List of down OSD names
+
+        Returns:
+            Message string if any pods have correlated down OSDs, None otherwise
+        """
+        msg = ""
+        for pod_info in pods_with_errors:
+            device_uuid = self._extract_device_uuid(pod_info["pod_name"])
+            if not device_uuid:
+                continue
+            osd_name = osd_metadata.get(device_uuid)
+            if not osd_name:
+                continue
+            if osd_name in down_osds:
+                msg += f"  - {pod_info['pod_name']} (correlated OSD: {osd_name})\n"
+                msg += f"    Log: {pod_info['log_excerpt']}\n"
+
+        if not msg:
+            return None
+
+        return "OSD prepare pods with existing filesystem errors and correlated down OSDs:\n" + msg
 
     def _get_osd_prepare_pods(self) -> list:
         """Get all OSD prepare pods including completed ones.

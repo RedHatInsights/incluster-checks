@@ -843,17 +843,20 @@ class OsdPrepareFilesystemHealth(CephRule):
         if not pods_with_errors:
             return RuleResult.passed()
 
-        # Condition 1: Failed pods with filesystem errors (no ceph commands needed)
         failed_msg = self._check_failed_prepare_pods(pods_with_errors)
-        if failed_msg:
-            return RuleResult.failed(failed_msg)
 
-        # Condition 2: Any pod with filesystem error whose OSD is down
-        result = self._check_down_osd_prepare_pods(pods_with_errors)
-        if isinstance(result, RuleResult):
-            return result
-        if result:
-            return RuleResult.failed(result)
+        non_failed = [p for p in pods_with_errors if p["phase"] != "Failed"]
+        down_osd_result = self._check_down_osd_prepare_pods(non_failed) if non_failed else None
+
+        if isinstance(down_osd_result, RuleResult):
+            return down_osd_result
+
+        if failed_msg and isinstance(down_osd_result, str):
+            return RuleResult.failed(failed_msg + "\n" + down_osd_result)
+        elif failed_msg:
+            return RuleResult.failed(failed_msg)
+        elif down_osd_result:
+            return RuleResult.failed(down_osd_result)
 
         return RuleResult.passed()
 
@@ -901,31 +904,25 @@ class OsdPrepareFilesystemHealth(CephRule):
         osd_metadata = self._get_osd_metadata()
         if isinstance(osd_metadata, RuleResult):
             return osd_metadata
-
         down_osds = self._get_down_osds()
         if isinstance(down_osds, RuleResult):
             return down_osds
 
-        pods_with_down_osds = []
+        pod_lines = ""
         for pod_info in pods_with_errors:
             device_uuid = self._extract_device_uuid(pod_info["pod_name"])
             if not device_uuid:
                 continue
             osd_name = osd_metadata.get(device_uuid)
             if osd_name and osd_name in down_osds:
-                pod_info["osd_name"] = osd_name
-                pods_with_down_osds.append(pod_info)
+                pod_lines += f"  - {pod_info['pod_name']} (correlated OSD: {osd_name})\n"
+                pod_lines += f"    Log: {pod_info['log_excerpt']}\n"
 
-        if not pods_with_down_osds:
+        if not pod_lines:
             return None
 
-        msg = (
-            "OSD prepare pods report existing filesystem errors and the corresponding OSDs are down.\n\n"
-            "Affected OSD prepare pods:\n"
-        )
-        for pod_info in pods_with_down_osds:
-            msg += f"  - {pod_info['pod_name']} (correlated OSD: {pod_info['osd_name']})\n"
-            msg += f"    Log: {pod_info['log_excerpt']}\n"
+        msg = "OSD prepare pods report existing filesystem errors and the corresponding OSDs are down.\n\nAffected OSD prepare pods:\n"
+        msg += pod_lines
         msg += (
             "\nRemediation: Investigate why OSD provisioning is failing. "
             "Identify the device in the prepare log and verify that it does not back an active OSD. "

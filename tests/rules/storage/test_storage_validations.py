@@ -1483,13 +1483,21 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
             ),
         ),
         RuleScenarioParams(
-            "condition 1 takes priority: failed pod fires before checking ceph metadata",
+            "condition 1 fires and condition 2 is also checked for non-failed pods",
             oc_cmd_output_dict={
                 ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12", "--tail=50")): CmdOutput(
                     prepare_log_with_error
                 ),
                 ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_B}-xyz99", "--tail=50")): CmdOutput(
                     prepare_log_with_error
+                ),
+            },
+            rsh_cmd_output_dict={
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd metadata -f json"): CmdOutput(
+                    out=osd_metadata_json, return_code=0
+                ),
+                ("openshift-storage", "rook-ceph-tools-12345", "ceph osd tree -f json"): CmdOutput(
+                    out=osd_tree_all_up, return_code=0
                 ),
             },
             tested_object_mock_dict={

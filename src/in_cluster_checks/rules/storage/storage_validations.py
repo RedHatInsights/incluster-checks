@@ -858,15 +858,12 @@ class OsdPrepareFilesystemHealth(InternalCephRule):
     filesystems on devices intended for OSD provisioning. For each pod with the
     filesystem error, it applies a unified check:
 
-    1. Try UUID correlation: extract device UUID from pod name → look up OSD via
-       ceph osd metadata → if OSD is down in ceph osd tree → fire (any phase).
-    2. If UUID can't be resolved (no UUID in name or not in ceph metadata) and
-       pod is in Failed phase → fire (fallback for broken provisioning).
+    1. Try PVC-label correlation: read the ``ceph.rook.io/pvc`` label from the
+       prepare pod → find the OSD deployment with the same PVC label → read its
+       ``ceph-osd-id`` label → if that OSD is down in ceph osd tree → fire.
+    2. If the PVC label is missing or no matching OSD deployment is found, and
+       the pod is in Failed phase → fire (fallback for broken provisioning).
     3. Otherwise → skip (historical/resolved).
-
-    OSD correlation uses the device UUID embedded in the prepare pod name
-    (rook-ceph-osd-prepare-<device-uuid>-<suffix>) mapped to OSD IDs via
-    the bluestore_bdev_uuid field in ceph osd metadata.
 
     This replaces the CCX rule ccx_rules_ocp.internal.ocs.check_osd_prepare_logs_for_exisitng_filesystem
     which was disabled because it did not distinguish between current and historical conditions
@@ -883,7 +880,6 @@ class OsdPrepareFilesystemHealth(InternalCephRule):
     ]
 
     FILESYSTEM_ERROR_PATTERN = "because it contains a filesystem"
-    _DEVICE_UUID_PATTERN = re.compile(r"rook-ceph-osd-prepare-([0-9a-f]{32})-")
 
     def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
         """Check base Ceph prerequisites and verify OSD prepare pods exist.
@@ -907,15 +903,12 @@ class OsdPrepareFilesystemHealth(InternalCephRule):
         if not pods_with_errors:
             return RuleResult.passed()
 
-        osd_metadata = self._get_osd_metadata()
-        if isinstance(osd_metadata, RuleResult):
-            return osd_metadata
         down_osds = self._get_down_osds()
         if isinstance(down_osds, RuleResult):
             return down_osds
 
         failed_prepare_pods_msg = self._check_failed_prepare_pods(pods_with_errors)
-        down_osd_prepare_pods_msg = self._check_down_osd_prepare_pods(pods_with_errors, osd_metadata, down_osds)
+        down_osd_prepare_pods_msg = self._check_down_osd_prepare_pods(pods_with_errors, down_osds)
 
         parts = [m for m in [failed_prepare_pods_msg, down_osd_prepare_pods_msg] if m]
         if parts:
@@ -949,17 +942,16 @@ class OsdPrepareFilesystemHealth(InternalCephRule):
 
         return "Failed OSD prepare pods with existing filesystem errors:\n" + msg
 
-    def _check_down_osd_prepare_pods(
-        self, pods_with_errors: list[dict], osd_metadata: dict[str, str], down_osds: list[str]
-    ) -> str | None:
-        """Check pods with filesystem errors for correlated down OSDs via UUID.
+    def _check_down_osd_prepare_pods(self, pods_with_errors: list[dict], down_osds: list[str]) -> str | None:
+        """Check pods with filesystem errors for correlated down OSDs via PVC label.
 
-        For each pod, extracts device UUID from the pod name and looks it up in
-        ceph osd metadata. If the correlated OSD is down, the pod is included.
+        For each pod, reads the ``ceph.rook.io/pvc`` label, finds the OSD
+        deployment with a matching PVC label, and reads the ``ceph-osd-id``
+        label from that deployment. If the correlated OSD is down, the pod
+        is included.
 
         Args:
             pods_with_errors: List of pod info dicts from _check_prepare_pod_logs
-            osd_metadata: Dict mapping device UUID (unhyphenated) to OSD name
             down_osds: List of down OSD names
 
         Returns:
@@ -967,12 +959,13 @@ class OsdPrepareFilesystemHealth(InternalCephRule):
         """
         msg = ""
         for pod_info in pods_with_errors:
-            device_uuid = self._extract_device_uuid(pod_info["pod_name"])
-            if not device_uuid:
+            pvc_name = pod_info.get("pvc_label")
+            if not pvc_name:
                 continue
-            osd_name = osd_metadata.get(device_uuid)
-            if not osd_name:
+            osd_id = self._get_osd_id_for_pvc(pvc_name)
+            if osd_id is None:
                 continue
+            osd_name = f"osd.{osd_id}"
             if osd_name in down_osds:
                 msg += f"  - {pod_info['pod_name']} (correlated OSD: {osd_name})\n"
                 msg += f"    Log: {pod_info['log_excerpt']}\n"
@@ -982,69 +975,40 @@ class OsdPrepareFilesystemHealth(InternalCephRule):
 
         return "OSD prepare pods with existing filesystem errors and correlated down OSDs:\n" + msg
 
+    def _get_osd_id_for_pvc(self, pvc_name: str) -> str | None:
+        """Look up the OSD ID for a given PVC name via OSD deployment labels.
+
+        Finds the OSD deployment whose ``ceph.rook.io/pvc`` label matches
+        *pvc_name* and returns its ``ceph-osd-id`` label value.
+
+        Args:
+            pvc_name: Value of the ``ceph.rook.io/pvc`` label on the prepare pod
+
+        Returns:
+            OSD ID string (e.g. "1"), or None if no matching deployment found
+        """
+        deployments = self.oc_api.select_resources(
+            "deployment",
+            namespace=self.NAMESPACE,
+            labels={"ceph.rook.io/pvc": pvc_name},
+        )
+        if not deployments:
+            return None
+        return deployments[0].model.metadata.labels.get("ceph-osd-id")
+
     def _get_osd_prepare_pods(self) -> list:
         """Get all OSD prepare pods including completed ones.
 
         All phases are included so logs can be scanned for filesystem signatures
-        and correlated with OSD health via device UUID.
+        and correlated with OSD health via PVC labels.
         """
         return self.oc_api.get_pods(
             namespace=self.NAMESPACE,
             labels={"app": "rook-ceph-osd-prepare"},
         )
 
-    def _extract_device_uuid(self, pod_name: str) -> str | None:
-        """Extract the device UUID from an OSD prepare pod name.
-
-        Pod name format: rook-ceph-osd-prepare-<32-hex-char-uuid>-<suffix>
-        Example: rook-ceph-osd-prepare-a888f0a01744fafe59f31ebb9e271afa-t2fq8
-
-        Args:
-            pod_name: Name of the OSD prepare pod
-
-        Returns:
-            32-character hex device UUID, or None if not matched
-        """
-        match = self._DEVICE_UUID_PATTERN.search(pod_name)
-        return match.group(1) if match else None
-
-    def _get_osd_metadata(self) -> dict[str, str] | RuleResult:
-        """Get device-UUID-to-OSD-name mapping from ceph osd metadata.
-
-        Runs ``ceph osd metadata -f json`` and builds a mapping from
-        bluestore_bdev_uuid (with hyphens removed) to OSD name (e.g. "osd.0").
-
-        Returns:
-            Dict mapping device UUID (unhyphenated) to OSD name, or
-            RuleResult.failed if the ceph command fails
-        """
-        cmd = SafeCmdString("ceph osd metadata -f json")
-        rc, stdout, stderr = self._run_ceph_cmd(cmd)
-
-        if rc != 0:
-            return RuleResult.failed(self.build_cmd_error_message("Failed to get ceph osd metadata.", stdout, stderr))
-
-        if not stdout:
-            return RuleResult.failed("Empty results from ceph osd metadata command")
-
-        metadata_list = parse_json(stdout, cmd, self.get_host_ip())
-        if not isinstance(metadata_list, list):
-            return RuleResult.failed("Invalid results from ceph osd metadata command")
-
-        uuid_to_osd = {}
-        for entry in metadata_list:
-            if not isinstance(entry, dict):
-                continue
-            bdev_uuid = entry.get("bluestore_bdev_uuid", "")
-            osd_id = entry.get("id")
-            if bdev_uuid and osd_id is not None:
-                # Remove hyphens to match the pod-name format
-                uuid_to_osd[bdev_uuid.replace("-", "")] = f"osd.{osd_id}"
-
-        return uuid_to_osd
-
     def _check_prepare_pod_logs(self, pods: list) -> list[dict]:
-        """Collect filesystem signatures and current phases from OSD prepare pod logs.
+        """Collect filesystem signatures, current phases, and PVC labels from OSD prepare pod logs.
 
         The recorded phase lets the caller distinguish a Failed pod (condition 1)
         from a non-failed pod whose OSD may be down (condition 2).
@@ -1053,7 +1017,7 @@ class OsdPrepareFilesystemHealth(InternalCephRule):
             pods: List of OSD prepare pod objects
 
         Returns:
-            List of dicts with pod_name, phase, and log_excerpt for pods with errors
+            List of dicts with pod_name, phase, pvc_label, and log_excerpt for pods with errors
 
         Raises:
             UnExpectedSystemOutput: If oc logs command fails for any pod
@@ -1073,6 +1037,7 @@ class OsdPrepareFilesystemHealth(InternalCephRule):
                     {
                         "pod_name": pod_name,
                         "phase": pod.model.status.phase,
+                        "pvc_label": pod.model.metadata.labels.get("ceph.rook.io/pvc"),
                         "log_excerpt": "\n".join(error_lines[:5]),
                     }
                 )

@@ -12,9 +12,11 @@ import pytest
 
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.rules.storage.storage_validations import (
+    CephAccessRule,
     CephOsdTreeWorks,
     CephSlowOps,
     CheckPoolSize,
+    InternalCephRule,
     IsCephHealthOk,
     IsCephOSDsNearFull,
     IsOSDsUp,
@@ -80,7 +82,15 @@ class TestCephOsdTreeWorks(RuleTestBase):
                 "oc_api.get_pod_name": Mock(return_value=None),
                 "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
-        )
+        ),
+        RuleScenarioParams(
+            "external ceph mode without tools pod (CephAccessRule check)",
+            tested_object_mock_dict={
+                # Operator found, no OSD pods (external mode), no tools pod
+                "oc_api.get_pod_name": Mock(side_effect=["rook-ceph-operator-abc123", None, None]),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
+            },
+        ),
     ]
 
     scenario_prerequisite_fulfilled = [
@@ -1306,6 +1316,14 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
                 "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
                 "oc_api.select_single_resource": Mock(return_value=Mock()),
                 "_get_osd_prepare_pods": Mock(return_value=[]),
+            },
+        ),
+        RuleScenarioParams(
+            "external ceph mode detected (InternalCephRule check)",
+            tested_object_mock_dict={
+                # Operator found, no OSD pods (external mode)
+                "oc_api.get_pod_name": Mock(side_effect=["rook-ceph-operator-abc123", None]),
+                "oc_api.select_single_resource": Mock(return_value=Mock()),
             },
         ),
     ]

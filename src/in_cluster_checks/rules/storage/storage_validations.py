@@ -21,10 +21,13 @@ class CephRule(OrchestratorRule):
     Base class for Ceph-related validation rules.
 
     Provides common functionality for all Ceph rules:
-    - Prerequisite check for openshift-storage namespace
-    - Ceph command detection (_get_ceph_command)
+    - Prerequisite check for openshift-storage namespace and rook-ceph-operator
+    - Ceph command execution helpers (_run_ceph_cmd)
+    - External mode detection (_is_external_ceph_mode)
 
-    Ported from CephValidation base class in healthcheck-backup.
+    Subclasses should use CephAccessRule (for rules that need Ceph CLI access
+    in both internal and external modes) or InternalCephRule (for rules that
+    only apply to internal Ceph mode).
     """
 
     NAMESPACE = "openshift-storage"
@@ -82,15 +85,14 @@ class CephRule(OrchestratorRule):
 
     def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
         """
-        Check if Ceph is being used in the cluster and if health checks can run.
+        Check if Ceph is being used in the cluster.
 
         Verifies:
         1. openshift-storage namespace exists
         2. rook-ceph-operator pod exists
-        3. For external Ceph mode: rook-ceph-tools pod must exist
 
         Returns:
-            PrerequisiteResult indicating if Ceph storage is present and accessible
+            PrerequisiteResult indicating if Ceph storage is present
         """
 
         try:
@@ -112,16 +114,6 @@ class CephRule(OrchestratorRule):
             return PrerequisiteResult.not_met(
                 "No rook-ceph-operator pod found in openshift-storage namespace. Ceph operator is not running."
             )
-
-        # For external Ceph mode, require rook-ceph-tools pod
-        if self._is_external_ceph_mode():
-            tools_pod = self.oc_api.get_pod_name(self.NAMESPACE, {"app": "rook-ceph-tools"}, log_errors=False)
-
-            if not tools_pod:
-                return PrerequisiteResult.not_met(
-                    "External Ceph detected. To run Ceph health checks, consider enabling the Ceph toolbox "
-                    "(set spec.enableCephTools=true in the StorageCluster resource)."
-                )
 
         return PrerequisiteResult.met()
 
@@ -160,7 +152,80 @@ class CephRule(OrchestratorRule):
         ]
 
 
-class CephOsdTreeWorks(CephRule):
+class CephAccessRule(CephRule):
+    """
+    Base class for Ceph rules that require CLI access to the Ceph cluster.
+
+    Works in both internal and external Ceph modes. In external mode, the
+    rook-ceph-tools pod must be present to execute Ceph commands since
+    the operator pod alone cannot reach the external cluster.
+
+    Use this base class for rules that run Ceph CLI commands (ceph health,
+    ceph osd tree, etc.) and need to work regardless of deployment mode.
+    """
+
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        """
+        Check base Ceph prerequisites and verify Ceph CLI access.
+
+        Verifies:
+        1. Base Ceph prerequisites (namespace + operator)
+        2. For external Ceph mode: rook-ceph-tools pod must exist
+
+        Returns:
+            PrerequisiteResult indicating if Ceph CLI access is available
+        """
+        base_result = super().is_prerequisite_fulfilled()
+        if not base_result.fulfilled:
+            return base_result
+
+        if self._is_external_ceph_mode():
+            tools_pod = self.oc_api.get_pod_name(self.NAMESPACE, {"app": "rook-ceph-tools"}, log_errors=False)
+
+            if not tools_pod:
+                return PrerequisiteResult.not_met(
+                    "External Ceph detected. To run Ceph health checks, consider enabling the Ceph toolbox "
+                    "(set spec.enableCephTools=true in the StorageCluster resource)."
+                )
+
+        return PrerequisiteResult.met()
+
+
+class InternalCephRule(CephRule):
+    """
+    Base class for Ceph rules that only apply to internal Ceph mode.
+
+    Internal mode means OSD pods run within the openshift-storage namespace.
+    Rules inheriting from this class are skipped when external Ceph is detected
+    because the resources they check (e.g. OSD prepare pods) do not exist in
+    external mode.
+    """
+
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        """
+        Check base Ceph prerequisites and verify internal Ceph mode.
+
+        Verifies:
+        1. Base Ceph prerequisites (namespace + operator)
+        2. Ceph is NOT running in external mode
+
+        Returns:
+            PrerequisiteResult indicating if internal Ceph mode is active
+        """
+        base_result = super().is_prerequisite_fulfilled()
+        if not base_result.fulfilled:
+            return base_result
+
+        if self._is_external_ceph_mode():
+            return PrerequisiteResult.not_met(
+                "This rule applies only to internal Ceph mode. "
+                "External Ceph detected - OSD prepare pods are not present in external mode."
+            )
+
+        return PrerequisiteResult.met()
+
+
+class CephOsdTreeWorks(CephAccessRule):
     """
     Check if ceph osd tree command is working.
 
@@ -182,7 +247,7 @@ class CephOsdTreeWorks(CephRule):
         return RuleResult.failed(error_msg)
 
 
-class IsCephHealthOk(CephRule):
+class IsCephHealthOk(CephAccessRule):
     """
     Check if ceph health is ok.
 
@@ -230,7 +295,7 @@ class IsCephHealthOk(CephRule):
         return RuleResult.failed(error_msg)
 
 
-class IsCephOSDsNearFull(CephRule):
+class IsCephOSDsNearFull(CephAccessRule):
     """
     Check if ceph OSDs disk usage is near full.
 
@@ -314,7 +379,7 @@ class IsCephOSDsNearFull(CephRule):
             return RuleResult.warning(error_msg)
 
 
-class IsOSDsUp(CephRule):
+class IsOSDsUp(CephAccessRule):
     """
     Check if all OSDs in the cluster are up.
 
@@ -337,7 +402,7 @@ class IsOSDsUp(CephRule):
         return RuleResult.passed()
 
 
-class IsOSDsWeightOK(CephRule):
+class IsOSDsWeightOK(CephAccessRule):
     """
     Check if OSD weights are within acceptable range.
 
@@ -428,7 +493,7 @@ class IsOSDsWeightOK(CephRule):
         return float(kb_value / 1024 / 1024 / 1024)
 
 
-class OrphanCsiVolumes(CephRule):
+class OrphanCsiVolumes(CephAccessRule):
     """
     Check for orphaned Ceph CSI volumes.
 
@@ -561,7 +626,7 @@ class OrphanCsiVolumes(CephRule):
         return subvolume_names
 
 
-class CephSlowOps(CephRule):
+class CephSlowOps(CephAccessRule):
     """
     Check if ceph has slow ops.
 
@@ -592,7 +657,7 @@ class CephSlowOps(CephRule):
         return RuleResult.passed()
 
 
-class OsdJournalError(CephRule):
+class OsdJournalError(CephAccessRule):
     """
     Check if OSDs had journal errors in the last hour.
 
@@ -785,7 +850,7 @@ class OsdJournalError(CephRule):
         return "\n\n".join(error_parts)
 
 
-class OsdPrepareFilesystemHealth(CephRule):
+class OsdPrepareFilesystemHealth(InternalCephRule):
     """
     Check OSD prepare pods for active filesystem-related provisioning failures.
 
@@ -1016,7 +1081,7 @@ class OsdPrepareFilesystemHealth(CephRule):
         return pods_with_errors
 
 
-class CheckPoolSize(CephRule):
+class CheckPoolSize(CephAccessRule):
     """
     Check if ceph replication factor is at least 2 for all pools.
 

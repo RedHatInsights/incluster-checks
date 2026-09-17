@@ -1357,7 +1357,7 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
         RuleScenarioParams(
             "OSD prepare pods with clean logs (no filesystem errors)",
             oc_cmd_output_dict={
-                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12", "--tail=50")): CmdOutput(
+                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12")): CmdOutput(
                     prepare_log_clean
                 ),
             },
@@ -1374,7 +1374,7 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
         RuleScenarioParams(
             "completed pod with OSD up - historical (no active failure)",
             oc_cmd_output_dict={
-                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12", "--tail=50")): CmdOutput(
+                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12")): CmdOutput(
                     prepare_log_with_error
                 ),
             },
@@ -1399,7 +1399,7 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
         RuleScenarioParams(
             "filesystem error on succeeded pod with unrelated down OSD (UUID does not match down OSD)",
             oc_cmd_output_dict={
-                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12", "--tail=50")): CmdOutput(
+                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12")): CmdOutput(
                     prepare_log_with_error
                 ),
             },
@@ -1424,7 +1424,7 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
         RuleScenarioParams(
             "no UUID in pod name and pod is not Failed (historical)",
             oc_cmd_output_dict={
-                ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node1", "--tail=50")): CmdOutput(
+                ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node1")): CmdOutput(
                     prepare_log_with_error
                 ),
             },
@@ -1450,7 +1450,7 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
         RuleScenarioParams(
             "OSD down fires - pod with filesystem error and corresponding OSD is down",
             oc_cmd_output_dict={
-                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_B}-xyz99", "--tail=50")): CmdOutput(
+                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_B}-xyz99")): CmdOutput(
                     prepare_log_with_error
                 ),
             },
@@ -1481,7 +1481,7 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
         RuleScenarioParams(
             "Failed pod with no UUID in pod name",
             oc_cmd_output_dict={
-                ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node1", "--tail=50")): CmdOutput(
+                ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node1")): CmdOutput(
                     prepare_log_with_error
                 ),
             },
@@ -1510,7 +1510,7 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
         RuleScenarioParams(
             "Failed pod with UUID not in ceph metadata",
             oc_cmd_output_dict={
-                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_C}-zzz11", "--tail=50")): CmdOutput(
+                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_C}-zzz11")): CmdOutput(
                     prepare_log_with_error
                 ),
             },
@@ -1541,7 +1541,7 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
         RuleScenarioParams(
             "Failed pod with UUID resolving to UP OSD",
             oc_cmd_output_dict={
-                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12", "--tail=50")): CmdOutput(
+                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12")): CmdOutput(
                     prepare_log_with_error
                 ),
             },
@@ -1572,10 +1572,10 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
         RuleScenarioParams(
             "Failed pod with resolvable UUID and Succeeded pod - both OSDs up",
             oc_cmd_output_dict={
-                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12", "--tail=50")): CmdOutput(
+                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12")): CmdOutput(
                     prepare_log_with_error
                 ),
-                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_B}-xyz99", "--tail=50")): CmdOutput(
+                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_B}-xyz99")): CmdOutput(
                     prepare_log_with_error
                 ),
             },
@@ -1607,10 +1607,10 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
         RuleScenarioParams(
             "combined - OSD down pod and Failed unresolvable pod both fire",
             oc_cmd_output_dict={
-                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_B}-xyz99", "--tail=50")): CmdOutput(
+                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_B}-xyz99")): CmdOutput(
                     prepare_log_with_error
                 ),
-                ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node2", "--tail=50")): CmdOutput(
+                ("logs", ("-n", "openshift-storage", "rook-ceph-osd-prepare-node2")): CmdOutput(
                     prepare_log_with_error
                 ),
             },
@@ -1646,7 +1646,7 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
         RuleScenarioParams(
             "ceph osd metadata command fails",
             oc_cmd_output_dict={
-                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12", "--tail=50")): CmdOutput(
+                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12")): CmdOutput(
                     prepare_log_with_error
                 ),
             },
@@ -1669,7 +1669,7 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
         RuleScenarioParams(
             "ceph osd tree command fails",
             oc_cmd_output_dict={
-                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12", "--tail=50")): CmdOutput(
+                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12")): CmdOutput(
                     prepare_log_with_error
                 ),
             },
@@ -1698,7 +1698,7 @@ class TestOsdPrepareFilesystemHealth(RuleTestBase):
         RuleScenarioParams(
             "oc logs command fails for prepare pod",
             oc_cmd_output_dict={
-                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12", "--tail=50")): CmdOutput(
+                ("logs", ("-n", "openshift-storage", f"rook-ceph-osd-prepare-{_DEVICE_UUID_A}-abc12")): CmdOutput(
                     "", return_code=1, err="unable to retrieve container logs"
                 ),
             },

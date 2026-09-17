@@ -1063,7 +1063,7 @@ class OsdPrepareFilesystemHealth(InternalCephRule):
             pod_name = pod.name()
             _, stdout, _ = self.oc_api.run_oc_command(
                 "logs",
-                ["-n", self.NAMESPACE, pod_name, "--tail=50"],
+                ["-n", self.NAMESPACE, pod_name],
                 timeout=30,
             )
 

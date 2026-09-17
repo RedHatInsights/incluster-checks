@@ -922,8 +922,7 @@ class OsdPrepareFilesystemHealth(InternalCephRule):
             msg = "\n".join(parts)
             msg += (
                 "\nRemediation: Investigate why OSD provisioning is failing. "
-                "Identify the device in the prepare log and verify that it does not back an active OSD. "
-                "Do not modify or wipe the device until ownership and data-retention requirements are confirmed. "
+                "Before any cleanup, verify the affected device is not in use by an active OSD. "
                 "See https://access.redhat.com/solutions/6910101"
             )
             return RuleResult.failed(msg)

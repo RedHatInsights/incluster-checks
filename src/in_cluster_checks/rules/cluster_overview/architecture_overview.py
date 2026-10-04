@@ -27,7 +27,7 @@ MIXED_VIRTUALIZATION = "mixed"
 VM_DMI_SIGNATURES = {
     "kvm": ("kvm", "qemu", "rhev hypervisor", "bochs"),
     "vmware": ("vmware",),
-    "microsoft": ("hyper-v", "virtual machine"),
+    "microsoft": ("hyper-v", "microsoft corporation virtual machine"),
     "xen": ("xen",),
     "oracle": ("virtualbox", "innotek"),
     "parallels": ("parallels",),

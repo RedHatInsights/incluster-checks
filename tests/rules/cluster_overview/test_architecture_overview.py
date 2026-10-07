@@ -6,7 +6,15 @@ import pytest
 from openshift_client import OpenShiftPythonException
 
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
-from in_cluster_checks.rules.cluster_overview.architecture_overview import ClusterArchitectureOverview
+from in_cluster_checks.rules.cluster_overview.architecture_overview import (
+    ClusterArchitectureOverview,
+    NodeVirtualizationCollector,
+)
+from tests.pytest_tools.test_data_collector_base import (
+    DataCollectorScenarioParams,
+    DataCollectorTestBase,
+)
+from tests.pytest_tools.test_operator_base import CmdOutput
 from tests.pytest_tools.test_rule_base import RuleScenarioParams, RuleTestBase
 
 CLUSTER_VERSION = {
@@ -54,6 +62,47 @@ NODES = [
         },
     },
 ]
+
+KVM_VIRTUALIZATION = {
+    "master-0": {
+        "virtualization": "kvm",
+        "is_virtual": True,
+        "dmi": {"sys_vendor": "Red Hat", "product_name": "KVM", "bios_vendor": "SeaBIOS"},
+    },
+    "worker-0": {
+        "virtualization": "kvm",
+        "is_virtual": True,
+        "dmi": {"sys_vendor": "Red Hat", "product_name": "KVM", "bios_vendor": "SeaBIOS"},
+    },
+}
+
+BAREMETAL_VIRTUALIZATION = {
+    "master-0": {
+        "virtualization": "baremetal",
+        "is_virtual": False,
+        "dmi": {"sys_vendor": "Dell Inc.", "product_name": "PowerEdge R640", "bios_vendor": "Dell Inc."},
+    },
+}
+
+UNDETECTED_VIRTUALIZATION = {
+    "worker-0": {
+        "virtualization": "unknown",
+        "is_virtual": None,
+        "dmi": {"sys_vendor": None, "product_name": None, "bios_vendor": None},
+    },
+}
+
+VMWARE_VIRTUALIZATION = {
+    "worker-0": {
+        "virtualization": "vmware",
+        "is_virtual": True,
+        "dmi": {
+            "sys_vendor": "VMware, Inc.",
+            "product_name": "VMware Virtual Platform",
+            "bios_vendor": "Phoenix Technologies LTD",
+        },
+    },
+}
 
 NETWORK_CONFIG = {
     "status": {
@@ -186,25 +235,87 @@ class TestClusterArchitectureOverview(RuleTestBase):
 
     scenario_info = [
         RuleScenarioParams(
-            "full overview collected on a healthy cluster",
+            "full overview collected on a healthy cluster of VMs installed as BareMetal",
             tested_object_mock_dict=FULL_CLUSTER_MOCKS,
+            data_collector_dict={NodeVirtualizationCollector: KVM_VIRTUALIZATION},
             info_msg=(
-                "OpenShift 4.16.21 on BareMetal | "
+                "OpenShift 4.16.21 | Platform: kvm | "
+                "Infrastructure Provider: BareMetal | "
                 "2 nodes (1x control-plane, 1x master, 1x worker) | "
                 "CNI: OVNKubernetes | operators: 1"
             ),
         ),
         RuleScenarioParams(
-            "partial overview when only ClusterVersion is readable",
+            "partial overview when only ClusterVersion is readable and no node can be reached",
             tested_object_mock_dict=PARTIAL_CLUSTER_MOCKS,
+            data_collector_dict={NodeVirtualizationCollector: {}},
             info_msg=(
-                "OpenShift 4.16.21 on unknown platform | " "0 nodes (roles unknown) | " "CNI: unknown | operators: 0"
+                "OpenShift 4.16.21 | Platform: unknown | Infrastructure Provider: unknown | "
+                "0 nodes (roles unknown) | CNI: unknown | operators: 0"
             ),
         ),
         RuleScenarioParams(
-            "overview on a minimal cluster with readable but empty resources",
+            "overview on a minimal physical cluster with readable but empty resources",
             tested_object_mock_dict=EMPTY_CLUSTER_MOCKS,
-            info_msg=("OpenShift 4.16.21 on BareMetal | " "1 node (1x unknown) | " "CNI: unknown | operators: 0"),
+            data_collector_dict={NodeVirtualizationCollector: BAREMETAL_VIRTUALIZATION},
+            info_msg=(
+                "OpenShift 4.16.21 | Platform: baremetal | "
+                "Infrastructure Provider: BareMetal | "
+                "1 node (1x unknown) | "
+                "CNI: unknown | operators: 0"
+            ),
+        ),
+        RuleScenarioParams(
+            "physical masters alongside virtual workers are reported as mixed",
+            tested_object_mock_dict=FULL_CLUSTER_MOCKS,
+            data_collector_dict={
+                NodeVirtualizationCollector: {**KVM_VIRTUALIZATION, **BAREMETAL_VIRTUALIZATION},
+            },
+            info_msg=(
+                "OpenShift 4.16.21 | Platform: mixed | "
+                "Infrastructure Provider: BareMetal | "
+                "2 nodes (1x control-plane, 1x master, 1x worker) | "
+                "CNI: OVNKubernetes | operators: 1"
+            ),
+        ),
+        RuleScenarioParams(
+            # The summary names the cluster-wide type; the hypervisors stay in virtualization.types
+            "nodes on different hypervisors are reported as mixed",
+            tested_object_mock_dict=FULL_CLUSTER_MOCKS,
+            data_collector_dict={
+                NodeVirtualizationCollector: {**KVM_VIRTUALIZATION, **VMWARE_VIRTUALIZATION},
+            },
+            info_msg=(
+                "OpenShift 4.16.21 | Platform: mixed | "
+                "Infrastructure Provider: BareMetal | "
+                "2 nodes (1x control-plane, 1x master, 1x worker) | "
+                "CNI: OVNKubernetes | operators: 1"
+            ),
+        ),
+        RuleScenarioParams(
+            # A detection gap must not be read as physical hardware
+            "a node that could not be detected does not turn the cluster into mixed",
+            tested_object_mock_dict=FULL_CLUSTER_MOCKS,
+            data_collector_dict={
+                NodeVirtualizationCollector: {**KVM_VIRTUALIZATION, **UNDETECTED_VIRTUALIZATION},
+            },
+            info_msg=(
+                "OpenShift 4.16.21 | Platform: kvm | "
+                "Infrastructure Provider: BareMetal | "
+                "2 nodes (1x control-plane, 1x master, 1x worker) | "
+                "CNI: OVNKubernetes | operators: 1"
+            ),
+        ),
+        RuleScenarioParams(
+            "no node detected leaves the platform unknown",
+            tested_object_mock_dict=FULL_CLUSTER_MOCKS,
+            data_collector_dict={NodeVirtualizationCollector: UNDETECTED_VIRTUALIZATION},
+            info_msg=(
+                "OpenShift 4.16.21 | Platform: unknown | "
+                "Infrastructure Provider: BareMetal | "
+                "2 nodes (1x control-plane, 1x master, 1x worker) | "
+                "CNI: OVNKubernetes | operators: 1"
+            ),
         ),
     ]
 
@@ -253,7 +364,7 @@ class TestClusterArchitectureOverview(RuleTestBase):
         identity = overview["cluster_identity"]
         assert identity["version"] == "4.16.21"
         assert identity["channel"] == "stable-4.16"
-        assert identity["platform"] == "BareMetal"
+        assert identity["infrastructure_provider"] == "BareMetal"
         assert identity["base_domain"] == "prod.example.com"
         assert identity["version_history"] == ["4.16.21", "4.16.20"]
 
@@ -262,6 +373,14 @@ class TestClusterArchitectureOverview(RuleTestBase):
         assert topology["node_count"] == 2
         assert topology["nodes_by_role"] == {"control-plane": 1, "master": 1, "worker": 1}
         assert topology["kubelet_versions"] == ["v1.29.8"]
+
+        # Nodes are KVM guests even though the cluster was installed as BareMetal
+        virtualization = overview["virtualization"]
+        assert virtualization["cluster"] == "kvm"
+        assert virtualization["types"] == ["kvm"]
+        assert virtualization["undetected_nodes"] == []
+        assert virtualization["nodes"]["master-0"]["is_virtual"] is True
+        assert virtualization["nodes"]["master-0"]["dmi"]["product_name"] == "KVM"
 
         network = overview["network"]
         assert network["network_type"] == "OVNKubernetes"
@@ -284,7 +403,7 @@ class TestClusterArchitectureOverview(RuleTestBase):
             }
         ]
 
-    @pytest.mark.parametrize("scenario_params", scenario_info[2:])
+    @pytest.mark.parametrize("scenario_params", scenario_info[2:3])
     def test_system_info_structure_empty_cluster(self, scenario_params, tested_object):
         """Verify empty-but-readable resources yield empty sections, not failures."""
         self._init_validation_object(tested_object, scenario_params)
@@ -295,7 +414,148 @@ class TestClusterArchitectureOverview(RuleTestBase):
         overview = result.system_info
         assert overview["cluster_identity"].get("base_domain") is None
         assert overview["topology"]["nodes_by_role"] == {"unknown": 1}
+        assert overview["virtualization"]["cluster"] == "baremetal"
         assert overview["network"]["network_type"] is None
         assert overview["storage"] == {"storage_classes": [], "default_storage_classes": []}
         assert overview["identity_providers"] == []
         assert overview["operators"] == []
+
+    @pytest.mark.parametrize("scenario_params", scenario_info[1:2])
+    def test_virtualization_omitted_when_no_node_reachable(self, scenario_params, tested_object):
+        """Unreachable nodes leave the section empty instead of guessing the hardware."""
+        self._init_validation_object(tested_object, scenario_params)
+
+        with self._apply_patches(scenario_params, tested_object):
+            result = tested_object.run_rule()
+
+        assert result.system_info["virtualization"] == {}
+
+    @pytest.mark.parametrize("scenario_params", scenario_info[5:6])
+    def test_undetected_nodes_are_listed_not_counted_as_a_type(self, scenario_params, tested_object):
+        """An undetected node is reported as a gap, not as another kind of hardware."""
+        self._init_validation_object(tested_object, scenario_params)
+
+        with self._apply_patches(scenario_params, tested_object):
+            result = tested_object.run_rule()
+
+        virtualization = result.system_info["virtualization"]
+        assert virtualization["cluster"] == "kvm"
+        assert virtualization["types"] == ["kvm"]
+        assert virtualization["undetected_nodes"] == ["worker-0"]
+
+
+DETECT_VIRT_CMD = "systemd-detect-virt"
+SYS_VENDOR_CMD = "cat /sys/class/dmi/id/sys_vendor"
+PRODUCT_NAME_CMD = "cat /sys/class/dmi/id/product_name"
+BIOS_VENDOR_CMD = "cat /sys/class/dmi/id/bios_vendor"
+
+DMI_UNREADABLE = {
+    SYS_VENDOR_CMD: CmdOutput("", return_code=1),
+    PRODUCT_NAME_CMD: CmdOutput("", return_code=1),
+    BIOS_VENDOR_CMD: CmdOutput("", return_code=1),
+}
+
+
+class TestNodeVirtualizationCollector(DataCollectorTestBase):
+    """Test NodeVirtualizationCollector."""
+
+    tested_type = NodeVirtualizationCollector
+
+    scenarios = [
+        DataCollectorScenarioParams(
+            "libvirt guest is reported as kvm",
+            {
+                DETECT_VIRT_CMD: CmdOutput("kvm\n"),
+                SYS_VENDOR_CMD: CmdOutput("Red Hat\n"),
+                PRODUCT_NAME_CMD: CmdOutput("KVM\n"),
+                BIOS_VENDOR_CMD: CmdOutput("SeaBIOS\n"),
+            },
+            {
+                "virtualization": "kvm",
+                "is_virtual": True,
+                "dmi": {"sys_vendor": "Red Hat", "product_name": "KVM", "bios_vendor": "SeaBIOS"},
+            },
+        ),
+        DataCollectorScenarioParams(
+            # systemd-detect-virt exits 1 on physical hardware, which is not an error
+            "physical server is reported as baremetal despite the non-zero exit code",
+            {
+                DETECT_VIRT_CMD: CmdOutput("none\n", return_code=1),
+                SYS_VENDOR_CMD: CmdOutput("Dell Inc.\n"),
+                PRODUCT_NAME_CMD: CmdOutput("PowerEdge R640\n"),
+                BIOS_VENDOR_CMD: CmdOutput("Dell Inc.\n"),
+            },
+            {
+                "virtualization": "baremetal",
+                "is_virtual": False,
+                "dmi": {"sys_vendor": "Dell Inc.", "product_name": "PowerEdge R640", "bios_vendor": "Dell Inc."},
+            },
+        ),
+        DataCollectorScenarioParams(
+            # The "none" output does not always reach stdout, the exit code always does
+            "physical server is reported as baremetal when the failed command printed nothing",
+            {
+                DETECT_VIRT_CMD: CmdOutput("", return_code=1),
+                SYS_VENDOR_CMD: CmdOutput("Dell Inc.\n"),
+                PRODUCT_NAME_CMD: CmdOutput("PowerEdge R640\n"),
+                BIOS_VENDOR_CMD: CmdOutput("Dell Inc.\n"),
+            },
+            {
+                "virtualization": "baremetal",
+                "is_virtual": False,
+                "dmi": {"sys_vendor": "Dell Inc.", "product_name": "PowerEdge R640", "bios_vendor": "Dell Inc."},
+            },
+        ),
+        DataCollectorScenarioParams(
+            "a command that errored out is not read as baremetal",
+            {
+                DETECT_VIRT_CMD: CmdOutput("", return_code=1, err="Failed to check for virtualization: Permission denied"),
+                SYS_VENDOR_CMD: CmdOutput("VMware, Inc.\n"),
+                PRODUCT_NAME_CMD: CmdOutput("VMware Virtual Platform\n"),
+                BIOS_VENDOR_CMD: CmdOutput("Phoenix Technologies LTD\n"),
+            },
+            {
+                "virtualization": "vmware",
+                "is_virtual": True,
+                "dmi": {
+                    "sys_vendor": "VMware, Inc.",
+                    "product_name": "VMware Virtual Platform",
+                    "bios_vendor": "Phoenix Technologies LTD",
+                },
+            },
+        ),
+        DataCollectorScenarioParams(
+            "DMI signatures identify the hypervisor when systemd-detect-virt is unavailable",
+            {
+                DETECT_VIRT_CMD: CmdOutput("", return_code=127, err="command not found"),
+                SYS_VENDOR_CMD: CmdOutput("VMware, Inc.\n"),
+                PRODUCT_NAME_CMD: CmdOutput("VMware Virtual Platform\n"),
+                BIOS_VENDOR_CMD: CmdOutput("Phoenix Technologies LTD\n"),
+            },
+            {
+                "virtualization": "vmware",
+                "is_virtual": True,
+                "dmi": {
+                    "sys_vendor": "VMware, Inc.",
+                    "product_name": "VMware Virtual Platform",
+                    "bios_vendor": "Phoenix Technologies LTD",
+                },
+            },
+        ),
+        DataCollectorScenarioParams(
+            "no evidence at all is reported as unknown rather than baremetal",
+            {
+                DETECT_VIRT_CMD: CmdOutput("", return_code=127, err="command not found"),
+                **DMI_UNREADABLE,
+            },
+            {
+                "virtualization": "unknown",
+                "is_virtual": None,
+                "dmi": {"sys_vendor": None, "product_name": None, "bios_vendor": None},
+            },
+        ),
+    ]
+
+    @pytest.mark.parametrize("scenario_params", scenarios)
+    def test_collect_data(self, scenario_params, tested_object):
+        DataCollectorTestBase.test_collect_data(self, scenario_params, tested_object)

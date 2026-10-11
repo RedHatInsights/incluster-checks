@@ -6,8 +6,6 @@ Adapted for OpenShift/OpenShift use case.
 """
 
 import json
-import re
-from datetime import datetime, timezone
 
 from in_cluster_checks.core.rule import OrchestratorRule
 from in_cluster_checks.core.rule_result import PrerequisiteResult, RuleResult
@@ -21,34 +19,80 @@ class CephRule(OrchestratorRule):
     Base class for Ceph-related validation rules.
 
     Provides common functionality for all Ceph rules:
-    - Prerequisite check for openshift-storage namespace
-    - Ceph command detection (_get_ceph_command)
+    - Prerequisite check for openshift-storage namespace and rook-ceph-operator
+    - Ceph command execution helpers (_run_ceph_cmd)
+    - External mode detection (_is_external_ceph_mode)
 
-    Ported from CephValidation base class in healthcheck-backup.
+    Subclasses should use CephAccessRule (for rules that need Ceph CLI access
+    in both internal and external modes) or InternalCephRule (for rules that
+    only apply to internal Ceph mode).
     """
 
     NAMESPACE = "openshift-storage"
+
+    def _parse_osd_tree(self) -> tuple[list[str], list[str]] | RuleResult:
+        """Parse ceph osd tree. Returns (down_osd_names, all_osd_names) or RuleResult on error."""
+        cmd = SafeCmdString("ceph osd tree -f json")
+        rc, stdout, stderr = self._run_ceph_cmd(cmd)
+
+        if rc != 0:
+            return RuleResult.failed(
+                self.build_cmd_error_message("Failed to get ceph osd tree status.", stdout, stderr)
+            )
+
+        if not stdout:
+            return RuleResult.failed("Empty results from ceph osd tree command")
+
+        osd_tree = parse_json(stdout, cmd, self.get_host_ip())
+        if not isinstance(osd_tree, dict):
+            return RuleResult.failed("Invalid results from ceph osd tree command")
+
+        nodes = osd_tree.get("nodes")
+        if not isinstance(nodes, list) or not nodes:
+            return RuleResult.failed("No nodes found in ceph osd tree output")
+        if not all(isinstance(node, dict) for node in nodes):
+            return RuleResult.failed("Invalid results from ceph osd tree command")
+
+        osd_nodes = [n for n in nodes if n.get("type") == "osd"]
+        down = [n.get("name", "unknown") for n in osd_nodes if n.get("status", "").lower() == "down"]
+        all_names = [n.get("name", "unknown") for n in osd_nodes]
+        return down, all_names
+
+    def _get_down_osds(self) -> list[str] | RuleResult:
+        """Get list of down OSDs from ceph osd tree.
+
+        Returns:
+            List of down OSD names (empty if all are up), or
+            RuleResult.failed if the ceph command fails
+        """
+        result = self._parse_osd_tree()
+        if isinstance(result, RuleResult):
+            return result
+        down, _ = result
+        return down
 
     def _is_external_ceph_mode(self) -> bool:
         """
         Detect if Ceph is running in external mode.
 
-        External mode is identified by the absence of OSD pods in the cluster.
-        In external mode, the Ceph cluster runs outside OpenShift (OSDs are external),
-        and only CSI drivers and operators run in-cluster.
+        External mode is identified by the absence of both rook-ceph-osd pods and
+        rook-ceph-osd-prepare jobs. In external mode, the Ceph cluster runs outside
+        OpenShift (OSDs are external), and only CSI drivers and operators run in-cluster.
 
-        In internal mode, OSD pods run in the openshift-storage namespace.
+        In internal mode, OSD pods run in the openshift-storage namespace. Checking only
+        OSD pods misses clusters where all OSD provisioning failed (no pods yet but jobs exist).
 
         Returns:
-            True if external Ceph mode is detected (no OSD pods), False otherwise
+            True if external Ceph mode is detected, False otherwise
         """
         try:
-            # Check for OSD pods - internal mode has them, external mode doesn't
-            osd_pod = self.oc_api.get_pod_name(self.NAMESPACE, {"app": "rook-ceph-osd"}, log_errors=False)
-            # If no OSD pods found, it's external mode
-            return not bool(osd_pod)
+            if self.oc_api.get_pod_name(self.NAMESPACE, {"app": "rook-ceph-osd"}, log_errors=False):
+                return False
+            has_prepare_jobs = bool(
+                self.oc_api.select_resources("job", namespace=self.NAMESPACE, labels={"app": "rook-ceph-osd-prepare"})
+            )
+            return not has_prepare_jobs
         except Exception:
-            # If we can't determine, assume internal mode (safer default)
             return False
 
     def _run_ceph_cmd(self, cmd: SafeCmdString, timeout: int = 30) -> tuple[int, str, str]:
@@ -82,15 +126,13 @@ class CephRule(OrchestratorRule):
 
     def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
         """
-        Check if Ceph is being used in the cluster and if health checks can run.
-
+        Check if Ceph is being used in the cluster.
         Verifies:
         1. openshift-storage namespace exists
         2. rook-ceph-operator pod exists
-        3. For external Ceph mode: rook-ceph-tools pod must exist
 
         Returns:
-            PrerequisiteResult indicating if Ceph storage is present and accessible
+            PrerequisiteResult indicating if Ceph storage is present
         """
 
         try:
@@ -113,7 +155,36 @@ class CephRule(OrchestratorRule):
                 "No rook-ceph-operator pod found in openshift-storage namespace. Ceph operator is not running."
             )
 
-        # For external Ceph mode, require rook-ceph-tools pod
+        return PrerequisiteResult.met()
+
+
+class CephAccessRule(CephRule):
+    """
+    Base class for Ceph rules that require CLI access to the Ceph cluster.
+
+    Works in both internal and external Ceph modes. In external mode, the
+    rook-ceph-tools pod must be present to execute Ceph commands since
+    the operator pod alone cannot reach the external cluster.
+
+    Use this base class for rules that run Ceph CLI commands (ceph health,
+    ceph osd tree, etc.) and need to work regardless of deployment mode.
+    """
+
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        """
+        Check base Ceph prerequisites and verify Ceph CLI access.
+
+        Verifies:
+        1. Base Ceph prerequisites (namespace + operator)
+        2. For external Ceph mode: rook-ceph-tools pod must exist
+
+        Returns:
+            PrerequisiteResult indicating if Ceph CLI access is available
+        """
+        base_result = super().is_prerequisite_fulfilled()
+        if not base_result.fulfilled:
+            return base_result
+
         if self._is_external_ceph_mode():
             tools_pod = self.oc_api.get_pod_name(self.NAMESPACE, {"app": "rook-ceph-tools"}, log_errors=False)
 
@@ -126,7 +197,7 @@ class CephRule(OrchestratorRule):
         return PrerequisiteResult.met()
 
 
-class CephOsdTreeWorks(CephRule):
+class CephOsdTreeWorks(CephAccessRule):
     """
     Check if ceph osd tree command is working.
 
@@ -148,7 +219,7 @@ class CephOsdTreeWorks(CephRule):
         return RuleResult.failed(error_msg)
 
 
-class IsCephHealthOk(CephRule):
+class IsCephHealthOk(CephAccessRule):
     """
     Check if ceph health is ok.
 
@@ -196,7 +267,7 @@ class IsCephHealthOk(CephRule):
         return RuleResult.failed(error_msg)
 
 
-class IsCephOSDsNearFull(CephRule):
+class IsCephOSDsNearFull(CephAccessRule):
     """
     Check if ceph OSDs disk usage is near full.
 
@@ -280,7 +351,7 @@ class IsCephOSDsNearFull(CephRule):
             return RuleResult.warning(error_msg)
 
 
-class IsOSDsUp(CephRule):
+class IsOSDsUp(CephAccessRule):
     """
     Check if all OSDs in the cluster are up.
 
@@ -293,41 +364,17 @@ class IsOSDsUp(CephRule):
     title = "Check if all osds are up"
 
     def run_rule(self) -> RuleResult:
-        cmd = SafeCmdString("ceph osd tree -f json")
-        return_code, stdout, stderr = self._run_ceph_cmd(cmd)
-
-        if return_code != 0:
-            error_msg = self.build_cmd_error_message("Failed to get ceph osd tree status.", stdout, stderr)
-            return RuleResult.failed(error_msg)
-
-        if not stdout:
-            return RuleResult.failed("Empty results from ceph osd tree command")
-
-        osd_tree = parse_json(stdout, cmd, self.get_host_ip())
-
-        nodes = osd_tree.get("nodes")
-        if not nodes:
-            return RuleResult.failed("No nodes found in ceph osd tree output")
-
-        # Find all OSDs that are down
-        # OSDs have type "osd", buckets (root, host, etc.) have other types
-        down_osds = []
-        for node in nodes:
-            node_type = node.get("type")
-            if node_type == "osd":
-                status = node.get("status", "").lower()
-                if status == "down":
-                    osd_name = node.get("name", "unknown")
-                    down_osds.append(osd_name)
+        down_osds = self._get_down_osds()
+        if isinstance(down_osds, RuleResult):
+            return down_osds
 
         if down_osds:
-            error_msg = f"The following OSDs are in down state: [{', '.join(down_osds)}]"
-            return RuleResult.failed(error_msg)
+            return RuleResult.failed(f"The following OSDs are in down state: [{', '.join(down_osds)}]")
 
         return RuleResult.passed()
 
 
-class IsOSDsWeightOK(CephRule):
+class IsOSDsWeightOK(CephAccessRule):
     """
     Check if OSD weights are within acceptable range.
 
@@ -418,7 +465,7 @@ class IsOSDsWeightOK(CephRule):
         return float(kb_value / 1024 / 1024 / 1024)
 
 
-class OrphanCsiVolumes(CephRule):
+class OrphanCsiVolumes(CephAccessRule):
     """
     Check for orphaned Ceph CSI volumes.
 
@@ -551,7 +598,7 @@ class OrphanCsiVolumes(CephRule):
         return subvolume_names
 
 
-class CephSlowOps(CephRule):
+class CephSlowOps(CephAccessRule):
     """
     Check if ceph has slow ops.
 
@@ -582,200 +629,7 @@ class CephSlowOps(CephRule):
         return RuleResult.passed()
 
 
-class OsdJournalError(CephRule):
-    """
-    Check if OSDs had journal errors in the last hour.
-
-    This validation checks for OSD pods that have failed or restarted in the last hour,
-    indicating potential journal errors or other issues. It examines pod status, restart
-    counts, and logs to identify problematic OSDs.
-
-    Ported from HealthChecks OsdJournalError rule, adapted for OpenShift/Rook-Ceph.
-    """
-
-    objective_hosts = [Objectives.ORCHESTRATOR]
-    unique_name = "osd_journal_errors_last_hour"
-    title = "Check if OSDs had journal errors in the last hour"
-
-    def run_rule(self) -> RuleResult:
-        osd_pods = self._get_osd_pods()
-        if not osd_pods:
-            return RuleResult.failed(f"No OSD pods found in {self.NAMESPACE} namespace")
-
-        problematic_osds = []
-        for pod in osd_pods:
-            osd_info = self._check_pod_health(pod)
-            if osd_info:
-                problematic_osds.append(osd_info)
-
-        if not problematic_osds:
-            return RuleResult.passed()
-
-        error_msg = self._build_error_message(problematic_osds)
-        return RuleResult.failed(error_msg)
-
-    def _get_osd_pods(self) -> list:
-        """Get all OSD pods from the cluster."""
-        return self.oc_api.get_pods(namespace=self.NAMESPACE, labels={"app": "rook-ceph-osd"})
-
-    def _check_pod_health(self, pod) -> dict | None:
-        """
-        Check if a pod has health issues and collect diagnostics.
-
-        Args:
-            pod: Pod object from openshift_client
-
-        Returns:
-            Dictionary with pod info if problematic, None otherwise
-        """
-        pod_name = pod.name()
-        pod_status = pod.model.status.phase
-        container_statuses = pod.model.status.containerStatuses or []
-
-        has_recent_restarts, container_errors = self._get_recent_restarts_and_errors(container_statuses)
-
-        if not self._is_osd_problematic(pod_status, has_recent_restarts, container_errors):
-            return None
-
-        osd_id = self._extract_osd_id(pod)
-
-        # Get pod logs using oc logs command
-        return_code, log_output, stderr = self.oc_api.run_oc_command(
-            "logs",
-            ["-n", self.NAMESPACE, pod_name, "--since=1h", "--tail=15"],
-            timeout=30,
-            raise_on_error=False,
-        )
-
-        if return_code != 0:
-            self.logger.warning(f"Failed to get logs for pod {self.NAMESPACE}/{pod_name}: {stderr}")
-            log_output = ""
-
-        return {
-            "pod_name": pod_name,
-            "osd_id": osd_id,
-            "status": pod_status,
-            "container_errors": container_errors,
-            "logs": log_output,
-        }
-
-    def _get_recent_restarts_and_errors(self, container_statuses: list) -> tuple[bool, list]:
-        """
-        Check for recent restarts and error states in container statuses.
-
-        Checks if any containers have restarted in the last hour by examining the
-        lastState.finishedAt timestamp.
-
-        Args:
-            container_statuses: List of container status objects
-
-        Returns:
-            Tuple of (has_recent_restarts, list_of_container_errors)
-        """
-        has_recent_restarts = False
-        container_errors = []
-        now = datetime.now(timezone.utc)
-
-        for container in container_statuses:
-            # Check if container restarted in the last hour
-            if container.lastState and container.lastState.terminated:
-                finished_at = container.lastState.terminated.finishedAt
-                if finished_at:
-                    # Parse the timestamp (format: "2025-02-26T10:15:30Z")
-                    try:
-                        finished_time = datetime.fromisoformat(finished_at.replace("Z", "+00:00"))
-                        time_diff = (now - finished_time).total_seconds()
-                        if time_diff <= 3600:  # 1 hour = 3600 seconds
-                            has_recent_restarts = True
-                    except (ValueError, AttributeError):
-                        # If we can't parse the timestamp, skip this check
-                        pass
-
-            # Check if container is in error state
-            if container.state.waiting and container.state.waiting.reason in [
-                "CrashLoopBackOff",
-                "Error",
-                "ImagePullBackOff",
-            ]:
-                container_errors.append(
-                    f"{container.name}: {container.state.waiting.reason} - {container.state.waiting.message or ''}"
-                )
-            elif container.state.terminated and container.state.terminated.reason in ["Error", "OOMKilled"]:
-                container_errors.append(
-                    f"{container.name}: {container.state.terminated.reason} - "
-                    f"{container.state.terminated.message or ''}"
-                )
-
-        return has_recent_restarts, container_errors
-
-    def _is_osd_problematic(self, pod_status: str, has_recent_restarts: bool, container_errors: list) -> bool:
-        """
-        Determine if OSD pod is problematic.
-
-        An OSD is considered problematic if:
-        1. Pod is not in Running state, OR
-        2. Pod has restarted in the last hour, OR
-        3. Container has errors
-
-        Args:
-            pod_status: Pod phase (Running, Pending, Failed, etc.)
-            has_recent_restarts: True if any container restarted in the last hour
-            container_errors: List of container error strings
-
-        Returns:
-            True if OSD is problematic, False otherwise
-        """
-        return pod_status != "Running" or has_recent_restarts or bool(container_errors)
-
-    def _extract_osd_id(self, pod) -> str:
-        """
-        Extract OSD ID from pod labels or name.
-
-        Args:
-            pod: Pod object from openshift_client
-
-        Returns:
-            OSD ID as string, or "unknown" if not found
-        """
-        osd_id = pod.model.metadata.labels.get("ceph-osd-id", "unknown")
-        if osd_id == "unknown":
-            # Try to extract from pod name (format: rook-ceph-osd-<ID>-<hash>-<suffix>)
-            # Example: rook-ceph-osd-0-5fc8f487b4-2w5qb
-            match = re.search(r"rook-ceph-osd-(\d+)-[a-z0-9]+-[a-z0-9]+", pod.name())
-            if match:
-                osd_id = match.group(1)
-        return osd_id
-
-    def _build_error_message(self, problematic_osds: list) -> str:
-        """
-        Build formatted error message from problematic OSDs.
-
-        Args:
-            problematic_osds: List of OSD info dictionaries
-
-        Returns:
-            Formatted error message string
-        """
-        error_parts = []
-        for osd in problematic_osds:
-            part = f"Pod Name: {osd['pod_name']}\n"
-            part += f"OSD ID: {osd['osd_id']}\n"
-            part += f"Status: {osd['status']}\n"
-
-            if osd["container_errors"]:
-                part += "Container Errors:\n"
-                for error in osd["container_errors"]:
-                    part += f"  - {error}\n"
-
-            if osd["logs"]:
-                part += f"Recent Logs (last 15 lines or 1 hour):\n{osd['logs']}\n"
-
-            error_parts.append(part)
-
-        return "\n\n".join(error_parts)
-
-
-class CheckPoolSize(CephRule):
+class CheckPoolSize(CephAccessRule):
     """
     Check if ceph replication factor is at least 2 for all pools.
 

@@ -147,6 +147,25 @@ class TestKubeletCaExpiryCheck(RuleTestBase):
         ),
     ]
 
+    _infra_cmd_key = ("get", ("infrastructure", "cluster", "-o", "jsonpath={.status.controlPlaneTopology}"))
+
+    scenario_prerequisite_not_fulfilled = [
+        RuleScenarioParams(
+            "Hosted control plane cluster (controlPlaneTopology=External)",
+            oc_cmd_output_dict={_infra_cmd_key: CmdOutput("External")},
+        ),
+    ]
+
+    scenario_prerequisite_fulfilled = [
+        RuleScenarioParams(
+            "Self-managed cluster (controlPlaneTopology=HighlyAvailable)",
+            oc_cmd_output_dict={
+                _infra_cmd_key: CmdOutput("HighlyAvailable"),
+                oc_cmd_key: CmdOutput(oc_get_secret_valid),
+            },
+        ),
+    ]
+
     @pytest.mark.parametrize("scenario_params", scenario_passed)
     def test_scenario_passed(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
@@ -154,3 +173,11 @@ class TestKubeletCaExpiryCheck(RuleTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
+    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
+        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
+
+    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_fulfilled)
+    def test_prerequisite_fulfilled(self, scenario_params, tested_object):
+        RuleTestBase.test_prerequisite_fulfilled(self, scenario_params, tested_object)

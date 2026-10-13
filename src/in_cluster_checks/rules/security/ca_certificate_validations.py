@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from cryptography import x509
 
 from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
-from in_cluster_checks.core.rule import OrchestratorRule, RuleResult
+from in_cluster_checks.core.rule import OrchestratorRule, PrerequisiteResult, RuleResult
 from in_cluster_checks.utils.enums import Objectives
 
 
@@ -48,14 +48,35 @@ class KubeletCaExpiryCheck(OrchestratorRule):
     SECRET_NAME = "kube-apiserver-to-kubelet-signer"
     SECRET_NAMESPACE = "openshift-kube-apiserver-operator"
 
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        """
+        Check if this cluster hosts its own control plane.
+
+        Hosted control plane clusters (HyperShift, controlPlaneTopology=External) manage
+        the kubelet CA in the management cluster — the secret is absent from the guest cluster.
+
+        Returns:
+            PrerequisiteResult.not_met if controlPlaneTopology is External,
+            PrerequisiteResult.met otherwise
+        """
+        rc, out, _ = self.oc_api.run_oc_command(
+            "get",
+            ["infrastructure", "cluster", "-o", "jsonpath={.status.controlPlaneTopology}"],
+            timeout=30,
+            raise_on_error=False,
+        )
+
+        if rc == 0 and out.strip() == "External":
+            return PrerequisiteResult.not_met(
+                "Hosted control plane cluster (controlPlaneTopology=External) - "
+                "kubelet CA is managed in the management cluster"
+            )
+
+        return PrerequisiteResult.met()
+
     def run_rule(self):
         """Check kubelet CA certificate expiry."""
-        try:
-            ca_info = self._get_kubelet_ca_info()
-        except UnExpectedSystemOutput:
-            return RuleResult.failed(
-                f"Failed to retrieve kubelet CA certificate from secret " f"{self.SECRET_NAMESPACE}/{self.SECRET_NAME}"
-            )
+        ca_info = self._get_kubelet_ca_info()
 
         if ca_info.get("status") == "error":
             return RuleResult.failed(f"Failed to parse kubelet CA certificate: {ca_info['message']}")

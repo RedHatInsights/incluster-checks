@@ -370,3 +370,36 @@ class YumlockFileCheck(Rule):
             return RuleResult.passed()
         else:
             return RuleResult.warning("/var/run/yum.pid file exists, yum process may be in hung status")
+
+
+class AreHugepagesIommuKernelArgsSet(Rule):
+    """Verify hugepages and IOMMU kernel arguments are configured for Spectrum-X SuperNIC DMA/RDMA offload."""
+
+    objective_hosts = [Objectives.WORKERS]
+    unique_name = "are_hugepages_iommu_kernel_args_set"
+    title = "Verify hugepages and IOMMU kernel arguments are configured"
+    supported_profiles = {"spectrum-x"}
+    links = []
+
+    REQUIRED_KERNEL_ARGS = [
+        "module_blacklist=irdma",
+        "default_hugepagesz=1G",
+        "hugepagesz=1G",
+        "hugepages=16",
+        "intel_iommu=on",
+        "iommu=pt",
+        "pci=realloc=on",
+    ]
+
+    def run_rule(self):
+        cmdline = self.get_output_from_run_cmd(SafeCmdString("cat /proc/cmdline"))
+        cmdline_tokens = cmdline.split()
+
+        missing_args = [arg for arg in self.REQUIRED_KERNEL_ARGS if arg not in cmdline_tokens]
+
+        if missing_args:
+            return RuleResult.failed(
+                f"Missing required kernel arguments for Spectrum-X (99-kernel-args-hugepages): {missing_args}"
+            )
+
+        return RuleResult.passed()

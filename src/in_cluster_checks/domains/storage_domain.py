@@ -8,6 +8,11 @@ Based on support/HealthChecks/flows/Storage/ceph/Ceph.py
 from typing import List
 
 from in_cluster_checks.core.domain import RuleDomain
+from in_cluster_checks.rules.storage.internal_ceph import (
+    OsdJournalError,
+    OsdPrepareFilesystemHealth,
+    OsdPrepareJobHealth,
+)
 from in_cluster_checks.rules.storage.storage_validations import (
     CephOsdTreeWorks,
     CephSlowOps,
@@ -17,7 +22,6 @@ from in_cluster_checks.rules.storage.storage_validations import (
     IsOSDsUp,
     IsOSDsWeightOK,
     OrphanCsiVolumes,
-    OsdJournalError,
 )
 
 
@@ -49,4 +53,6 @@ class StorageValidationDomain(RuleDomain):
             IsOSDsWeightOK,
             OrphanCsiVolumes,
             OsdJournalError,
+            OsdPrepareJobHealth,
+            OsdPrepareFilesystemHealth,
         ]

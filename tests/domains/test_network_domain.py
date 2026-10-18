@@ -27,6 +27,7 @@ from in_cluster_checks.rules.network.ovs_validations import (
     OvsProfileActivationCheck,
     VlanOvsAttachmentCheck,
 )
+from in_cluster_checks.rules.network.sriov_validations import VerifySriovOperatorConfigured
 from in_cluster_checks.rules.network.whereabouts_validations import (
     WhereaboutsDuplicateIPAddresses,
     WhereaboutsExistingAllocations,
@@ -69,7 +70,7 @@ class TestNetworkRuleDomain:
         rules = domain.get_rule_classes()
 
         assert isinstance(rules, list)
-        assert len(rules) == 18
+        assert len(rules) == 19
         assert OvsInterfaceAndPortFound in rules
         assert OvsPhysicalPortHealthCheck in rules
         assert OvsBridgeInterfaceHealthCheck in rules
@@ -88,6 +89,7 @@ class TestNetworkRuleDomain:
         assert WhereaboutsMissingAllocations in rules
         assert WhereaboutsExistingAllocations in rules
         assert VerifyDnsReachability in rules
+        assert VerifySriovOperatorConfigured in rules
 
     def test_verify_runs_validators(self):
         """Test that verify() runs validators on nodes."""

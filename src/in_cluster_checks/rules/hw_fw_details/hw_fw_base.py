@@ -239,9 +239,9 @@ class HwFwRule(OrchestratorRule):
         )
 
         if all_uniform:
-            summary_msg = f"All node groups have uniform {category_key} configuration"
+            summary_msg = f"Nodes with the same roles have uniform {category_key} configuration"
         else:
-            summary_msg = f"Mixed {category_key} configurations detected - see 'HW & FW' tab for details"
+            summary_msg = f"Nodes with the same roles have mixed {category_key} configurations"
 
         # Log detailed summary (nested topic -> name structure)
         self.add_to_rule_log(f"Blueprint {category_key.title()} Summary:")

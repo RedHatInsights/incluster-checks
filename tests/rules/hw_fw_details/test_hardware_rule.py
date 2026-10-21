@@ -626,7 +626,7 @@ class TestHardwareDetailsRule:
 
         # Direct JSON comparison
         assert result.status == Status.INFO
-        assert result.message == "Mixed hardware configurations detected - see 'HW & FW' tab for details"
+        assert result.message == "Nodes with the same roles have mixed hardware configurations"
         assert result.extra["blueprint_data"] == expected_blueprint_data
         assert result.extra["html_tab"] == "blueprint"
         assert result.extra["is_uniform"] is False

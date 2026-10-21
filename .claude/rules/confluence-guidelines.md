@@ -7,7 +7,7 @@ This guide provides detailed instructions for creating Confluence documentation 
 Every new rule MUST have a corresponding documentation page in Confluence hosted at:  
 https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418417677/In-Cluster+Checks+Rules
 
-Create the documentation page in Confluence under the appropriate domain (DPF, Hardware, K8s, Linux, Network, Resources, Security).
+Create the documentation page in Confluence under the appropriate domain (DPF, Hardware, K8s, Linux, Network, Resources, Security, Storage).
 
 ## Step 1: Understand the Rule
 
@@ -33,6 +33,7 @@ Example location: `src/in_cluster_checks/rules/network/ovs_validations.py`
 - Network: `418482854`
 - Resources: `418450807`
 - Security: `418516403`
+- Storage: `486867052`
 
 **Space ID:** `377096307`
 

@@ -1,14 +1,12 @@
 """
 TLS certificate validation rules.
 
-This module contains rules for checking application-level TLS certificates stored
-in Kubernetes secrets. These are user-managed certificates used by routes, ingress,
-and applications.
+This module checks OpenShift infrastructure TLS certificates stored in secrets.
 """
 
 import base64
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from cryptography import x509
 
@@ -18,27 +16,41 @@ from in_cluster_checks.utils.enums import Objectives
 
 class TlsCertificateExpiry(OrchestratorRule):
     """
-    Check if all TLS certificates in Kubernetes secrets don't expire in 14 days.
+    Check if infrastructure TLS certificates don't expire in 14 days.
 
-    Retrieves all TLS-type secrets from the cluster and validates that their
+    Retrieves TLS-type secrets from infrastructure namespaces and validates that their
     certificates are not expired or expiring soon.
     """
 
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "all_tls_certs_are_valid"
-    title = "Check if all TLS certificates don't expire in 14 days"
+    title = "Check if infrastructure TLS certificates don't expire in 14 days"
     links = [
         "https://redhat.atlassian.net/wiki/spaces/PDRIVE/pages/418482936",
     ]
 
     WARNING_DAYS = 14
+    INFRA_NAMESPACES = (
+        "openshift-ingress",
+        "openshift-config",
+        "openshift-config-managed",
+        "openshift-kube-apiserver",
+        "openshift-kube-apiserver-operator",
+        "openshift-kube-controller-manager",
+        "openshift-kube-controller-manager-operator",
+        "openshift-kube-scheduler",
+        "openshift-apiserver",
+        "openshift-authentication",
+        "openshift-monitoring",
+        "openshift-etcd",
+        "openshift-ingress-operator",
+    )
 
     def run_rule(self):
-        secrets_data = self._get_tls_secrets()
-        items = secrets_data.get("items", [])
+        items = self._get_tls_secrets()
 
         if not items:
-            return RuleResult.passed("No TLS secrets found in the cluster")
+            return RuleResult.passed("No TLS secrets found in infrastructure namespaces")
 
         expired, expiring_soon, valid, errors = self._check_all_secrets(items)
         system_info = self._build_system_info(expired, expiring_soon, valid, errors)
@@ -76,7 +88,7 @@ class TlsCertificateExpiry(OrchestratorRule):
             cert_pem = base64.b64decode(cert_b64)
             cert = x509.load_pem_x509_certificate(cert_pem)
             end_date = cert.not_valid_after_utc
-            days_remaining = (end_date - datetime.now(timezone.utc)).days
+            days_remaining = (end_date - datetime.now(UTC)).days
 
             return {
                 "name": name,
@@ -115,10 +127,13 @@ class TlsCertificateExpiry(OrchestratorRule):
         )
 
     def _get_tls_secrets(self):
-        _, out, _ = self.oc_api.run_oc_command(
-            "get", ["secret", "--field-selector=type=kubernetes.io/tls", "-A", "-o", "json"]
-        )
-        return json.loads(out)
+        items = []
+        for namespace in self.INFRA_NAMESPACES:
+            _, out, _ = self.oc_api.run_oc_command(
+                "get", ["secret", "--field-selector=type=kubernetes.io/tls", "-n", namespace, "-o", "json"]
+            )
+            items.extend(json.loads(out).get("items", []))
+        return items
 
     def _build_system_info(self, expired, expiring_soon, valid, errors):
         all_certs = expired + expiring_soon + valid

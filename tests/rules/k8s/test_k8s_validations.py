@@ -251,7 +251,38 @@ class TestInfraPodsReadyAndRunning:
         tested_object.run_rule()
 
         called_namespaces = [call.kwargs.get("namespace") for call in tested_object.oc_api.get_pods.call_args_list]
-        assert set(called_namespaces) == set(InfraPodsReadyAndRunning.INFRA_NAMESPACES)
+        assert set(called_namespaces) == {
+            "openshift-etcd",
+            "openshift-kube-apiserver",
+            "openshift-kube-apiserver-operator",
+            "openshift-kube-controller-manager",
+            "openshift-kube-controller-manager-operator",
+            "openshift-kube-scheduler",
+            "openshift-apiserver",
+            "openshift-ingress",
+            "openshift-ingress-operator",
+            "openshift-monitoring",
+            "openshift-authentication",
+            "openshift-controller-manager",
+            "openshift-cluster-version",
+            "openshift-machine-api",
+            "openshift-machine-config-operator",
+            "openshift-dns",
+            "openshift-sdn",
+            "openshift-ovn-kubernetes",
+            "openshift-multus",
+            "openshift-network-operator",
+            "openshift-network-diagnostics",
+            "openshift-image-registry",
+            "openshift-oauth-apiserver",
+            "openshift-operator-lifecycle-manager",
+            "openshift-marketplace",
+            "openshift-console",
+            "openshift-service-ca",
+            "openshift-cluster-storage-operator",
+            "openshift-kube-storage-version-migrator",
+        }
+        assert len(called_namespaces) == len(set(called_namespaces))
 
     def test_pod_count_safety_limit(self, tested_object):
         """Test that pod count per namespace is capped at MAX_PODS_PER_NAMESPACE."""

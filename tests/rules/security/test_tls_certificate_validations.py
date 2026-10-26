@@ -15,8 +15,10 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
+from in_cluster_checks.rules.k8s.k8s_validations import InfraPodsReadyAndRunning
 from in_cluster_checks.rules.security.tls_certificate_validations import TlsCertificateExpiry
 from in_cluster_checks.utils.enums import Status
+from in_cluster_checks.utils.infra_namespaces import COMMON_INFRA_NAMESPACES
 from tests.pytest_tools.test_operator_base import CmdOutput
 from tests.pytest_tools.test_rule_base import (
     RuleScenarioParams,
@@ -77,6 +79,15 @@ def _oc_outputs(namespace_outputs=None):
     }
 
 
+def test_shared_infrastructure_namespace_scope():
+    pod_namespaces = set(InfraPodsReadyAndRunning.INFRA_NAMESPACES)
+    tls_namespaces = set(TlsCertificateExpiry.INFRA_NAMESPACES)
+
+    assert pod_namespaces & tls_namespaces == set(COMMON_INFRA_NAMESPACES)
+    assert len(pod_namespaces) == len(InfraPodsReadyAndRunning.INFRA_NAMESPACES)
+    assert len(tls_namespaces) == len(TlsCertificateExpiry.INFRA_NAMESPACES)
+
+
 class TestTlsCertificateExpiry(RuleTestBase):
     """Test TlsCertificateExpiry rule."""
 
@@ -103,11 +114,26 @@ class TestTlsCertificateExpiry(RuleTestBase):
                 "openshift-kube-scheduler": CmdOutput(
                     _make_secrets_json([("scheduler-serving", "openshift-kube-scheduler", _valid_cert)])
                 ),
+                "openshift-console": CmdOutput(
+                    _make_secrets_json([("console-serving", "openshift-console", _valid_cert)])
+                ),
+                "openshift-ovn-kubernetes": CmdOutput(
+                    _make_secrets_json([("ovn-serving", "openshift-ovn-kubernetes", _valid_cert)])
+                ),
             }),
         ),
         RuleScenarioParams(
             "no TLS secrets in infrastructure namespaces",
             oc_cmd_output_dict=_oc_outputs(),
+        ),
+        RuleScenarioParams(
+            "optional infrastructure namespace is absent",
+            oc_cmd_output_dict=_oc_outputs({
+                "openshift-ovn-kubernetes": CmdOutput(
+                    "", return_code=1,
+                    err='Error from server (NotFound): namespaces "openshift-ovn-kubernetes" not found',
+                ),
+            }),
         ),
     ]
 
@@ -158,6 +184,15 @@ class TestTlsCertificateExpiry(RuleTestBase):
                 ),
             }),
         ),
+        RuleScenarioParams(
+            "secret access is forbidden",
+            oc_cmd_output_dict=_oc_outputs({
+                "openshift-ovn-kubernetes": CmdOutput(
+                    "", return_code=1,
+                    err="Error from server (Forbidden): secrets is forbidden",
+                ),
+            }),
+        ),
     ]
 
     @pytest.mark.parametrize("scenario_params", scenario_passed)
@@ -185,19 +220,33 @@ class TestTlsCertificateExpiry(RuleTestBase):
         assert tested_object.oc_api.run_oc_command.call_args_list == [
             call("get", ["secret", "--field-selector=type=kubernetes.io/tls", "-n", namespace, "-o", "json"])
             for namespace in (
-                "openshift-ingress",
-                "openshift-config",
-                "openshift-config-managed",
+                "openshift-etcd",
                 "openshift-kube-apiserver",
                 "openshift-kube-apiserver-operator",
                 "openshift-kube-controller-manager",
                 "openshift-kube-controller-manager-operator",
                 "openshift-kube-scheduler",
                 "openshift-apiserver",
-                "openshift-authentication",
-                "openshift-monitoring",
-                "openshift-etcd",
+                "openshift-ingress",
                 "openshift-ingress-operator",
+                "openshift-monitoring",
+                "openshift-authentication",
+                "openshift-controller-manager",
+                "openshift-cluster-version",
+                "openshift-machine-api",
+                "openshift-machine-config-operator",
+                "openshift-dns",
+                "openshift-ovn-kubernetes",
+                "openshift-multus",
+                "openshift-network-operator",
+                "openshift-image-registry",
+                "openshift-oauth-apiserver",
+                "openshift-marketplace",
+                "openshift-console",
+                "openshift-service-ca",
+                "openshift-cluster-storage-operator",
+                "openshift-config",
+                "openshift-config-managed",
             )
         ]
-        assert len(result.system_info["rows"]) == 5
+        assert len(result.system_info["rows"]) == 7

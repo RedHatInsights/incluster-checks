@@ -10,8 +10,10 @@ from datetime import UTC, datetime
 
 from cryptography import x509
 
+from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.rule import OrchestratorRule, RuleResult
 from in_cluster_checks.utils.enums import Objectives
+from in_cluster_checks.utils.infra_namespaces import COMMON_INFRA_NAMESPACES
 
 
 class TlsCertificateExpiry(OrchestratorRule):
@@ -30,20 +32,9 @@ class TlsCertificateExpiry(OrchestratorRule):
     ]
 
     WARNING_DAYS = 14
-    INFRA_NAMESPACES = (
-        "openshift-ingress",
+    INFRA_NAMESPACES = COMMON_INFRA_NAMESPACES + (
         "openshift-config",
         "openshift-config-managed",
-        "openshift-kube-apiserver",
-        "openshift-kube-apiserver-operator",
-        "openshift-kube-controller-manager",
-        "openshift-kube-controller-manager-operator",
-        "openshift-kube-scheduler",
-        "openshift-apiserver",
-        "openshift-authentication",
-        "openshift-monitoring",
-        "openshift-etcd",
-        "openshift-ingress-operator",
     )
 
     def run_rule(self):
@@ -129,9 +120,15 @@ class TlsCertificateExpiry(OrchestratorRule):
     def _get_tls_secrets(self):
         items = []
         for namespace in self.INFRA_NAMESPACES:
-            _, out, _ = self.oc_api.run_oc_command(
-                "get", ["secret", "--field-selector=type=kubernetes.io/tls", "-n", namespace, "-o", "json"]
-            )
+            try:
+                _, out, _ = self.oc_api.run_oc_command(
+                    "get", ["secret", "--field-selector=type=kubernetes.io/tls", "-n", namespace, "-o", "json"]
+                )
+            except UnExpectedSystemOutput as exc:
+                if f'namespaces "{namespace}" not found' not in exc.output:
+                    raise
+                self.logger.info("Namespace %s is absent; skipping TLS secrets", namespace)
+                continue
             items.extend(json.loads(out).get("items", []))
         return items
 

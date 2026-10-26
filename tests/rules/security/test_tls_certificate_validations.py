@@ -6,8 +6,8 @@ Ported from HealthChecks TlsCertificateExpiryValidator.
 
 import base64
 import json
-from datetime import datetime, timedelta, timezone
-from unittest.mock import Mock
+from datetime import UTC, datetime, timedelta
+from unittest.mock import call
 
 import pytest
 from cryptography import x509
@@ -15,8 +15,10 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
+from in_cluster_checks.rules.k8s.k8s_validations import InfraPodsReadyAndRunning
 from in_cluster_checks.rules.security.tls_certificate_validations import TlsCertificateExpiry
 from in_cluster_checks.utils.enums import Status
+from in_cluster_checks.utils.infra_namespaces import COMMON_INFRA_NAMESPACES
 from tests.pytest_tools.test_operator_base import CmdOutput
 from tests.pytest_tools.test_rule_base import (
     RuleScenarioParams,
@@ -29,7 +31,7 @@ def _generate_cert_pem(days_valid=365, days_expired=0):
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "test")])
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     if days_expired > 0:
         not_before = now - timedelta(days=days_expired + days_valid)
         not_after = now - timedelta(days=days_expired)
@@ -68,69 +70,109 @@ _expiring_cert = _generate_cert_pem(days_valid=5)
 _expired_cert = _generate_cert_pem(days_valid=30, days_expired=5)
 
 
+def _oc_outputs(namespace_outputs=None):
+    """Provide one mocked secret-list response per TLS namespace."""
+    namespace_outputs = namespace_outputs or {}
+    return {
+        ("get", ("secret", "--field-selector=type=kubernetes.io/tls", "-n", namespace, "-o", "json")):
+            namespace_outputs.get(namespace, CmdOutput(_make_secrets_json([])))
+        for namespace in TlsCertificateExpiry.INFRA_NAMESPACES
+    }
+
+
+def test_shared_infrastructure_namespace_scope():
+    """Keep overlapping rule scopes centralized and free of duplicates."""
+    pod_namespaces = set(InfraPodsReadyAndRunning.INFRA_NAMESPACES)
+    tls_namespaces = set(TlsCertificateExpiry.INFRA_NAMESPACES)
+
+    assert pod_namespaces & tls_namespaces == set(COMMON_INFRA_NAMESPACES)
+    assert len(pod_namespaces) == len(InfraPodsReadyAndRunning.INFRA_NAMESPACES)
+    assert len(tls_namespaces) == len(TlsCertificateExpiry.INFRA_NAMESPACES)
+
+
 class TestTlsCertificateExpiry(RuleTestBase):
     """Test TlsCertificateExpiry rule."""
 
     tested_type = TlsCertificateExpiry
 
-    oc_get_cmd = ("get", ("secret", "--field-selector=type=kubernetes.io/tls", "-A", "-o", "json"))
-
     scenario_passed = [
         RuleScenarioParams(
             "all certificates valid",
-            oc_cmd_output_dict={
-                ("get", ("secret", "--field-selector=type=kubernetes.io/tls", "-A", "-o", "json")): CmdOutput(
+            oc_cmd_output_dict=_oc_outputs({
+                "openshift-ingress": CmdOutput(
                     _make_secrets_json([
-                        ("my-tls-secret", "default", _valid_cert),
-                        ("another-tls", "kube-system", _valid_cert),
+                        ("router-tls", "openshift-ingress", _valid_cert),
                     ])
                 ),
-            },
+                "openshift-kube-apiserver": CmdOutput(
+                    _make_secrets_json([("api-tls", "openshift-kube-apiserver", _valid_cert)])
+                ),
+                "openshift-config": CmdOutput(
+                    _make_secrets_json([("console-tls", "openshift-config", _valid_cert)])
+                ),
+                "openshift-kube-controller-manager-operator": CmdOutput(
+                    _make_secrets_json([("controller-signer", "openshift-kube-controller-manager-operator", _valid_cert)])
+                ),
+                "openshift-kube-scheduler": CmdOutput(
+                    _make_secrets_json([("scheduler-serving", "openshift-kube-scheduler", _valid_cert)])
+                ),
+                "openshift-console": CmdOutput(
+                    _make_secrets_json([("console-serving", "openshift-console", _valid_cert)])
+                ),
+                "openshift-ovn-kubernetes": CmdOutput(
+                    _make_secrets_json([("ovn-serving", "openshift-ovn-kubernetes", _valid_cert)])
+                ),
+            }),
         ),
         RuleScenarioParams(
-            "no TLS secrets in cluster",
-            oc_cmd_output_dict={
-                ("get", ("secret", "--field-selector=type=kubernetes.io/tls", "-A", "-o", "json")): CmdOutput(
-                    json.dumps({"items": []})
+            "no TLS secrets in infrastructure namespaces",
+            oc_cmd_output_dict=_oc_outputs(),
+        ),
+        RuleScenarioParams(
+            "optional infrastructure namespace is absent",
+            oc_cmd_output_dict=_oc_outputs({
+                "openshift-ovn-kubernetes": CmdOutput(
+                    "", return_code=1,
+                    err='Error from server (NotFound): namespaces "openshift-ovn-kubernetes" not found',
                 ),
-            },
+            }),
         ),
     ]
 
     scenario_warning = [
         RuleScenarioParams(
             "certificate expiring within 14 days",
-            oc_cmd_output_dict={
-                ("get", ("secret", "--field-selector=type=kubernetes.io/tls", "-A", "-o", "json")): CmdOutput(
+            oc_cmd_output_dict=_oc_outputs({
+                "openshift-authentication": CmdOutput(
                     _make_secrets_json([
-                        ("expiring-secret", "default", _expiring_cert),
+                        ("expiring-secret", "openshift-authentication", _expiring_cert),
                     ])
                 ),
-            },
+            }),
         ),
     ]
 
     scenario_failed = [
         RuleScenarioParams(
             "certificate already expired",
-            oc_cmd_output_dict={
-                ("get", ("secret", "--field-selector=type=kubernetes.io/tls", "-A", "-o", "json")): CmdOutput(
+            oc_cmd_output_dict=_oc_outputs({
+                "openshift-etcd": CmdOutput(
                     _make_secrets_json([
-                        ("expired-secret", "my-namespace", _expired_cert),
+                        ("expired-secret", "openshift-etcd", _expired_cert),
                     ])
                 ),
-            },
+            }),
         ),
         RuleScenarioParams(
             "secret has no tls.crt data and no valid certs",
-            oc_cmd_output_dict={
-                ("get", ("secret", "--field-selector=type=kubernetes.io/tls", "-A", "-o", "json")): CmdOutput(
+            oc_cmd_output_dict=_oc_outputs({
+                "openshift-config": CmdOutput(
                     json.dumps({"items": [{
-                        "metadata": {"name": "bad-secret", "namespace": "default"},
+                        "metadata": {"name": "bad-secret", "namespace": "openshift-config"},
                         "data": {"tls.crt": ""},
                     }]})
                 ),
-            },
+            }),
             failed_msg="Failed to check 1 TLS certificate(s)",
         ),
     ]
@@ -138,11 +180,20 @@ class TestTlsCertificateExpiry(RuleTestBase):
     scenario_unexpected_system_output = [
         RuleScenarioParams(
             "oc get secret command fails",
-            oc_cmd_output_dict={
-                ("get", ("secret", "--field-selector=type=kubernetes.io/tls", "-A", "-o", "json")): CmdOutput(
+            oc_cmd_output_dict=_oc_outputs({
+                "openshift-monitoring": CmdOutput(
                     "", return_code=1, err="Unable to connect to the server"
                 ),
-            },
+            }),
+        ),
+        RuleScenarioParams(
+            "secret access is forbidden",
+            oc_cmd_output_dict=_oc_outputs({
+                "openshift-ovn-kubernetes": CmdOutput(
+                    "", return_code=1,
+                    err="Error from server (Forbidden): secrets is forbidden",
+                ),
+            }),
         ),
     ]
 
@@ -161,3 +212,44 @@ class TestTlsCertificateExpiry(RuleTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_unexpected_system_output)
     def test_scenario_unexpected_system_output(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_unexpected_system_output(self, scenario_params, tested_object)
+
+    def test_reads_only_infra_namespaces(self, tested_object):
+        """Query the approved namespaces once and combine their certificates."""
+        self._init_validation_object(tested_object, self.scenario_passed[0])
+
+        result = tested_object.run_rule()
+
+        assert result.status == Status.PASSED
+        assert tested_object.oc_api.run_oc_command.call_args_list == [
+            call("get", ["secret", "--field-selector=type=kubernetes.io/tls", "-n", namespace, "-o", "json"])
+            for namespace in (
+                "openshift-etcd",
+                "openshift-kube-apiserver",
+                "openshift-kube-apiserver-operator",
+                "openshift-kube-controller-manager",
+                "openshift-kube-controller-manager-operator",
+                "openshift-kube-scheduler",
+                "openshift-apiserver",
+                "openshift-ingress",
+                "openshift-ingress-operator",
+                "openshift-monitoring",
+                "openshift-authentication",
+                "openshift-controller-manager",
+                "openshift-cluster-version",
+                "openshift-machine-api",
+                "openshift-machine-config-operator",
+                "openshift-dns",
+                "openshift-ovn-kubernetes",
+                "openshift-multus",
+                "openshift-network-operator",
+                "openshift-image-registry",
+                "openshift-oauth-apiserver",
+                "openshift-marketplace",
+                "openshift-console",
+                "openshift-service-ca",
+                "openshift-cluster-storage-operator",
+                "openshift-config",
+                "openshift-config-managed",
+            )
+        ]
+        assert len(result.system_info["rows"]) == 7

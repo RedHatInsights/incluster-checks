@@ -13,6 +13,7 @@ from in_cluster_checks.core.exceptions import UnExpectedSystemOutput
 from in_cluster_checks.core.rule import OrchestratorRule
 from in_cluster_checks.core.rule_result import PrerequisiteResult, RuleResult
 from in_cluster_checks.utils.enums import Objectives, Status
+from in_cluster_checks.utils.infra_namespaces import COMMON_INFRA_NAMESPACES
 
 
 class InfraPodsReadyAndRunning(OrchestratorRule):
@@ -30,35 +31,12 @@ class InfraPodsReadyAndRunning(OrchestratorRule):
     HISTORICAL_POD_AGE_THRESHOLD = 86400  # 24 hours in seconds
     MAX_PODS_PER_NAMESPACE = 1000
 
-    INFRA_NAMESPACES = [
-        "openshift-etcd",
-        "openshift-kube-apiserver",
-        "openshift-kube-controller-manager",
-        "openshift-kube-scheduler",
-        "openshift-apiserver",
-        "openshift-controller-manager",
-        "openshift-cluster-version",
-        "openshift-machine-api",
-        "openshift-machine-config-operator",
-        "openshift-ingress",
-        "openshift-ingress-operator",
-        "openshift-dns",
+    INFRA_NAMESPACES = COMMON_INFRA_NAMESPACES + (
         "openshift-sdn",
-        "openshift-ovn-kubernetes",
-        "openshift-multus",
-        "openshift-network-operator",
         "openshift-network-diagnostics",
-        "openshift-monitoring",
-        "openshift-image-registry",
-        "openshift-authentication",
-        "openshift-oauth-apiserver",
         "openshift-operator-lifecycle-manager",
-        "openshift-marketplace",
-        "openshift-console",
-        "openshift-service-ca",
-        "openshift-cluster-storage-operator",
         "openshift-kube-storage-version-migrator",
-    ]
+    )
 
     # Server-side filter: skip completed pods at the API level
     _FIELD_SELECTOR = {"!status.phase": "Succeeded"}

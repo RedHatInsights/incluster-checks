@@ -38,6 +38,7 @@ class TlsCertificateExpiry(OrchestratorRule):
     )
 
     def run_rule(self):
+        """Validate TLS certificates in the configured infrastructure namespaces."""
         items = self._get_tls_secrets()
 
         if not items:
@@ -70,6 +71,7 @@ class TlsCertificateExpiry(OrchestratorRule):
         return expired, expiring_soon, valid, errors
 
     def _check_secret_cert(self, name, namespace, item):
+        """Decode a secret's certificate and report its expiry or parse error."""
         cert_b64 = item.get("data", {}).get("tls.crt", "")
 
         if not cert_b64:
@@ -118,6 +120,7 @@ class TlsCertificateExpiry(OrchestratorRule):
         )
 
     def _get_tls_secrets(self):
+        """Read TLS secrets per namespace, skipping only absent namespaces."""
         items = []
         for namespace in self.INFRA_NAMESPACES:
             try:
@@ -127,7 +130,6 @@ class TlsCertificateExpiry(OrchestratorRule):
             except UnExpectedSystemOutput as exc:
                 if f'namespaces "{namespace}" not found' not in exc.output:
                     raise
-                self.logger.info("Namespace %s is absent; skipping TLS secrets", namespace)
                 continue
             items.extend(json.loads(out).get("items", []))
         return items

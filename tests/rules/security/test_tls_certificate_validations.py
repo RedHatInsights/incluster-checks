@@ -71,6 +71,7 @@ _expired_cert = _generate_cert_pem(days_valid=30, days_expired=5)
 
 
 def _oc_outputs(namespace_outputs=None):
+    """Provide one mocked secret-list response per TLS namespace."""
     namespace_outputs = namespace_outputs or {}
     return {
         ("get", ("secret", "--field-selector=type=kubernetes.io/tls", "-n", namespace, "-o", "json")):
@@ -80,6 +81,7 @@ def _oc_outputs(namespace_outputs=None):
 
 
 def test_shared_infrastructure_namespace_scope():
+    """Keep overlapping rule scopes centralized and free of duplicates."""
     pod_namespaces = set(InfraPodsReadyAndRunning.INFRA_NAMESPACES)
     tls_namespaces = set(TlsCertificateExpiry.INFRA_NAMESPACES)
 
@@ -212,6 +214,7 @@ class TestTlsCertificateExpiry(RuleTestBase):
         RuleTestBase.test_scenario_unexpected_system_output(self, scenario_params, tested_object)
 
     def test_reads_only_infra_namespaces(self, tested_object):
+        """Query the approved namespaces once and combine their certificates."""
         self._init_validation_object(tested_object, self.scenario_passed[0])
 
         result = tested_object.run_rule()

@@ -6,7 +6,7 @@ This module checks OpenShift infrastructure TLS certificates stored in secrets.
 
 import base64
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from cryptography import x509
 
@@ -61,9 +61,9 @@ class TlsCertificateExpiry(OrchestratorRule):
 
             if cert_info.get("status") == "error":
                 errors.append(cert_info)
-            elif cert_info["days_remaining"] <= 0:
+            elif cert_info["remaining"] <= timedelta(0):
                 expired.append(cert_info)
-            elif cert_info["days_remaining"] <= self.WARNING_DAYS:
+            elif cert_info["remaining"] <= timedelta(days=self.WARNING_DAYS):
                 expiring_soon.append(cert_info)
             else:
                 valid.append(cert_info)
@@ -81,13 +81,14 @@ class TlsCertificateExpiry(OrchestratorRule):
             cert_pem = base64.b64decode(cert_b64)
             cert = x509.load_pem_x509_certificate(cert_pem)
             end_date = cert.not_valid_after_utc
-            days_remaining = (end_date - datetime.now(UTC)).days
+            remaining = end_date - datetime.now(UTC)
 
             return {
                 "name": name,
                 "namespace": namespace,
                 "end_date": end_date.strftime("%Y-%m-%d %H:%M:%S UTC"),
-                "days_remaining": days_remaining,
+                "days_remaining": remaining.days,
+                "remaining": remaining,
             }
         except Exception as e:
             return {"name": name, "namespace": namespace, "status": "error", "message": str(e)}

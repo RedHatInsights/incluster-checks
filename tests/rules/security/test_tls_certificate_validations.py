@@ -26,7 +26,7 @@ from tests.pytest_tools.test_rule_base import (
 )
 
 
-def _generate_cert_pem(days_valid=365, days_expired=0):
+def _generate_cert_pem(days_valid=365, days_expired=0, hours_valid=None):
     """Generate a self-signed PEM certificate for testing."""
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "test")])
@@ -35,6 +35,9 @@ def _generate_cert_pem(days_valid=365, days_expired=0):
     if days_expired > 0:
         not_before = now - timedelta(days=days_expired + days_valid)
         not_after = now - timedelta(days=days_expired)
+    elif hours_valid is not None:
+        not_before = now - timedelta(days=1)
+        not_after = now + timedelta(hours=hours_valid)
     else:
         not_before = now
         not_after = now + timedelta(days=days_valid)
@@ -68,6 +71,9 @@ def _make_secrets_json(secrets):
 _valid_cert = _generate_cert_pem(days_valid=365)
 _expiring_cert = _generate_cert_pem(days_valid=5)
 _expired_cert = _generate_cert_pem(days_valid=30, days_expired=5)
+# Edge cases: < 24h remaining (days=0 floor but still valid) and just outside 14-day warning window
+_sub_day_cert = _generate_cert_pem(hours_valid=12)
+_just_outside_warning_cert = _generate_cert_pem(hours_valid=14 * 24 + 1)
 
 
 def _oc_outputs(namespace_outputs=None):
@@ -137,6 +143,16 @@ class TestTlsCertificateExpiry(RuleTestBase):
                 ),
             }),
         ),
+        RuleScenarioParams(
+            "certificate expiring in just over 14 days is not flagged as expiring soon",
+            oc_cmd_output_dict=_oc_outputs({
+                "openshift-ingress": CmdOutput(
+                    _make_secrets_json([
+                        ("router-tls", "openshift-ingress", _just_outside_warning_cert),
+                    ])
+                ),
+            }),
+        ),
     ]
 
     scenario_warning = [
@@ -146,6 +162,16 @@ class TestTlsCertificateExpiry(RuleTestBase):
                 "openshift-authentication": CmdOutput(
                     _make_secrets_json([
                         ("expiring-secret", "openshift-authentication", _expiring_cert),
+                    ])
+                ),
+            }),
+        ),
+        RuleScenarioParams(
+            "certificate with less than 24 hours remaining is treated as warning not expired",
+            oc_cmd_output_dict=_oc_outputs({
+                "openshift-ingress": CmdOutput(
+                    _make_secrets_json([
+                        ("router-tls", "openshift-ingress", _sub_day_cert),
                     ])
                 ),
             }),

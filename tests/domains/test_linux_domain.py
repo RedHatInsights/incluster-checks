@@ -2,6 +2,7 @@
 
 from in_cluster_checks.domains.linux_domain import LinuxValidationDomain
 from in_cluster_checks.rules.linux.linux_validations import (
+    AreHugepagesIommuKernelArgsSet,
     AuditdBacklogLimit,
     ClockSynchronized,
     IsHostReachable,
@@ -24,7 +25,7 @@ def test_linux_domain_rules():
     domain = LinuxValidationDomain()
     rules = domain.get_rule_classes()
 
-    assert len(rules) == 8
+    assert len(rules) == 9
     assert SystemdServicesStatus in rules
     assert IsHostReachable in rules
     assert ClockSynchronized in rules
@@ -33,3 +34,4 @@ def test_linux_domain_rules():
     assert AuditdBacklogLimit in rules
     assert VerifyDuNotHang in rules
     assert YumlockFileCheck in rules
+    assert AreHugepagesIommuKernelArgsSet in rules

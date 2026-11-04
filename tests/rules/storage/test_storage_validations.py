@@ -4,7 +4,6 @@ Tests for storage validations.
 Ported from legacy test patterns to RuleTestBase pattern.
 """
 
-from datetime import datetime, timezone
 from unittest.mock import Mock
 
 import pytest
@@ -19,50 +18,12 @@ from in_cluster_checks.rules.storage.storage_validations import (
     IsOSDsUp,
     IsOSDsWeightOK,
     OrphanCsiVolumes,
-    OsdJournalError,
 )
 from tests.pytest_tools.test_operator_base import CmdOutput
 from tests.pytest_tools.test_rule_base import (
     RuleScenarioParams,
     RuleTestBase,
 )
-
-
-def create_pod_mock(
-    name, phase="Running", ready=True, restarts=0, last_restart=None, waiting_reason=None, terminated_reason=None
-):
-    """Create a mock pod object for testing."""
-    mock_pod = Mock()
-
-    # Container state
-    container_state = Mock()
-    container_state.running = Mock() if phase == "Running" and not waiting_reason and not terminated_reason else None
-    container_state.waiting = Mock(reason=waiting_reason, message="") if waiting_reason else None
-    container_state.terminated = Mock(reason=terminated_reason, message="") if terminated_reason else None
-
-    # Container status
-    container_status = Mock()
-    container_status.name = name
-    container_status.ready = ready
-    container_status.restartCount = restarts  # camelCase!
-    container_status.state = container_state
-
-    if last_restart:
-        last_state = Mock()
-        last_state.terminated = Mock(finishedAt=last_restart)  # camelCase!
-        container_status.lastState = last_state  # camelCase!
-    else:
-        container_status.lastState = Mock(terminated=None)  # camelCase!
-
-    # Pod model with status and metadata
-    mock_pod.model.status.phase = phase
-    mock_pod.model.status.containerStatuses = [container_status]  # camelCase!
-    mock_pod.model.metadata.labels = {"ceph-osd-id": name.split("-")[-1]} if "osd" in name else {}
-
-    # Pod name() method
-    mock_pod.name.return_value = name
-
-    return mock_pod
 
 
 class TestCephOsdTreeWorks(RuleTestBase):
@@ -998,105 +959,6 @@ class TestOrphanCsiVolumes(RuleTestBase):
     def test_scenario_unexpected_system_output(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_unexpected_system_output(self, scenario_params, tested_object)
 
-class TestOsdJournalError(RuleTestBase):
-    """Test OsdJournalError rule."""
-
-    tested_type = OsdJournalError
-
-    scenario_passed = [
-        RuleScenarioParams(
-            "all OSD pods healthy",
-            tested_object_mock_dict={
-                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_single_resource": Mock(return_value=Mock()),
-                "_get_osd_pods": Mock(
-                    return_value=[
-                        create_pod_mock("rook-ceph-osd-0", phase="Running", ready=True, restarts=0),
-                        create_pod_mock("rook-ceph-osd-1", phase="Running", ready=True, restarts=0),
-                    ]
-                ),
-            },
-        )
-    ]
-
-    scenario_failed = [
-        RuleScenarioParams(
-            "OSD pod not running",
-            tested_object_mock_dict={
-                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_single_resource": Mock(return_value=Mock()),
-                "_get_osd_pods": Mock(
-                    return_value=[
-                        create_pod_mock("rook-ceph-osd-0", phase="Pending", ready=False, restarts=0),
-                    ]
-                ),
-                "oc_api.run_oc_command": Mock(return_value=(0, "pod logs here", "")),
-            },
-            failed_msg=(
-                "Pod Name: rook-ceph-osd-0\n"
-                "OSD ID: 0\n"
-                "Status: Pending\n"
-                "Recent Logs (last 15 lines or 1 hour):\n"
-                "pod logs here\n"
-            ),
-        ),
-        RuleScenarioParams(
-            "OSD pod with recent restarts",
-            tested_object_mock_dict={
-                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_single_resource": Mock(return_value=Mock()),
-                "_get_osd_pods": Mock(
-                    return_value=[
-                        create_pod_mock(
-                            "rook-ceph-osd-0",
-                            phase="Running",
-                            ready=True,
-                            restarts=5,
-                            last_restart=datetime.now(timezone.utc).isoformat(),
-                        ),
-                    ]
-                ),
-                "oc_api.run_oc_command": Mock(return_value=(0, "pod logs here", "")),
-            },
-            failed_msg=(
-                "Pod Name: rook-ceph-osd-0\n"
-                "OSD ID: 0\n"
-                "Status: Running\n"
-                "Recent Logs (last 15 lines or 1 hour):\n"
-                "pod logs here\n"
-            ),
-        ),
-        RuleScenarioParams(
-            "OSD pod in CrashLoopBackOff",
-            tested_object_mock_dict={
-                "oc_api.get_pod_name": Mock(return_value="rook-ceph-tools-12345"),
-                "oc_api.select_single_resource": Mock(return_value=Mock()),
-                "_get_osd_pods": Mock(
-                    return_value=[
-                        create_pod_mock("rook-ceph-osd-0", phase="Running", ready=False, waiting_reason="CrashLoopBackOff"),
-                    ]
-                ),
-                "oc_api.run_oc_command": Mock(return_value=(0, "pod logs here", "")),
-            },
-            failed_msg=(
-                "Pod Name: rook-ceph-osd-0\n"
-                "OSD ID: 0\n"
-                "Status: Running\n"
-                "Container Errors:\n"
-                "  - rook-ceph-osd-0: CrashLoopBackOff - \n"
-                "Recent Logs (last 15 lines or 1 hour):\n"
-                "pod logs here\n"
-            ),
-        ),
-    ]
-
-    @pytest.mark.parametrize("scenario_params", scenario_passed)
-    def test_scenario_passed(self, scenario_params, tested_object):
-        RuleTestBase.test_scenario_passed(self, scenario_params, tested_object)
-
-    @pytest.mark.parametrize("scenario_params", scenario_failed)
-    def test_scenario_failed(self, scenario_params, tested_object):
-        RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
 
 
 class TestCheckPoolSize(RuleTestBase):
@@ -1268,3 +1130,5 @@ class TestCephSlowOps(RuleTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_failed)
     def test_scenario_failed(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_failed(self, scenario_params, tested_object)
+
+

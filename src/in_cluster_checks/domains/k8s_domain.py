@@ -32,6 +32,7 @@ from in_cluster_checks.rules.k8s.subscription_operator_validations import (
     VerifyNfdPodRestartCount,
     VerifyWorkloadAvailabilityNamespaceHealth,
 )
+from in_cluster_checks.rules.k8s.workload_event_health import WorkloadEventHealth
 
 
 class K8sValidationDomain(RuleDomain):
@@ -73,4 +74,5 @@ class K8sValidationDomain(RuleDomain):
             VerifyWorkloadAvailabilityNamespaceHealth,
             VerifyFARControllerReplicas,
             VerifyFarContainerNonRoot,
+            WorkloadEventHealth,
         ]

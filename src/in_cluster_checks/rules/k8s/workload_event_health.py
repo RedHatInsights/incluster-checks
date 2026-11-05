@@ -183,10 +183,7 @@ class WorkloadEventHealth(OrchestratorRule):
             # reason is in UNHEALTHY_REASONS.  Some K8s serializations omit
             # or mis-set the type field; matching by reason prevents silent
             # drops (e.g. 414K BackOff events ignored because type was missing).
-            actionable_events = [
-                e for e in group_events
-                if e["type"] == "Warning" or e["reason"] in UNHEALTHY_REASONS
-            ]
+            actionable_events = [e for e in group_events if e["type"] == "Warning" or e["reason"] in UNHEALTHY_REASONS]
             warning_count = sum(e["count"] for e in actionable_events)
 
             # Build reason breakdown: {"BackOff": 12, "Scheduled": 3, ...}
@@ -195,9 +192,7 @@ class WorkloadEventHealth(OrchestratorRule):
                 reasons[e["reason"]] += e["count"]
 
             # Determine unhealthy reasons — scan ALL events, not just Warning-typed
-            unhealthy_reasons_found = sorted(
-                {e["reason"] for e in group_events if e["reason"] in UNHEALTHY_REASONS}
-            )
+            unhealthy_reasons_found = sorted({e["reason"] for e in group_events if e["reason"] in UNHEALTHY_REASONS})
 
             # Pick a sample message from the first unhealthy event
             unhealthy_events = [e for e in group_events if e["reason"] in UNHEALTHY_REASONS]
@@ -241,12 +236,10 @@ class WorkloadEventHealth(OrchestratorRule):
             True if recovered, False otherwise
         """
         unhealthy_ts = [
-            e["last_timestamp"] for e in events
-            if e["reason"] in UNHEALTHY_REASONS and e.get("last_timestamp")
+            e["last_timestamp"] for e in events if e["reason"] in UNHEALTHY_REASONS and e.get("last_timestamp")
         ]
         recovery_ts = [
-            e["last_timestamp"] for e in events
-            if e["reason"] in RECOVERY_REASONS and e.get("last_timestamp")
+            e["last_timestamp"] for e in events if e["reason"] in RECOVERY_REASONS and e.get("last_timestamp")
         ]
 
         if not unhealthy_ts or not recovery_ts:

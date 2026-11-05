@@ -255,6 +255,7 @@ class TestWorkloadEventHealth(RuleTestBase):
                         "unhealthy_reasons",
                         "is_unhealthy",
                         "recovered",
+                        "stale",
                         "sample_message",
                     ],
                     "workload entry",
@@ -579,6 +580,63 @@ class TestWorkloadEventHealthAggregation:
         assert "1 recovered" in message
         assert "No unhealthy workloads detected" in message
 
+    def test_build_message_includes_stale_count(self, rule):
+        """Message mentions stale workload count when some are stale."""
+        workloads = [
+            {
+                "namespace": "openshift-marketplace",
+                "kind": "Pod",
+                "name": "certified-operators-old",
+                "total_events": 15,
+                "warning_events": 1,
+                "reasons": {"Unhealthy": 1},
+                "unhealthy_reasons": ["Unhealthy"],
+                "is_unhealthy": False,
+                "recovered": False,
+                "stale": True,
+                "sample_message": "Startup probe failed",
+            },
+        ]
+        unhealthy = [w for w in workloads if w["is_unhealthy"]]
+        message = rule._build_message(workloads, unhealthy)
+        assert "1 stale (source pod replaced)" in message
+        assert "No unhealthy workloads detected" in message
+
+    def test_build_message_mixed_stale_and_unhealthy(self, rule):
+        """Message shows both unhealthy and stale counts."""
+        workloads = [
+            {
+                "namespace": "ns1",
+                "kind": "Pod",
+                "name": "crashloop-pod",
+                "total_events": 100,
+                "warning_events": 90,
+                "reasons": {"BackOff": 90},
+                "unhealthy_reasons": ["BackOff"],
+                "is_unhealthy": True,
+                "recovered": False,
+                "stale": False,
+                "sample_message": "Back-off restarting",
+            },
+            {
+                "namespace": "ns1",
+                "kind": "Pod",
+                "name": "rotated-pod",
+                "total_events": 15,
+                "warning_events": 1,
+                "reasons": {"Unhealthy": 1},
+                "unhealthy_reasons": ["Unhealthy"],
+                "is_unhealthy": False,
+                "recovered": False,
+                "stale": True,
+                "sample_message": "probe failed",
+            },
+        ]
+        unhealthy = [w for w in workloads if w["is_unhealthy"]]
+        message = rule._build_message(workloads, unhealthy)
+        assert "1 unhealthy" in message
+        assert "1 stale (source pod replaced)" in message
+
 
 class TestApplyLiveRecovery:
     """Tests for live pod status recovery detection."""
@@ -611,6 +669,7 @@ class TestApplyLiveRecovery:
                 "unhealthy_reasons": ["Unhealthy"],
                 "is_unhealthy": True,
                 "recovered": False,
+                "stale": False,
                 "sample_message": "Startup probe failed",
             },
         ]
@@ -636,6 +695,7 @@ class TestApplyLiveRecovery:
                 "unhealthy_reasons": ["BackOff"],
                 "is_unhealthy": True,
                 "recovered": False,
+                "stale": False,
                 "sample_message": "Back-off restarting",
             },
         ]
@@ -661,6 +721,7 @@ class TestApplyLiveRecovery:
                 "unhealthy_reasons": ["FailedCreate"],
                 "is_unhealthy": True,
                 "recovered": False,
+                "stale": False,
                 "sample_message": "quota exceeded",
             },
         ]
@@ -684,6 +745,7 @@ class TestApplyLiveRecovery:
                 "unhealthy_reasons": ["Unhealthy"],
                 "is_unhealthy": True,
                 "recovered": False,
+                "stale": False,
                 "sample_message": "probe failed",
             },
         ]
@@ -693,6 +755,105 @@ class TestApplyLiveRecovery:
 
         assert workloads[0]["is_unhealthy"] is True
         assert workloads[0]["recovered"] is False
+
+    def test_rotated_pod_no_longer_exists_marked_stale(self, rule):
+        """Pod that was replaced (no longer exists) -> stale=True, not recovered."""
+        workloads = [
+            {
+                "namespace": "openshift-marketplace",
+                "kind": "Pod",
+                "name": "certified-operators-9lw6g",
+                "total_events": 15,
+                "warning_events": 1,
+                "reasons": {"Unhealthy": 1, "Started": 3, "Created": 3},
+                "unhealthy_reasons": ["Unhealthy"],
+                "is_unhealthy": True,
+                "recovered": False,
+                "stale": False,
+                "sample_message": "Startup probe failed",
+            },
+        ]
+        # Namespace query succeeds but returns a DIFFERENT pod (the replacement)
+        rule.oc_api.select_resources = Mock(
+            return_value=[self._make_pod_mock("certified-operators-abc12", "openshift-marketplace", is_ready=True)]
+        )
+
+        rule._apply_live_recovery(workloads)
+
+        assert workloads[0]["is_unhealthy"] is False
+        assert workloads[0]["recovered"] is False
+        assert workloads[0]["stale"] is True
+
+    def test_api_failure_does_not_mark_stale(self, rule):
+        """If namespace query fails, pod is NOT marked stale (fail-safe)."""
+        workloads = [
+            {
+                "namespace": "ns1",
+                "kind": "Pod",
+                "name": "some-pod",
+                "total_events": 5,
+                "warning_events": 2,
+                "reasons": {"Unhealthy": 2},
+                "unhealthy_reasons": ["Unhealthy"],
+                "is_unhealthy": True,
+                "recovered": False,
+                "stale": False,
+                "sample_message": "probe failed",
+            },
+        ]
+        rule.oc_api.select_resources = Mock(side_effect=Exception("connection refused"))
+
+        rule._apply_live_recovery(workloads)
+
+        assert workloads[0]["is_unhealthy"] is True
+        assert workloads[0]["stale"] is False
+
+    def test_mixed_stale_and_live_pods_in_same_namespace(self, rule):
+        """One pod still exists (not ready), another was replaced -> correct per-pod state."""
+        workloads = [
+            {
+                "namespace": "openshift-marketplace",
+                "kind": "Pod",
+                "name": "certified-operators-old",
+                "total_events": 15,
+                "warning_events": 1,
+                "reasons": {"Unhealthy": 1},
+                "unhealthy_reasons": ["Unhealthy"],
+                "is_unhealthy": True,
+                "recovered": False,
+                "stale": False,
+                "sample_message": "Startup probe failed",
+            },
+            {
+                "namespace": "openshift-marketplace",
+                "kind": "Pod",
+                "name": "community-operators-live",
+                "total_events": 10,
+                "warning_events": 3,
+                "reasons": {"BackOff": 3},
+                "unhealthy_reasons": ["BackOff"],
+                "is_unhealthy": True,
+                "recovered": False,
+                "stale": False,
+                "sample_message": "Back-off restarting",
+            },
+        ]
+        # Only community-operators-live exists (not ready); certified-operators-old is gone
+        rule.oc_api.select_resources = Mock(
+            return_value=[self._make_pod_mock("community-operators-live", "openshift-marketplace", is_ready=False)]
+        )
+
+        rule._apply_live_recovery(workloads)
+
+        # Old pod: gone -> stale
+        assert workloads[0]["is_unhealthy"] is False
+        assert workloads[0]["stale"] is True
+        assert workloads[0]["recovered"] is False
+
+        # Live pod: exists, not ready -> still unhealthy
+        assert workloads[1]["is_unhealthy"] is True
+        assert workloads[1]["stale"] is False
+        assert workloads[1]["recovered"] is False
 
 
 class TestWorkloadEventCollector(DataCollectorTestBase):

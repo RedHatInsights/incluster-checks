@@ -138,8 +138,8 @@ class WorkloadEventHealth(OrchestratorRule):
 
         # Check live pod status — startup probe timeouts don't generate a
         # recovery event when the probe eventually succeeds, so timestamp-based
-        # recovery misses them.  Querying actual pod state is the only 100%
-        # certain way to confirm recovery in those cases.
+        # recovery misses them.  Also marks pods that no longer exist (e.g.
+        # rotated catalog-source pods) as stale rather than unhealthy.
         self._apply_live_recovery(workloads)
 
         unhealthy_workloads = [w for w in workloads if w["is_unhealthy"]]
@@ -222,6 +222,7 @@ class WorkloadEventHealth(OrchestratorRule):
                     "unhealthy_reasons": unhealthy_reasons_found,
                     "is_unhealthy": len(unhealthy_reasons_found) > 0 and not recovered,
                     "recovered": recovered,
+                    "stale": False,
                     "sample_message": sample_message,
                 }
             )
@@ -255,12 +256,18 @@ class WorkloadEventHealth(OrchestratorRule):
         return max(recovery_ts) > max(unhealthy_ts)
 
     def _apply_live_recovery(self, workloads: List[Dict[str, Any]]) -> None:
-        """Mark unhealthy Pod workloads as recovered if the pod is currently Ready.
+        """Mark unhealthy Pod workloads as recovered or stale based on live status.
 
         Startup/readiness probe failures generate Unhealthy events but K8s
         does NOT emit an event when a probe succeeds.  So timestamp-based
         recovery can never detect these.  Checking live pod status is the
         only definitive signal.
+
+        Pods that no longer exist (e.g. rotated catalog-source pods) are
+        marked as ``stale`` rather than ``recovered`` — the original object
+        is gone so there is nothing left to be unhealthy, but calling it
+        "recovered" would be inaccurate.  If the namespace query itself
+        fails, the workload is left unchanged (fail-safe).
         """
         still_unhealthy = [w for w in workloads if w["is_unhealthy"] and w["kind"] == "Pod"]
         if not still_unhealthy:
@@ -270,9 +277,11 @@ class WorkloadEventHealth(OrchestratorRule):
         namespaces = {w["namespace"] for w in still_unhealthy}
 
         pod_ready: Dict[tuple, bool] = {}
+        queried_namespaces: set = set()
         for ns in namespaces:
             try:
                 pod_objects = self.oc_api.select_resources("pod", namespace=ns, timeout=30)
+                queried_namespaces.add(ns)
                 for pod_obj in pod_objects:
                     d = pod_obj.as_dict()
                     pod_ns = d.get("metadata", {}).get("namespace", ns)
@@ -284,9 +293,19 @@ class WorkloadEventHealth(OrchestratorRule):
                 self.logger.warning("Failed to query pods in namespace %s for recovery detection", ns)
 
         for w in still_unhealthy:
-            if pod_ready.get((w["namespace"], w["name"]), False):
+            key = (w["namespace"], w["name"])
+            if key in pod_ready:
+                if pod_ready[key]:
+                    # Pod exists and is Ready — recovered
+                    w["is_unhealthy"] = False
+                    w["recovered"] = True
+            elif w["namespace"] in queried_namespaces:
+                # Namespace queried successfully but this pod wasn't found —
+                # the original object no longer exists (e.g. rotated by a
+                # controller).  Mark stale, not recovered.
                 w["is_unhealthy"] = False
-                w["recovered"] = True
+                w["stale"] = True
+            # else: namespace query failed entirely — leave unchanged (fail-safe)
 
     def _build_message(
         self,
@@ -304,19 +323,26 @@ class WorkloadEventHealth(OrchestratorRule):
         """
         total_workloads = len(workloads)
         recovered_workloads = [w for w in workloads if w.get("recovered")]
-        recovered_suffix = ""
+        stale_workloads = [w for w in workloads if w.get("stale")]
+
+        suffixes: List[str] = []
         if recovered_workloads:
-            recovered_suffix = f", {len(recovered_workloads)} recovered"
+            suffixes.append(f"{len(recovered_workloads)} recovered")
+        if stale_workloads:
+            suffixes.append(f"{len(stale_workloads)} stale (source pod replaced)")
+        suffix = ""
+        if suffixes:
+            suffix = ", " + ", ".join(suffixes)
 
         if not unhealthy_workloads:
             return (
-                f"Workload events: {total_workloads} workload(s) with events{recovered_suffix}\n"
+                f"Workload events: {total_workloads} workload(s) with events{suffix}\n"
                 f"No unhealthy workloads detected"
             )
 
         lines = [
             f"Workload events: {total_workloads} workload(s) with events, "
-            f"{len(unhealthy_workloads)} unhealthy{recovered_suffix}:",
+            f"{len(unhealthy_workloads)} unhealthy{suffix}:",
             "",
         ]
         for w in unhealthy_workloads[:MAX_DETAILS_IN_MESSAGE]:

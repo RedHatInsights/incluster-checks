@@ -580,6 +580,121 @@ class TestWorkloadEventHealthAggregation:
         assert "No unhealthy workloads detected" in message
 
 
+class TestApplyLiveRecovery:
+    """Tests for live pod status recovery detection."""
+
+    @pytest.fixture
+    def rule(self):
+        return WorkloadEventHealth(host_executor=Mock())
+
+    @staticmethod
+    def _make_pod_mock(name, namespace, is_ready):
+        """Create a mock pod APIObject with Ready condition."""
+        mock = Mock()
+        conditions = [{"type": "Ready", "status": "True" if is_ready else "False"}]
+        mock.as_dict.return_value = {
+            "metadata": {"name": name, "namespace": namespace},
+            "status": {"conditions": conditions},
+        }
+        return mock
+
+    def test_startup_probe_timeout_recovered_via_live_status(self, rule):
+        """Pod with Unhealthy (startup probe) but currently Ready -> recovered."""
+        workloads = [
+            {
+                "namespace": "openshift-marketplace",
+                "kind": "Pod",
+                "name": "certified-operators-9lw6g",
+                "total_events": 15,
+                "warning_events": 1,
+                "reasons": {"Unhealthy": 1, "Started": 3, "Created": 3},
+                "unhealthy_reasons": ["Unhealthy"],
+                "is_unhealthy": True,
+                "recovered": False,
+                "sample_message": "Startup probe failed",
+            },
+        ]
+        rule.oc_api.select_resources = Mock(
+            return_value=[self._make_pod_mock("certified-operators-9lw6g", "openshift-marketplace", is_ready=True)]
+        )
+
+        rule._apply_live_recovery(workloads)
+
+        assert workloads[0]["is_unhealthy"] is False
+        assert workloads[0]["recovered"] is True
+
+    def test_crashlooping_pod_not_ready_stays_unhealthy(self, rule):
+        """Pod with BackOff and currently NOT Ready -> stays unhealthy."""
+        workloads = [
+            {
+                "namespace": "assisted-chat",
+                "kind": "Pod",
+                "name": "assisted-service-mcp-bb9868f5d-lv29t",
+                "total_events": 432606,
+                "warning_events": 414283,
+                "reasons": {"BackOff": 414283},
+                "unhealthy_reasons": ["BackOff"],
+                "is_unhealthy": True,
+                "recovered": False,
+                "sample_message": "Back-off restarting",
+            },
+        ]
+        rule.oc_api.select_resources = Mock(
+            return_value=[self._make_pod_mock("assisted-service-mcp-bb9868f5d-lv29t", "assisted-chat", is_ready=False)]
+        )
+
+        rule._apply_live_recovery(workloads)
+
+        assert workloads[0]["is_unhealthy"] is True
+        assert workloads[0]["recovered"] is False
+
+    def test_non_pod_workloads_skipped(self, rule):
+        """Non-Pod workloads (Deployment, Job) are not checked via live status."""
+        workloads = [
+            {
+                "namespace": "ns1",
+                "kind": "Deployment",
+                "name": "my-deploy",
+                "total_events": 5,
+                "warning_events": 3,
+                "reasons": {"FailedCreate": 3},
+                "unhealthy_reasons": ["FailedCreate"],
+                "is_unhealthy": True,
+                "recovered": False,
+                "sample_message": "quota exceeded",
+            },
+        ]
+        rule.oc_api.select_resources = Mock()
+
+        rule._apply_live_recovery(workloads)
+
+        rule.oc_api.select_resources.assert_not_called()
+        assert workloads[0]["is_unhealthy"] is True
+
+    def test_api_failure_leaves_workloads_unchanged(self, rule):
+        """If pod status query fails, workloads keep their current state."""
+        workloads = [
+            {
+                "namespace": "ns1",
+                "kind": "Pod",
+                "name": "some-pod",
+                "total_events": 5,
+                "warning_events": 2,
+                "reasons": {"Unhealthy": 2},
+                "unhealthy_reasons": ["Unhealthy"],
+                "is_unhealthy": True,
+                "recovered": False,
+                "sample_message": "probe failed",
+            },
+        ]
+        rule.oc_api.select_resources = Mock(side_effect=Exception("connection refused"))
+
+        rule._apply_live_recovery(workloads)
+
+        assert workloads[0]["is_unhealthy"] is True
+        assert workloads[0]["recovered"] is False
+
+
 class TestWorkloadEventCollector(DataCollectorTestBase):
     """Test WorkloadEventCollector data collector."""
 

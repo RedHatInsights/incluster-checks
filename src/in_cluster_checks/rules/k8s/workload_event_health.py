@@ -135,6 +135,13 @@ class WorkloadEventHealth(OrchestratorRule):
 
         # Aggregate raw events into workload-level summaries
         workloads = self._aggregate_by_workload(all_events)
+
+        # Check live pod status — startup probe timeouts don't generate a
+        # recovery event when the probe eventually succeeds, so timestamp-based
+        # recovery misses them.  Querying actual pod state is the only 100%
+        # certain way to confirm recovery in those cases.
+        self._apply_live_recovery(workloads)
+
         unhealthy_workloads = [w for w in workloads if w["is_unhealthy"]]
 
         workload_events_data = {
@@ -246,6 +253,40 @@ class WorkloadEventHealth(OrchestratorRule):
             return False
 
         return max(recovery_ts) > max(unhealthy_ts)
+
+    def _apply_live_recovery(self, workloads: List[Dict[str, Any]]) -> None:
+        """Mark unhealthy Pod workloads as recovered if the pod is currently Ready.
+
+        Startup/readiness probe failures generate Unhealthy events but K8s
+        does NOT emit an event when a probe succeeds.  So timestamp-based
+        recovery can never detect these.  Checking live pod status is the
+        only definitive signal.
+        """
+        still_unhealthy = [w for w in workloads if w["is_unhealthy"] and w["kind"] == "Pod"]
+        if not still_unhealthy:
+            return
+
+        # Collect namespaces to query — avoids fetching all pods cluster-wide
+        namespaces = {w["namespace"] for w in still_unhealthy}
+
+        pod_ready: Dict[tuple, bool] = {}
+        for ns in namespaces:
+            try:
+                pod_objects = self.oc_api.select_resources("pod", namespace=ns, timeout=30)
+                for pod_obj in pod_objects:
+                    d = pod_obj.as_dict()
+                    pod_ns = d.get("metadata", {}).get("namespace", ns)
+                    pod_name = d.get("metadata", {}).get("name", "")
+                    conditions = d.get("status", {}).get("conditions", [])
+                    is_ready = any(c.get("type") == "Ready" and c.get("status") == "True" for c in conditions)
+                    pod_ready[(pod_ns, pod_name)] = is_ready
+            except Exception:
+                self.logger.warning("Failed to query pods in namespace %s for recovery detection", ns)
+
+        for w in still_unhealthy:
+            if pod_ready.get((w["namespace"], w["name"]), False):
+                w["is_unhealthy"] = False
+                w["recovered"] = True
 
     def _build_message(
         self,

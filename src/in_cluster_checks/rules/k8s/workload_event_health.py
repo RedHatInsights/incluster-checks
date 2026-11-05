@@ -38,9 +38,13 @@ UNHEALTHY_REASONS = {
     "Evicted",
     "NetworkNotReady",
     "ProbeWarning",
+    "ProbeError",
     "ImagePullBackOff",
     "ErrImagePull",
 }
+
+# Events that prove a workload recovered after a failure.
+RECOVERY_REASONS = {"Started", "Pulled", "Created"}
 
 # Cap on how many workload lines are rendered in the summary message,
 # to keep the message readable when a cluster has many unhealthy workloads
@@ -174,20 +178,36 @@ class WorkloadEventHealth(OrchestratorRule):
         workloads = []
         for (namespace, kind, name), group_events in sorted(groups.items()):
             total_count = sum(e["count"] for e in group_events)
-            warning_events = [e for e in group_events if e["type"] == "Warning"]
-            warning_count = sum(e["count"] for e in warning_events)
+
+            # An event counts as a warning if its type is Warning OR its
+            # reason is in UNHEALTHY_REASONS.  Some K8s serializations omit
+            # or mis-set the type field; matching by reason prevents silent
+            # drops (e.g. 414K BackOff events ignored because type was missing).
+            actionable_events = [
+                e for e in group_events
+                if e["type"] == "Warning" or e["reason"] in UNHEALTHY_REASONS
+            ]
+            warning_count = sum(e["count"] for e in actionable_events)
 
             # Build reason breakdown: {"BackOff": 12, "Scheduled": 3, ...}
             reasons: Dict[str, int] = defaultdict(int)
             for e in group_events:
                 reasons[e["reason"]] += e["count"]
 
-            # Determine unhealthy reasons present
-            unhealthy_reasons_found = sorted({e["reason"] for e in warning_events if e["reason"] in UNHEALTHY_REASONS})
+            # Determine unhealthy reasons — scan ALL events, not just Warning-typed
+            unhealthy_reasons_found = sorted(
+                {e["reason"] for e in group_events if e["reason"] in UNHEALTHY_REASONS}
+            )
 
-            # Pick a sample message from the first unhealthy warning event
-            unhealthy_warning_events = [e for e in warning_events if e["reason"] in UNHEALTHY_REASONS]
-            sample_message = unhealthy_warning_events[0]["message"] if unhealthy_warning_events else ""
+            # Pick a sample message from the first unhealthy event
+            unhealthy_events = [e for e in group_events if e["reason"] in UNHEALTHY_REASONS]
+            sample_message = unhealthy_events[0]["message"] if unhealthy_events else ""
+
+            # Recovery detection: if a recovery event (Started/Pulled/Created)
+            # happened AFTER the last unhealthy event, the workload recovered.
+            recovered = False
+            if unhealthy_reasons_found:
+                recovered = self._check_recovery(group_events)
 
             workloads.append(
                 {
@@ -198,12 +218,41 @@ class WorkloadEventHealth(OrchestratorRule):
                     "warning_events": warning_count,
                     "reasons": dict(sorted(reasons.items())),
                     "unhealthy_reasons": unhealthy_reasons_found,
-                    "is_unhealthy": len(unhealthy_reasons_found) > 0,
+                    "is_unhealthy": len(unhealthy_reasons_found) > 0 and not recovered,
+                    "recovered": recovered,
                     "sample_message": sample_message,
                 }
             )
 
         return workloads
+
+    @staticmethod
+    def _check_recovery(events: List[Dict[str, Any]]) -> bool:
+        """Check if recovery events occurred after the last unhealthy event.
+
+        Uses timestamp comparison — if the latest Started/Pulled/Created
+        timestamp is after the latest unhealthy-reason timestamp, the
+        workload recovered.  This is a definitive signal, not a heuristic.
+
+        Args:
+            events: All events for a single workload
+
+        Returns:
+            True if recovered, False otherwise
+        """
+        unhealthy_ts = [
+            e["last_timestamp"] for e in events
+            if e["reason"] in UNHEALTHY_REASONS and e.get("last_timestamp")
+        ]
+        recovery_ts = [
+            e["last_timestamp"] for e in events
+            if e["reason"] in RECOVERY_REASONS and e.get("last_timestamp")
+        ]
+
+        if not unhealthy_ts or not recovery_ts:
+            return False
+
+        return max(recovery_ts) > max(unhealthy_ts)
 
     def _build_message(
         self,
@@ -220,12 +269,20 @@ class WorkloadEventHealth(OrchestratorRule):
             Formatted message string
         """
         total_workloads = len(workloads)
+        recovered_workloads = [w for w in workloads if w.get("recovered")]
+        recovered_suffix = ""
+        if recovered_workloads:
+            recovered_suffix = f", {len(recovered_workloads)} recovered"
 
         if not unhealthy_workloads:
-            return f"Workload events: {total_workloads} workload(s) with events\nNo unhealthy workloads detected"
+            return (
+                f"Workload events: {total_workloads} workload(s) with events{recovered_suffix}\n"
+                f"No unhealthy workloads detected"
+            )
 
         lines = [
-            f"Workload events: {total_workloads} workload(s) with events, {len(unhealthy_workloads)} unhealthy:",
+            f"Workload events: {total_workloads} workload(s) with events, "
+            f"{len(unhealthy_workloads)} unhealthy{recovered_suffix}:",
             "",
         ]
         for w in unhealthy_workloads[:MAX_DETAILS_IN_MESSAGE]:

@@ -4,6 +4,7 @@ import pytest
 
 from in_cluster_checks.rules.k8s.workload_event_health import (
     MAX_DETAILS_IN_MESSAGE,
+    RECOVERY_REASONS,
     WorkloadEventCollector,
     WorkloadEventHealth,
 )
@@ -253,6 +254,7 @@ class TestWorkloadEventHealth(RuleTestBase):
                         "reasons",
                         "unhealthy_reasons",
                         "is_unhealthy",
+                        "recovered",
                         "sample_message",
                     ],
                     "workload entry",
@@ -348,6 +350,7 @@ class TestWorkloadEventHealthAggregation:
         assert w["reasons"] == {"BackOff": 3, "CrashLoopBackOff": 2, "Scheduled": 1}
         assert w["unhealthy_reasons"] == ["BackOff", "CrashLoopBackOff"]
         assert w["is_unhealthy"] is True
+        assert w["recovered"] is False
         assert w["sample_message"] == "back-off restarting failed container"  # from first unhealthy event
 
     def test_aggregate_benign_warnings_are_not_unhealthy(self, rule):
@@ -424,6 +427,156 @@ class TestWorkloadEventHealthAggregation:
         workloads = rule._aggregate_by_workload(events)
         unhealthy = [w for w in workloads if w["is_unhealthy"]]
         message = rule._build_message(workloads, unhealthy)
+        assert "No unhealthy workloads detected" in message
+
+    def test_backoff_without_warning_type_still_counted(self, rule):
+        """BackOff event with type=Normal (missing Warning) is still flagged unhealthy."""
+        events = [
+            _create_event(
+                type_="Normal",
+                reason="BackOff",
+                message="Back-off restarting",
+                count=414106,
+                kind="Pod",
+                obj_name="my-pod",
+                obj_namespace="ns1",
+            ),
+        ]
+        workloads = rule._aggregate_by_workload(events)
+        assert len(workloads) == 1
+        w = workloads[0]
+        assert w["is_unhealthy"] is True
+        assert "BackOff" in w["unhealthy_reasons"]
+        assert w["warning_events"] == 414106
+
+    def test_probe_error_flagged_as_unhealthy(self, rule):
+        """ProbeError events are recognized as unhealthy."""
+        events = [
+            _create_event(
+                type_="Warning",
+                reason="ProbeError",
+                message="Readiness probe errored",
+                count=5036,
+                kind="Pod",
+                obj_name="vg-manager-kplf5",
+                obj_namespace="openshift-storage",
+            ),
+        ]
+        workloads = rule._aggregate_by_workload(events)
+        assert len(workloads) == 1
+        assert workloads[0]["is_unhealthy"] is True
+        assert "ProbeError" in workloads[0]["unhealthy_reasons"]
+
+    def test_recovered_started_after_backoff(self, rule):
+        """Workload with Started AFTER BackOff -> is_unhealthy=False, recovered=True."""
+        events = [
+            _create_event(
+                type_="Warning",
+                reason="BackOff",
+                count=3,
+                kind="Pod",
+                obj_name="catalog-pod",
+                obj_namespace="ns1",
+                last_timestamp="2026-11-01T00:03:00Z",
+            ),
+            _create_event(
+                type_="Normal",
+                reason="Started",
+                count=1,
+                kind="Pod",
+                obj_name="catalog-pod",
+                obj_namespace="ns1",
+                last_timestamp="2026-11-01T00:05:00Z",
+            ),
+        ]
+        workloads = rule._aggregate_by_workload(events)
+        assert len(workloads) == 1
+        w = workloads[0]
+        assert w["unhealthy_reasons"] == ["BackOff"]
+        assert w["recovered"] is True
+        assert w["is_unhealthy"] is False
+
+    def test_not_recovered_no_started_after_backoff(self, rule):
+        """Workload with BackOff but no Started after -> still unhealthy."""
+        events = [
+            _create_event(
+                type_="Normal",
+                reason="Started",
+                count=1,
+                kind="Pod",
+                obj_name="broken-pod",
+                obj_namespace="ns1",
+                last_timestamp="2026-11-01T00:01:00Z",
+            ),
+            _create_event(
+                type_="Warning",
+                reason="BackOff",
+                count=17,
+                kind="Pod",
+                obj_name="broken-pod",
+                obj_namespace="ns1",
+                last_timestamp="2026-11-01T00:05:00Z",
+            ),
+        ]
+        workloads = rule._aggregate_by_workload(events)
+        assert len(workloads) == 1
+        w = workloads[0]
+        assert w["recovered"] is False
+        assert w["is_unhealthy"] is True
+
+    def test_not_recovered_no_timestamps(self, rule):
+        """Without timestamps, recovery cannot be confirmed -> still unhealthy."""
+        events = [
+            _create_event(
+                type_="Warning",
+                reason="BackOff",
+                count=5,
+                kind="Pod",
+                obj_name="pod-x",
+                obj_namespace="ns1",
+                last_timestamp=None,
+            ),
+            _create_event(
+                type_="Normal",
+                reason="Started",
+                count=1,
+                kind="Pod",
+                obj_name="pod-x",
+                obj_namespace="ns1",
+                last_timestamp=None,
+            ),
+        ]
+        workloads = rule._aggregate_by_workload(events)
+        assert len(workloads) == 1
+        assert workloads[0]["recovered"] is False
+        assert workloads[0]["is_unhealthy"] is True
+
+    def test_build_message_includes_recovered_count(self, rule):
+        """Message mentions recovered workload count when some have recovered."""
+        events = [
+            _create_event(
+                type_="Warning",
+                reason="Unhealthy",
+                count=1,
+                kind="Pod",
+                obj_name="pod-a",
+                obj_namespace="ns1",
+                last_timestamp="2026-11-01T00:03:00Z",
+            ),
+            _create_event(
+                type_="Normal",
+                reason="Started",
+                count=1,
+                kind="Pod",
+                obj_name="pod-a",
+                obj_namespace="ns1",
+                last_timestamp="2026-11-01T00:05:00Z",
+            ),
+        ]
+        workloads = rule._aggregate_by_workload(events)
+        unhealthy = [w for w in workloads if w["is_unhealthy"]]
+        message = rule._build_message(workloads, unhealthy)
+        assert "1 recovered" in message
         assert "No unhealthy workloads detected" in message
 
 

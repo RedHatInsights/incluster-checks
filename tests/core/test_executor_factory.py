@@ -1,5 +1,7 @@
 """Tests for NodeExecutorFactory."""
 
+import json
+
 import pytest
 from unittest.mock import Mock, patch, MagicMock
 
@@ -356,6 +358,12 @@ class TestNodeExecutorFactory:
 
         assert factory._namespace_created is True
         mock_oc.create.assert_called_once()
+        labels = json.loads(mock_oc.create.call_args.args[0])["metadata"]["labels"]
+        assert labels == {
+            "pod-security.kubernetes.io/enforce": "privileged",
+            "pod-security.kubernetes.io/audit": "privileged",
+            "created-by": "in-cluster-checks",
+        }
 
     @patch("in_cluster_checks.core.executor_factory.oc")
     def test_delete_namespace_skips_when_not_created(self, mock_oc):

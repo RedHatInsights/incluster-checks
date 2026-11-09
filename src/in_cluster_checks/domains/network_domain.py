@@ -28,6 +28,7 @@ from in_cluster_checks.rules.network.ovs_validations import (
     OvsProfileActivationCheck,
     VlanOvsAttachmentCheck,
 )
+from in_cluster_checks.rules.network.sriov_validations import VerifySriovOperatorConfigured
 from in_cluster_checks.rules.network.whereabouts_validations import (
     WhereaboutsDuplicateIPAddresses,
     WhereaboutsExistingAllocations,
@@ -69,6 +70,7 @@ class NetworkValidationDomain(RuleDomain):
             LogicalSwitchNodeValidator,
             MTUOverlayInterfaces,
             VerifyAllNNCPsAvailable,
+            VerifySriovOperatorConfigured,
             WhereaboutsDuplicateIPAddresses,
             WhereaboutsMissingPodrefs,
             WhereaboutsMissingAllocations,

@@ -236,8 +236,8 @@ class NodeExecutorFactory:
                 "name": namespace,
                 "labels": {
                     "pod-security.kubernetes.io/enforce": "privileged",
-                    "pod-security.kubernetes.io/audit": "restricted",
-                    "pod-security.kubernetes.io/warn": "restricted",
+                    "pod-security.kubernetes.io/audit": "privileged",
+                    "pod-security.kubernetes.io/warn": "privileged",
                     "created-by": "in-cluster-checks",
                 },
             },

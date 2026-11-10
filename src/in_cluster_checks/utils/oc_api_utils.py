@@ -762,6 +762,11 @@ class OcApiUtils:
             "status_message": status_message,
         }
 
+    def is_any_pod_ready(self, namespace: str, labels: dict) -> bool:
+        """Return True if at least one pod matching labels is Running with all containers ready."""
+        pods = self.get_pods(namespace=namespace, labels=labels)
+        return any((s := self.get_pod_status(pod)) is not None and s["all_containers_ready"] for pod in pods)
+
     def get_operator_subscriptions(self, namespace: Optional[str] = None) -> dict:
         """Fetch operator Subscription resources from the cluster.
 

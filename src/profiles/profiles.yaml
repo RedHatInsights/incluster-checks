@@ -15,6 +15,8 @@ profiles:
   # --- Layer 3: Platforms & Hardware ---
   gpu:
     include: [ai-base] # GPU implies AI-base rules
+  dpf:
+    include: [general] # DPF (DPU Platform Framework) deployments with NVIDIA BlueField-3 DPUs
   spectrum-x:
     description: "NVIDIA Spectrum-X networking platform for AI factories"
     include: [general]

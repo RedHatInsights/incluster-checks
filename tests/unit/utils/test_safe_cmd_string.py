@@ -237,6 +237,9 @@ def test_safe_cmd_string_blocks_dangerous_characters(blocked_char, test_value):
         f"    (letters, digits, dashes, underscores; ONE dot in filename only)\n"
         f"  - Identifiers: alphanumeric start, then letters/digits/underscores/dots/dashes/spaces\n"
         f"    (e.g., 'eth0', 'br-ex', 'bond0.110', 'ovn-k8s-mp0', 'test_file')\n"
+        f"  - IPv6 addresses: hex groups with colons, optional %zone for link-local\n"
+        f"    (e.g., fd2e:6f44:5dd8:a::1, ::1, fe80::1%eth0, fe80::5054:ff:feba:52f0%br-ex)\n"
+        f"  - IPv4-mapped IPv6: ::ffff:x.x.x.x (e.g., ::ffff:192.0.2.1)\n"
         f"  - Etcd URLs: https://etcd-N.etcd.openshift-etcd.svc:2379/path\n"
         f"  - PCI addresses: 01:00.0 or 0000:01:00.0\n"
         f"Got: {test_value!r}"
@@ -279,6 +282,9 @@ def test_safe_cmd_string_blocks_invalid_characters(special_char, test_value):
         f"    (letters, digits, dashes, underscores; ONE dot in filename only)\n"
         f"  - Identifiers: alphanumeric start, then letters/digits/underscores/dots/dashes/spaces\n"
         f"    (e.g., 'eth0', 'br-ex', 'bond0.110', 'ovn-k8s-mp0', 'test_file')\n"
+        f"  - IPv6 addresses: hex groups with colons, optional %zone for link-local\n"
+        f"    (e.g., fd2e:6f44:5dd8:a::1, ::1, fe80::1%eth0, fe80::5054:ff:feba:52f0%br-ex)\n"
+        f"  - IPv4-mapped IPv6: ::ffff:x.x.x.x (e.g., ::ffff:192.0.2.1)\n"
         f"  - Etcd URLs: https://etcd-N.etcd.openshift-etcd.svc:2379/path\n"
         f"  - PCI addresses: 01:00.0 or 0000:01:00.0\n"
         f"Got: {test_value!r}"
@@ -753,6 +759,31 @@ def test_safe_cmd_string_not_enough_positional_args():
     assert "template mismatch" in error_msg.lower()
     assert "not enough positional arguments" in error_msg.lower()
     assert "2 positional args" in error_msg  # Shows what was provided
+
+
+@pytest.mark.parametrize(
+    "ipv6_address",
+    [
+        "fd2e:6f44:5dd8:a::1",
+        "::1",
+        "fe80::1",
+        "2001:db8::1",
+        "2001:0db8:0000:0000:0000:0000:0000:0001",
+        "fd00::5054:ff:fe12:3456",
+        "2001:db8:1:2:3:4:5::",  # full 8-group address with trailing ::
+        "::ffff:192.0.2.1",  # IPv4-mapped IPv6 (kernel/ss -6 output)
+        "fe80::5054:ff:feba:52f0%br-ex",  # link-local with zone ID
+        "fe80::1%eth0",  # link-local with simple zone ID
+        "fe80::1%bond0.100",  # link-local with dotted zone ID
+    ],
+)
+def test_safe_cmd_string_allows_ipv6(ipv6_address):
+    """Test that IPv6 addresses are allowed."""
+    cmd = SafeCmdString("ping -c 1 -W 2 {dns_ip}")
+    result = cmd.format(dns_ip=ipv6_address)
+
+    assert isinstance(result, SafeCmdString)
+    assert ipv6_address in str(result)
 
 
 def test_safe_cmd_string_mixed_mismatch():

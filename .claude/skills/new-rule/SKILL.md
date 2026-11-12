@@ -242,6 +242,8 @@ self.oc_api.run_rsh_cmd(namespace, pod, cmd2)
 - Absolute paths: `/path/to/file` or `/path/to/file.ext` (one dot max for extension)
 - Generic identifiers: `[a-zA-Z0-9][a-zA-Z0-9.- ]*` (alphanumeric start, then letters/digits/dots/dashes/spaces)
 - Etcd URLs: `https://etcd-N.etcd.openshift-etcd.svc:2379/path`
+- IPv6 addresses: hex groups with colons, optional `%zone` for link-local (e.g., `fd2e:6f44:5dd8:a::1`, `::1`, `fe80::1%eth0`)
+- IPv4-mapped IPv6: `::ffff:x.x.x.x` form (e.g., `::ffff:192.0.2.1`, seen in kernel/`ss -6` output)
 - PCI addresses: `01:00.0` or `0000:01:00.0`
 
 **Pre-commit linter enforces:**

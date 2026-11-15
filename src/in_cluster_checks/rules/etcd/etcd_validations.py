@@ -292,7 +292,7 @@ class EtcdLeaderCheck(EtcdRule):
 
 class EtcdEndpointHealthCheck(EtcdRule):
     """
-    Check etcd endpoint health via /health endpoint.
+    Check etcd endpoint health using etcdctl.
 
     Ported from HealthChecks EtcdEndpointHealthValidator.
     Verifies all etcd endpoints are healthy.
@@ -300,60 +300,46 @@ class EtcdEndpointHealthCheck(EtcdRule):
 
     objective_hosts = [Objectives.ORCHESTRATOR]
     unique_name = "etcd_health_check"
-    title = "Check etcd health with curl :2379/health"
+    title = "Check etcd endpoint health"
 
     def run_rule(self):
         """
-        Check etcd endpoint health.
+        Check etcd endpoint health using etcdctl.
 
         Returns:
             RuleResult: Passed if all endpoints healthy, failed otherwise
         """
-        # Get member list to find all endpoints
-        rc, out, err = self._run_etcdctl_cmd(SafeCmdString("etcdctl member list -w=json"))
+        # Use etcdctl endpoint health to check all cluster endpoints
+        rc, out, err = self._run_etcdctl_cmd(SafeCmdString("etcdctl endpoint health --cluster -w=json"))
 
-        try:
-            members_data = json.loads(out)
-            members = members_data.get("members", [])
-        except (json.JSONDecodeError, KeyError) as e:
-            raise UnExpectedSystemOutput(
-                ip=self.get_host_ip(),
-                cmd="etcdctl member list -w=json",
-                output=out,
-                message=f"Failed to parse etcd member list: {e}",
+        if rc != 0:
+            return RuleResult.failed(
+                f"Failed to check etcd endpoint health (rc={rc})\nError: {err}",
             )
 
-        # Collect all endpoints
-        endpoints = []
-        for member in members:
-            endpoints.extend(member.get("clientURLs", []))
+        try:
+            health_data = json.loads(out)
+        except json.JSONDecodeError as e:
+            raise UnExpectedSystemOutput(
+                ip=self.get_host_ip(),
+                cmd="etcdctl endpoint health --cluster -w=json",
+                output=out,
+                message=f"Failed to parse etcd health check JSON: {e}",
+            )
 
-        if not endpoints:
-            return RuleResult.failed("No etcd endpoints found")
-
-        # Check health of each endpoint
+        # Check for unhealthy endpoints
         unhealthy_endpoints = []
         health_details = []
-        pod_name = self._get_etcd_pod_name()  # Get once and reuse for all curl calls
 
-        for endpoint in endpoints:
-            rc, health_out, health_err = self._run_curl_in_pod(f"{endpoint}/health", pod_name)
+        for endpoint_health in health_data:
+            endpoint = endpoint_health.get("endpoint", "unknown")
+            is_healthy = endpoint_health.get("health", False)
+            took = endpoint_health.get("took", "N/A")
 
-            if rc != 0:
+            health_details.append(f"{endpoint}: healthy={is_healthy}, took={took}")
+
+            if not is_healthy:
                 unhealthy_endpoints.append(endpoint)
-                health_details.append(f"{endpoint}: Failed to connect (rc={rc})")
-                continue
-
-            try:
-                health_data = json.loads(health_out)
-                is_healthy = health_data.get("health") == "true" or health_data.get("health") is True
-                health_details.append(f"{endpoint}: {health_out.strip()}")
-
-                if not is_healthy:
-                    unhealthy_endpoints.append(endpoint)
-            except json.JSONDecodeError:
-                unhealthy_endpoints.append(endpoint)
-                health_details.append(f"{endpoint}: Invalid JSON response - {health_out}")
 
         if unhealthy_endpoints:
             details = "\n".join(health_details)

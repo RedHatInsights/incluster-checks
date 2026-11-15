@@ -56,6 +56,9 @@ class SafeCmdString:
 
            - Etcd URLs: https://etcd-N.etcd.openshift-etcd.svc:2379/path (validated pattern)
            - Etcd IP URLs: https://IP:2379/path (pattern validated, invalid IPs fail naturally in curl)
+           - IPv6 addresses: hex groups separated by colons, optional %zone for link-local
+             (e.g., fd2e:6f44:5dd8:a::1, ::1, fe80::1%eth0, fe80::5054:ff:feba:52f0%br-ex)
+           - IPv4-mapped IPv6: ::ffff:x.x.x.x form (e.g., ::ffff:192.0.2.1, seen in kernel/ss -6 output)
            - PCI addresses: 01:00.0 or 0000:01:00.0 (validated hex pattern)
 
         2. All values are wrapped with shlex.quote() for safe shell execution
@@ -75,6 +78,12 @@ class SafeCmdString:
         r"https://etcd-[0-9]+\.etcd\.openshift-etcd\.svc:2379(/[a-z]+)?|"
         r"https://[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}:2379(/[a-z]+)?|"
         r"https://localhost:2379(/[a-z]+)?|"
+        # IPv6 addresses (hex digits and colons only — no shell metacharacters)
+        # {2,8} covers trailing :: (e.g., 2001:db8:1:2:3:4:5::) which needs 8 colon-groups
+        # Optional %zone suffix for link-local addresses (e.g., fe80::1%eth0, fe80::1%br-ex)
+        r"[0-9a-fA-F]{0,4}(:[0-9a-fA-F]{0,4}){2,8}(%[a-zA-Z0-9._-]+)?|"
+        # IPv4-mapped IPv6 (e.g., ::ffff:192.0.2.1) — dots are not shell metacharacters
+        r"::[0-9a-fA-F]{0,4}:[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|"
         # PCI addresses
         r"[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-9]|"  # Long format (0000:01:00.0)
         r"[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-9]|"  # Short format (01:00.0)
@@ -155,6 +164,9 @@ class SafeCmdString:
                 f"    (letters, digits, dashes, underscores; ONE dot in filename only)\n"
                 f"  - Identifiers: alphanumeric start, then letters/digits/underscores/dots/dashes/spaces\n"
                 f"    (e.g., 'eth0', 'br-ex', 'bond0.110', 'ovn-k8s-mp0', 'test_file')\n"
+                f"  - IPv6 addresses: hex groups with colons, optional %zone for link-local\n"
+                f"    (e.g., fd2e:6f44:5dd8:a::1, ::1, fe80::1%eth0, fe80::5054:ff:feba:52f0%br-ex)\n"
+                f"  - IPv4-mapped IPv6: ::ffff:x.x.x.x (e.g., ::ffff:192.0.2.1)\n"
                 f"  - Etcd URLs: https://etcd-N.etcd.openshift-etcd.svc:2379/path\n"
                 f"  - PCI addresses: 01:00.0 or 0000:01:00.0\n"
                 f"Got: {value_str!r}"
@@ -171,6 +183,9 @@ class SafeCmdString:
           (letters, digits, dashes, underscores; ONE dot in filename only)
         - Identifiers: alphanumeric start, then letters/digits/underscores/dots/dashes/spaces
           (e.g., 'eth0', 'br-ex', 'bond0.110', 'ovn-k8s-mp0', 'test_file')
+        - IPv6 addresses: hex groups with colons, optional %zone for link-local
+          (e.g., fd2e:6f44:5dd8:a::1, ::1, fe80::1%eth0, fe80::5054:ff:feba:52f0%br-ex)
+        - IPv4-mapped IPv6: ::ffff:x.x.x.x (e.g., ::ffff:192.0.2.1)
         - Etcd URLs: https://etcd-N.etcd.openshift-etcd.svc:2379/path
         - Etcd IP URLs: https://IP:2379/path (with IP validation)
         - PCI addresses: 01:00.0 or 0000:01:00.0 (hex format)

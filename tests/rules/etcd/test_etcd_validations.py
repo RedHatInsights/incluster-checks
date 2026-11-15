@@ -290,23 +290,17 @@ class TestEtcdLeaderCheck(RuleTestBase):
 class TestEtcdEndpointHealthCheck(RuleTestBase):
     tested_type = EtcdEndpointHealthCheck
 
+    all_healthy_output = '[{"endpoint":"https://10.0.0.1:2379","health":true,"took":"3.965114ms"},{"endpoint":"https://10.0.0.2:2379","health":true,"took":"5.197474ms"}]'
+
+    one_unhealthy_output = '[{"endpoint":"https://10.0.0.1:2379","health":true,"took":"3.965114ms"},{"endpoint":"https://10.0.0.2:2379","health":false,"took":"10.5s"}]'
+
     scenario_passed = [
         RuleScenarioParams(
             "all endpoints healthy",
             rsh_cmd_output_dict={
-                ("openshift-etcd", "etcd-master-0", "etcdctl member list -w=json"): CmdOutput(
-                    '{"members": [{"name": "master-0", "clientURLs": ["https://10.0.0.1:2379"]}, {"name": "master-1", "clientURLs": ["https://10.0.0.2:2379"]}]}'
+                ("openshift-etcd", "etcd-master-0", "etcdctl endpoint health --cluster -w=json"): CmdOutput(
+                    all_healthy_output
                 ),
-                (
-                    "openshift-etcd",
-                    "etcd-master-0",
-                    "curl --max-time 10 -s --key $ETCDCTL_KEY --cert $ETCDCTL_CERT --cacert $ETCDCTL_CACERT -XGET https://10.0.0.1:2379/health",
-                ): CmdOutput('{"health": "true"}'),
-                (
-                    "openshift-etcd",
-                    "etcd-master-0",
-                    "curl --max-time 10 -s --key $ETCDCTL_KEY --cert $ETCDCTL_CERT --cacert $ETCDCTL_CACERT -XGET https://10.0.0.2:2379/health",
-                ): CmdOutput('{"health": "true"}'),
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
@@ -318,24 +312,14 @@ class TestEtcdEndpointHealthCheck(RuleTestBase):
         RuleScenarioParams(
             "unhealthy endpoint",
             rsh_cmd_output_dict={
-                ("openshift-etcd", "etcd-master-0", "etcdctl member list -w=json"): CmdOutput(
-                    '{"members": [{"name": "master-0", "clientURLs": ["https://10.0.0.1:2379"]}, {"name": "master-1", "clientURLs": ["https://10.0.0.2:2379"]}]}'
+                ("openshift-etcd", "etcd-master-0", "etcdctl endpoint health --cluster -w=json"): CmdOutput(
+                    one_unhealthy_output
                 ),
-                (
-                    "openshift-etcd",
-                    "etcd-master-0",
-                    "curl --max-time 10 -s --key $ETCDCTL_KEY --cert $ETCDCTL_CERT --cacert $ETCDCTL_CACERT -XGET https://10.0.0.1:2379/health",
-                ): CmdOutput('{"health": "true"}'),
-                (
-                    "openshift-etcd",
-                    "etcd-master-0",
-                    "curl --max-time 10 -s --key $ETCDCTL_KEY --cert $ETCDCTL_CERT --cacert $ETCDCTL_CACERT -XGET https://10.0.0.2:2379/health",
-                ): CmdOutput('{"health": "false"}'),
             },
             tested_object_mock_dict={
                 "oc_api.get_pod_name": lambda ns, labels: "etcd-master-0",
             },
-            failed_msg='The following etcd endpoints are not healthy: [\'https://10.0.0.2:2379\']\nhttps://10.0.0.1:2379: {"health": "true"}\nhttps://10.0.0.2:2379: {"health": "false"}',
+            failed_msg="The following etcd endpoints are not healthy: ['https://10.0.0.2:2379']\nhttps://10.0.0.1:2379: healthy=True, took=3.965114ms\nhttps://10.0.0.2:2379: healthy=False, took=10.5s",
         ),
     ]
 

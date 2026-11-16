@@ -26,7 +26,7 @@ from tests.pytest_tools.test_rule_base import (
 )
 
 
-def _generate_cert_pem(days_valid=365, days_expired=0, hours_valid=None):
+def _generate_cert_pem(days_valid=365, days_expired=0, hours_valid=None, age_days=None):
     """Generate a self-signed PEM certificate for testing."""
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "test")])
@@ -38,6 +38,9 @@ def _generate_cert_pem(days_valid=365, days_expired=0, hours_valid=None):
     elif hours_valid is not None:
         not_before = now - timedelta(days=1)
         not_after = now + timedelta(hours=hours_valid)
+    elif age_days is not None:
+        not_before = now - timedelta(days=age_days)
+        not_after = not_before + timedelta(days=days_valid)
     else:
         not_before = now
         not_after = now + timedelta(days=days_valid)
@@ -58,10 +61,15 @@ def _generate_cert_pem(days_valid=365, days_expired=0, hours_valid=None):
 def _make_secrets_json(secrets):
     """Build a JSON response mimicking 'oc get secret -o json' output."""
     items = []
-    for name, namespace, cert_pem in secrets:
+    for secret in secrets:
+        name, namespace, cert_pem = secret[:3]
+        annotations = secret[3] if len(secret) > 3 else None
         cert_b64 = base64.b64encode(cert_pem.encode()).decode() if cert_pem else ""
+        metadata = {"name": name, "namespace": namespace}
+        if annotations:
+            metadata["annotations"] = annotations
         items.append({
-            "metadata": {"name": name, "namespace": namespace},
+            "metadata": metadata,
             "data": {"tls.crt": cert_b64},
         })
     return json.dumps({"items": items})
@@ -75,6 +83,15 @@ _expired_cert = _generate_cert_pem(days_valid=30, days_expired=5)
 _sub_day_cert = _generate_cert_pem(hours_valid=12)
 _just_outside_warning_cert = _generate_cert_pem(hours_valid=14 * 24 + 1)
 
+# Short-lived auto-rotating control-plane certs: 30-day validity, 15-day (360h) refresh period.
+# Rotation is due at age 15d and may lag by refresh/10 (36h), so age 16d is still pending
+# replacement while age 18d means rotation is genuinely overdue.
+_ROTATION_ANNOTATIONS = {TlsCertificateExpiry.REFRESH_PERIOD_ANNOTATION: "360h0m0s"}
+_BAD_ROTATION_ANNOTATIONS = {TlsCertificateExpiry.REFRESH_PERIOD_ANNOTATION: "not-a-duration"}
+_rotating_in_window_cert = _generate_cert_pem(days_valid=30, age_days=16)
+_rotating_overdue_cert = _generate_cert_pem(days_valid=30, age_days=18)
+_rotating_expired_cert = _generate_cert_pem(days_valid=30, days_expired=5)
+
 
 def _oc_outputs(namespace_outputs=None):
     """Provide one mocked secret-list response per TLS namespace."""
@@ -84,6 +101,22 @@ def _oc_outputs(namespace_outputs=None):
             namespace_outputs.get(namespace, CmdOutput(_make_secrets_json([])))
         for namespace in TlsCertificateExpiry.INFRA_NAMESPACES
     }
+
+
+@pytest.mark.parametrize(
+    "value, expected",
+    [
+        ("360h0m0s", timedelta(hours=360)),
+        ("1h30m0s", timedelta(hours=1, minutes=30)),
+        ("45m", timedelta(minutes=45)),
+        ("not-a-duration", None),
+        ("", None),
+        (None, None),
+    ],
+)
+def test_parse_go_duration(value, expected):
+    """Read Go duration strings and reject anything unrecognized."""
+    assert TlsCertificateExpiry._parse_go_duration(value) == expected
 
 
 def test_shared_infrastructure_namespace_scope():
@@ -153,6 +186,21 @@ class TestTlsCertificateExpiry(RuleTestBase):
                 ),
             }),
         ),
+        RuleScenarioParams(
+            "auto-rotating certificate still inside its rotation window is not flagged",
+            oc_cmd_output_dict=_oc_outputs({
+                "openshift-kube-scheduler": CmdOutput(
+                    _make_secrets_json([
+                        (
+                            "kube-scheduler-client-cert-key",
+                            "openshift-kube-scheduler",
+                            _rotating_in_window_cert,
+                            _ROTATION_ANNOTATIONS,
+                        ),
+                    ])
+                ),
+            }),
+        ),
     ]
 
     scenario_warning = [
@@ -172,6 +220,36 @@ class TestTlsCertificateExpiry(RuleTestBase):
                 "openshift-ingress": CmdOutput(
                     _make_secrets_json([
                         ("router-tls", "openshift-ingress", _sub_day_cert),
+                    ])
+                ),
+            }),
+        ),
+        RuleScenarioParams(
+            "auto-rotating certificate past its rotation window is flagged",
+            oc_cmd_output_dict=_oc_outputs({
+                "openshift-kube-scheduler": CmdOutput(
+                    _make_secrets_json([
+                        (
+                            "kube-scheduler-client-cert-key",
+                            "openshift-kube-scheduler",
+                            _rotating_overdue_cert,
+                            _ROTATION_ANNOTATIONS,
+                        ),
+                    ])
+                ),
+            }),
+        ),
+        RuleScenarioParams(
+            "unparseable refresh-period annotation falls back to the expiry threshold",
+            oc_cmd_output_dict=_oc_outputs({
+                "openshift-kube-scheduler": CmdOutput(
+                    _make_secrets_json([
+                        (
+                            "kube-scheduler-client-cert-key",
+                            "openshift-kube-scheduler",
+                            _rotating_in_window_cert,
+                            _BAD_ROTATION_ANNOTATIONS,
+                        ),
                     ])
                 ),
             }),
@@ -199,6 +277,16 @@ class TestTlsCertificateExpiry(RuleTestBase):
                 "openshift-etcd": CmdOutput(
                     _make_secrets_json([
                         ("expired-secret", "openshift-etcd", _expired_cert),
+                    ])
+                ),
+            }),
+        ),
+        RuleScenarioParams(
+            "expired certificate is still reported when auto-rotation is configured",
+            oc_cmd_output_dict=_oc_outputs({
+                "openshift-etcd": CmdOutput(
+                    _make_secrets_json([
+                        ("expired-rotating", "openshift-etcd", _rotating_expired_cert, _ROTATION_ANNOTATIONS),
                     ])
                 ),
             }),
@@ -252,6 +340,18 @@ class TestTlsCertificateExpiry(RuleTestBase):
     @pytest.mark.parametrize("scenario_params", scenario_unexpected_system_output)
     def test_scenario_unexpected_system_output(self, scenario_params, tested_object):
         RuleTestBase.test_scenario_unexpected_system_output(self, scenario_params, tested_object)
+
+    def test_rotation_window_suppresses_an_otherwise_firing_warning(self, tested_object):
+        """Pass only because rotation is pending: the certificate is inside the warning threshold."""
+        self._init_validation_object(tested_object, self.scenario_passed[4])
+
+        result = tested_object.run_rule()
+
+        assert result.status == Status.PASSED
+        name, _, _, days_remaining, status = result.system_info["rows"][0]
+        assert name == "kube-scheduler-client-cert-key"
+        assert days_remaining <= TlsCertificateExpiry.WARNING_DAYS
+        assert status == "ok"
 
     def test_reads_only_infra_namespaces(self, tested_object):
         """Query the approved namespaces once and combine their certificates."""

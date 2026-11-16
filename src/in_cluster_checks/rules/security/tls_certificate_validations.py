@@ -6,6 +6,7 @@ This module checks OpenShift infrastructure TLS certificates stored in secrets.
 
 import base64
 import json
+import re
 from datetime import UTC, datetime, timedelta
 
 from cryptography import x509
@@ -15,6 +16,10 @@ from in_cluster_checks.core.rule import OrchestratorRule, RuleResult
 from in_cluster_checks.utils.enums import Objectives
 from in_cluster_checks.utils.infra_namespaces import COMMON_INFRA_NAMESPACES
 
+# Each amount/unit pair of a Go duration: "360h0m0s" -> [("360", "h"), ("0", "m"), ("0", "s")]
+GO_DURATION_PATTERN = re.compile(r"(\d+(?:\.\d+)?)([hms])")
+DURATION_UNIT_SECONDS = {"h": 3600, "m": 60, "s": 1}
+
 
 class TlsCertificateExpiry(OrchestratorRule):
     """
@@ -22,6 +27,10 @@ class TlsCertificateExpiry(OrchestratorRule):
 
     Retrieves TLS-type secrets from infrastructure namespaces and validates that their
     certificates are not expired or expiring soon.
+
+    Certificates that OpenShift operators rotate automatically are not reported while
+    they are still inside their declared rotation window, since replacement is pending
+    rather than overdue.
     """
 
     objective_hosts = [Objectives.ORCHESTRATOR]
@@ -32,6 +41,8 @@ class TlsCertificateExpiry(OrchestratorRule):
     ]
 
     WARNING_DAYS = 14
+    REFRESH_PERIOD_ANNOTATION = "certificates.openshift.io/refresh-period"
+    TRUST_ROTATION_GRACE_DIVISOR = 10
     INFRA_NAMESPACES = COMMON_INFRA_NAMESPACES + (
         "openshift-config",
         "openshift-config-managed",
@@ -53,6 +64,7 @@ class TlsCertificateExpiry(OrchestratorRule):
         expiring_soon = []
         valid = []
         errors = []
+        now = datetime.now(UTC)
 
         for item in items:
             name = item["metadata"]["name"]
@@ -61,14 +73,50 @@ class TlsCertificateExpiry(OrchestratorRule):
 
             if cert_info.get("status") == "error":
                 errors.append(cert_info)
-            elif cert_info["remaining"] <= timedelta(0):
+                continue
+
+            remaining = cert_info["remaining"]
+            if remaining <= timedelta(0):
                 expired.append(cert_info)
-            elif cert_info["remaining"] <= timedelta(days=self.WARNING_DAYS):
+            elif remaining <= timedelta(days=self.WARNING_DAYS) and not self._is_rotation_pending(cert_info, now):
                 expiring_soon.append(cert_info)
             else:
                 valid.append(cert_info)
 
         return expired, expiring_soon, valid, errors
+
+    @staticmethod
+    def _parse_go_duration(value):
+        """
+        Convert a Go duration string to a timedelta, or None when it is absent or unrecognized.
+
+        Operators write the refresh period in Go's duration format, for example "360h0m0s" for
+        15 days or "1h30m0s" for 90 minutes. Returning None lets the caller fall back to the
+        plain expiry threshold instead of trusting a value it could not read.
+        """
+        pairs = GO_DURATION_PATTERN.findall(value or "")
+        if not pairs:
+            return None
+        return timedelta(seconds=sum(float(amount) * DURATION_UNIT_SECONDS[unit] for amount, unit in pairs))
+
+    def _is_rotation_pending(self, cert_info, now):
+        """
+        Report whether an automatically rotated certificate is still inside its rotation window.
+
+        OpenShift operators replace a managed certificate at not_before + refresh_period, then wait
+        refresh_period / 10 so a freshly rotated signer reaches every trust bundle before the leaf is
+        re-issued. Within that window the certificate is pending replacement rather than at risk, so a
+        short-lived certificate can legitimately drop below WARNING_DAYS before being replaced.
+
+        Certificates without the annotation are not managed this way and are never treated as pending.
+        """
+        refresh_period = cert_info.get("refresh_period")
+        if not refresh_period:
+            return False
+
+        rotation_due = cert_info["not_before"] + refresh_period
+        grace = refresh_period / self.TRUST_ROTATION_GRACE_DIVISOR
+        return now <= rotation_due + grace
 
     def _check_secret_cert(self, name, namespace, item):
         """Decode a secret's certificate and report its expiry or parse error."""
@@ -82,6 +130,7 @@ class TlsCertificateExpiry(OrchestratorRule):
             cert = x509.load_pem_x509_certificate(cert_pem)
             end_date = cert.not_valid_after_utc
             remaining = end_date - datetime.now(UTC)
+            annotations = item["metadata"].get("annotations") or {}
 
             return {
                 "name": name,
@@ -89,6 +138,8 @@ class TlsCertificateExpiry(OrchestratorRule):
                 "end_date": end_date.strftime("%Y-%m-%d %H:%M:%S UTC"),
                 "days_remaining": remaining.days,
                 "remaining": remaining,
+                "not_before": cert.not_valid_before_utc,
+                "refresh_period": self._parse_go_duration(annotations.get(self.REFRESH_PERIOD_ANNOTATION)),
             }
         except Exception as e:
             return {"name": name, "namespace": namespace, "status": "error", "message": str(e)}

@@ -92,6 +92,12 @@ _rotating_in_window_cert = _generate_cert_pem(days_valid=30, age_days=16)
 _rotating_overdue_cert = _generate_cert_pem(days_valid=30, age_days=18)
 _rotating_expired_cert = _generate_cert_pem(days_valid=30, days_expired=5)
 
+# A leaf issued close to its signer's expiry is cut short to the signer's remaining lifetime but
+# keeps the configured refresh period, leaving refresh (15d) longer than the validity itself (10d).
+# Rotation is forced at 80% of validity (day 8), so at age 9d replacement is overdue, not pending.
+_OVERFLOW_ROTATION_ANNOTATIONS = {TlsCertificateExpiry.REFRESH_PERIOD_ANNOTATION: "999999999999h"}
+_truncated_validity_cert = _generate_cert_pem(days_valid=10, age_days=9)
+
 
 def _oc_outputs(namespace_outputs=None):
     """Provide one mocked secret-list response per TLS namespace."""
@@ -112,6 +118,13 @@ def _oc_outputs(namespace_outputs=None):
         ("not-a-duration", None),
         ("", None),
         (None, None),
+        # Only a complete duration counts: a partial or signed value must not read as 15 days
+        ("360h-invalid", None),
+        ("garbage5h", None),
+        ("-360h", None),
+        ("15", None),
+        # Too large for a timedelta, so unusable rather than an error
+        ("999999999999h", None),
     ],
 )
 def test_parse_go_duration(value, expected):
@@ -255,6 +268,21 @@ class TestTlsCertificateExpiry(RuleTestBase):
             }),
         ),
         RuleScenarioParams(
+            "certificate cut short below its refresh period warns once past 80% of validity",
+            oc_cmd_output_dict=_oc_outputs({
+                "openshift-kube-apiserver": CmdOutput(
+                    _make_secrets_json([
+                        (
+                            "kubelet-client",
+                            "openshift-kube-apiserver",
+                            _truncated_validity_cert,
+                            _ROTATION_ANNOTATIONS,
+                        ),
+                    ])
+                ),
+            }),
+        ),
+        RuleScenarioParams(
             "unparseable cert alongside a valid cert warns instead of passing",
             oc_cmd_output_dict=_oc_outputs({
                 "openshift-ingress": CmdOutput(
@@ -290,6 +318,20 @@ class TestTlsCertificateExpiry(RuleTestBase):
                     ])
                 ),
             }),
+        ),
+        RuleScenarioParams(
+            "out-of-range refresh period does not downgrade an expired certificate to an error",
+            oc_cmd_output_dict=_oc_outputs({
+                "openshift-etcd": CmdOutput(
+                    _make_secrets_json([
+                        ("expired-rotating", "openshift-etcd", _rotating_expired_cert, _OVERFLOW_ROTATION_ANNOTATIONS),
+                    ])
+                ),
+                "openshift-ingress": CmdOutput(
+                    _make_secrets_json([("router-tls", "openshift-ingress", _valid_cert)])
+                ),
+            }),
+            failed_msg="Found 1 expired TLS certificate(s):\n  - openshift-etcd/expired-rotating",
         ),
         RuleScenarioParams(
             "secret has no tls.crt data and no valid certs",

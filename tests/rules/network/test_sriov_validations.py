@@ -38,15 +38,14 @@ def _create_mock_sriov_operator_config(manage_software_bridges=True):
     return mock_config
 
 
-def _sriov_subscriptions(include_sriov=True, include_ovs_cni_env=True):
+def _sriov_subscriptions(include_sriov=True, include_ovs_cni_env=True, empty_ovs_cni_value=False):
     """Build a subscriptions response, optionally including the SR-IOV subscription."""
     items = []
     if include_sriov:
         spec = {"name": SUBSCRIPTION_NAME, "source": "redhat-operators"}
         if include_ovs_cni_env:
-            spec["config"] = {
-                "env": [{"name": "OVS_CNI_IMAGE", "value": "nvcr.io/nvidia/mellanox/ovs-cni-plugin:v1"}]
-            }
+            value = "" if empty_ovs_cni_value else "nvcr.io/nvidia/mellanox/ovs-cni-plugin:v1"
+            spec["config"] = {"env": [{"name": "OVS_CNI_IMAGE", "value": value}]}
         items.append(
             {
                 "metadata": {"name": f"{SUBSCRIPTION_NAME}-subscription", "namespace": NAMESPACE},
@@ -91,18 +90,9 @@ class TestVerifySriovOperatorConfigured(RuleTestBase):
         ),
     ]
 
-    scenario_prerequisite_not_fulfilled = [
-        RuleScenarioParams(
-            "SR-IOV operator subscription not found",
-            oc_cmd_output_dict={
-                SUBSCRIPTIONS_OC_CMD: CmdOutput(json.dumps(_sriov_subscriptions(include_sriov=False))),
-            },
-        ),
-    ]
-
     scenario_prerequisite_fulfilled = [
         RuleScenarioParams(
-            "SR-IOV operator subscription found",
+            "prerequisite always met",
             oc_cmd_output_dict={
                 SUBSCRIPTIONS_OC_CMD: CmdOutput(json.dumps(_sriov_subscriptions())),
             },
@@ -110,6 +100,19 @@ class TestVerifySriovOperatorConfigured(RuleTestBase):
     ]
 
     scenario_failed = [
+        RuleScenarioParams(
+            "SR-IOV operator subscription not found",
+            tested_object_mock_dict={
+                "oc_api.select_single_resource": Mock(return_value=_create_mock_sriov_operator_config()),
+                "oc_api.get_all_pods": Mock(
+                    return_value=[create_mock_pod(NAMESPACE, "sriov-network-operator-abc123", "Running")]
+                ),
+            },
+            oc_cmd_output_dict={
+                SUBSCRIPTIONS_OC_CMD: CmdOutput(json.dumps(_sriov_subscriptions(include_sriov=False))),
+            },
+            failed_msg=f"Subscription/{SUBSCRIPTION_NAME} not found",
+        ),
         RuleScenarioParams(
             "SriovOperatorConfig not found",
             tested_object_mock_dict={
@@ -169,17 +172,27 @@ class TestVerifySriovOperatorConfigured(RuleTestBase):
             },
             failed_msg=f"Subscription/{SUBSCRIPTION_NAME} is missing the OVS_CNI_IMAGE environment variable override",
         ),
+        RuleScenarioParams(
+            "OVS-CNI subscription override has empty value",
+            tested_object_mock_dict={
+                "oc_api.select_single_resource": Mock(return_value=_create_mock_sriov_operator_config()),
+                "oc_api.get_all_pods": Mock(
+                    return_value=[create_mock_pod(NAMESPACE, "sriov-network-operator-abc123", "Running")]
+                ),
+            },
+            oc_cmd_output_dict={
+                SUBSCRIPTIONS_OC_CMD: CmdOutput(
+                    json.dumps(_sriov_subscriptions(include_ovs_cni_env=True, empty_ovs_cni_value=True))
+                ),
+            },
+            failed_msg=f"Subscription/{SUBSCRIPTION_NAME} is missing the OVS_CNI_IMAGE environment variable override",
+        ),
     ]
 
     @pytest.mark.parametrize("scenario_params", scenario_prerequisite_fulfilled)
     def test_prerequisite_fulfilled(self, scenario_params, tested_object):
-        """Test that prerequisite is met when the SR-IOV operator subscription is installed."""
+        """Test that prerequisite is always met (subscription check is done in run_rule)."""
         RuleTestBase.test_prerequisite_fulfilled(self, scenario_params, tested_object)
-
-    @pytest.mark.parametrize("scenario_params", scenario_prerequisite_not_fulfilled)
-    def test_prerequisite_not_fulfilled(self, scenario_params, tested_object):
-        """Test that prerequisite is not met when the SR-IOV operator subscription is missing."""
-        RuleTestBase.test_prerequisite_not_fulfilled(self, scenario_params, tested_object)
 
     @pytest.mark.parametrize("scenario_params", scenario_passed)
     def test_scenario_passed(self, scenario_params, tested_object):

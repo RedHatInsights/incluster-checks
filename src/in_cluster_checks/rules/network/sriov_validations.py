@@ -5,7 +5,7 @@ Validates that the SR-IOV Network Operator is correctly configured for
 NVIDIA Spectrum-X deployments.
 """
 
-from in_cluster_checks.core.rule_result import RuleResult
+from in_cluster_checks.core.rule_result import PrerequisiteResult, RuleResult
 from in_cluster_checks.rules.k8s.subscription_operator_validations import SubscriptionOperatorRule
 from in_cluster_checks.utils.enums import Objectives
 
@@ -38,6 +38,9 @@ class VerifySriovOperatorConfigured(SubscriptionOperatorRule):
     SRIOV_NAMESPACE = "openshift-sriov-network-operator"
     SRIOV_OPERATOR_CONFIG_NAME = "default"
     OVS_CNI_ENV_VAR = "OVS_CNI_IMAGE"
+
+    def is_prerequisite_fulfilled(self) -> PrerequisiteResult:
+        return PrerequisiteResult.met()
 
     def run_rule(self):
         """Verify SriovOperatorConfig, operator pods, and the OVS-CNI subscription override."""
@@ -89,7 +92,7 @@ class VerifySriovOperatorConfigured(SubscriptionOperatorRule):
                 continue
 
             env_vars = sub.get("spec", {}).get("config", {}).get("env", [])
-            if any(env.get("name") == self.OVS_CNI_ENV_VAR for env in env_vars):
+            if any(env.get("name") == self.OVS_CNI_ENV_VAR and env.get("value") for env in env_vars):
                 return []
 
             return [

@@ -28,6 +28,7 @@ from in_cluster_checks.rules.network.ovs_validations import (
     OvsProfileActivationCheck,
     VlanOvsAttachmentCheck,
 )
+from in_cluster_checks.rules.network.spectrum_x_nic_validations import AreNicInterfacesRenamedPerTemplate
 from in_cluster_checks.rules.network.whereabouts_validations import (
     WhereaboutsDuplicateIPAddresses,
     WhereaboutsExistingAllocations,
@@ -73,4 +74,5 @@ class NetworkValidationDomain(RuleDomain):
             WhereaboutsMissingPodrefs,
             WhereaboutsMissingAllocations,
             WhereaboutsExistingAllocations,
+            AreNicInterfacesRenamedPerTemplate,
         ]

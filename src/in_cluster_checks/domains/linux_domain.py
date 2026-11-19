@@ -9,6 +9,7 @@ from typing import List
 
 from in_cluster_checks.core.domain import RuleDomain
 from in_cluster_checks.rules.linux.linux_validations import (
+    AreHugepagesIommuKernelArgsSet,
     AuditdBacklogLimit,
     ClockSynchronized,
     IsHostReachable,
@@ -47,4 +48,5 @@ class LinuxValidationDomain(RuleDomain):
             AuditdBacklogLimit,
             VerifyDuNotHang,
             YumlockFileCheck,
+            AreHugepagesIommuKernelArgsSet,
         ]
